@@ -1,10 +1,20 @@
-import { StrictMode } from 'react'
+import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
+import type { Session } from '@supabase/supabase-js'
 import { routeTree } from './routeTree.gen'
+import { supabase } from './lib/supabase'
+import { LanguageProvider } from './lib/i18n/context'
 import './index.css'
 
-const router = createRouter({ routeTree })
+export interface RouterContext {
+  session: Session | null
+}
+
+const router = createRouter({
+  routeTree,
+  context: { session: null } satisfies RouterContext,
+})
 
 declare module '@tanstack/react-router' {
   interface Register {
@@ -12,8 +22,38 @@ declare module '@tanstack/react-router' {
   }
 }
 
+function App() {
+  // undefined = 還在讀取中，null = 沒登入，Session = 已登入
+  const [session, setSession] = useState<Session | null | undefined>(undefined)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    if (session !== undefined) router.invalidate()
+  }, [session])
+
+  if (session === undefined) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    )
+  }
+
+  return <RouterProvider router={router} context={{ session }} />
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <LanguageProvider>
+      <App />
+    </LanguageProvider>
   </StrictMode>,
 )

@@ -1,6 +1,5 @@
-// ── PERMA 五個維度：題目、引導提示、配色 ──
-// 沿用 MindGym InMind 測驗原題（src/components/pretest/types.ts），
-// 從「五題連答測驗」改為「每天挑一題書寫」的日記框架。
+// ── PERMA 五個維度：題目與配色 ──
+// 團隊會議可用的簡化版（每個維度一題，不需要額外提示）。
 
 export type DimensionKey = 'P' | 'E' | 'R' | 'M' | 'A'
 
@@ -10,9 +9,7 @@ export interface DimensionConfig {
   key: DimensionKey
   label: string
   sublabel: string
-  description: string
   question: string
-  hints: string[]
   textColor: string
   bgLight: string
   bgMed: string
@@ -27,13 +24,7 @@ export const DIMENSION_CONFIGS: Record<DimensionKey, DimensionConfig> = {
     key: 'P',
     label: '情緒力',
     sublabel: 'Positive Emotion',
-    description: '感受日常喜悅、享受生命美好時刻的能力。',
-    question: '請分享你上一次發自內心感到愉悅的經驗。',
-    hints: [
-      '那個時刻具體發生了什麼事？',
-      '當時你的身體或心理感覺到了什麼？（例如：放鬆、輕盈、心跳加速）',
-      '這個愉悅感對你當天後續的狀態有什麼影響？',
-    ],
+    question: '這週有什麼讓你充滿能量的事？',
     textColor: 'text-amber-600',
     bgLight: 'bg-amber-500/10',
     bgMed: 'bg-amber-500/20',
@@ -46,13 +37,7 @@ export const DIMENSION_CONFIGS: Record<DimensionKey, DimensionConfig> = {
     key: 'E',
     label: '投入力',
     sublabel: 'Engagement',
-    description: '全神貫注投入一件事、進入心流狀態的能力。',
-    question: '請分享你最近一次全神貫注做一件事的感受。',
-    hints: [
-      '當時你在處理什麼任務？是什麼讓你如此入迷？',
-      '在那個過程中，你有感覺到時間流逝的快慢嗎？',
-      '結束任務後，你感到的是精神飽滿還是疲憊？',
-    ],
+    question: '你這週最投入、最有狀態的時刻是什麼時候？',
     textColor: 'text-cyan-600',
     bgLight: 'bg-cyan-500/10',
     bgMed: 'bg-cyan-500/20',
@@ -65,13 +50,7 @@ export const DIMENSION_CONFIGS: Record<DimensionKey, DimensionConfig> = {
     key: 'R',
     label: '連結力',
     sublabel: 'Relationships',
-    description: '與他人建立深刻連結、感受支持與歸屬感的能力。',
-    question: '分享一次你在日常生活中感受到被身邊的人支持、被愛的時刻。',
-    hints: [
-      '他們通常是以什麼方式提供支持？（例如：傾聽理解、付出行動、耐心陪伴）',
-      '你上一次向他們尋求支持或分享脆弱是什麼時候？',
-      '他們都會如何回應你？這是你滿意的嗎？',
-    ],
+    question: '這週誰幫助了你？或者你幫助了誰？',
     textColor: 'text-rose-600',
     bgLight: 'bg-rose-500/10',
     bgMed: 'bg-rose-500/20',
@@ -84,13 +63,7 @@ export const DIMENSION_CONFIGS: Record<DimensionKey, DimensionConfig> = {
     key: 'M',
     label: '意義力',
     sublabel: 'Meaning',
-    description: '找到生命目的、讓行動與內在價值觀一致的能力。',
-    question: '在你的生命中，有哪些活動或重要的時刻對你來說是有意義的？',
-    hints: [
-      '在日常生活中，哪些時刻會讓你覺得「這一切都是值得的」？',
-      '你最重視的價值觀是什麼？它如何體現在你的行動中？',
-      '如果你可以為這世界留下一點改變，那會是什麼？',
-    ],
+    question: '這週的工作，為什麼對你來說是重要的？',
     textColor: 'text-violet-600',
     bgLight: 'bg-violet-500/10',
     bgMed: 'bg-violet-500/20',
@@ -103,13 +76,7 @@ export const DIMENSION_CONFIGS: Record<DimensionKey, DimensionConfig> = {
     key: 'A',
     label: '成就力',
     sublabel: 'Accomplishment',
-    description: '設定目標、持續推進並看見自身成長的能力。',
-    question: '在過去三個月，你覺得你是離你的目標越來越近，還是越來越遠？',
-    hints: [
-      '是什麼關鍵事件讓你產生「靠近」或「遠離」的感覺？',
-      '在追求目標的過程中，你發現自己最具優勢的特質是什麼？',
-      '無論遠近，你覺得下一個階段你可以跨出的小小一步是什麼？',
-    ],
+    question: '有什麼進展讓你感到驕傲？',
     textColor: 'text-emerald-600',
     bgLight: 'bg-emerald-500/10',
     bgMed: 'bg-emerald-500/20',
