@@ -1,0 +1,157 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --radius: 1.25rem;
+
+  /* 暖色系（cream / brown），沿用 MindGym 風格調性；之後要換教練品牌色，改這裡即可。 */
+  --background: #FEFAF0;          /* 奶油底色 */
+  --page: #e4dac6;               /* 外框／頁面暖褐底（徑向漸層用） */
+  --foreground: #542916;          /* 主要深咖啡文字 */
+  --foreground-soft: #5b4636;
+  --card: #ffffff;
+  --card-cream: #FEFAF0;
+
+  --primary: #88B8CE;             /* 品牌藍（主要 CTA） */
+  --primary-foreground: #FEFAF0;
+  --primary-soft: #cfe2ee;
+  --primary-glow: #9fc6dc;
+
+  --night-deep: #46291c;
+  --night-mid: #6b4a36;
+
+  --gold: #F1C166;
+  --gold-deep: #e0a93f;
+  --tan: #B79858;
+  --olive: #71744F;
+  --blush: #D18197;
+  --rust: #a13a1e;
+  --brown-deep: #46291c;
+
+  --secondary: #f3ead9;
+  --muted: #f1e8d8;
+  --muted-foreground: #876B5F;
+  --accent: #f3e3c4;
+
+  --tile-blue: #cfe2ee;
+  --tile-peach: #f3e3c4;
+  --tile-pink: #f3d9df;
+  --tile-mint: #E8E7D3;
+  --tile-lemon: #ece0c8;
+
+  --border: #e3dccd;
+  --border-strong: #542916;
+  --ring: #88B8CE;
+
+  --gradient-primary: linear-gradient(135deg, #9fc6dc 0%, #88B8CE 100%);
+  --gradient-soft: linear-gradient(135deg, #f6efe0 0%, #efe2c9 100%);
+  --gradient-night: linear-gradient(160deg, #6b5240 0%, #46291c 100%);
+  --shadow-soft: 0 8px 22px -10px rgba(40, 24, 12, 0.30);
+
+  font-family: 'GenJyuuGothic', 'Noto Sans TC', ui-sans-serif, system-ui, -apple-system,
+    'PingFang TC', 'Microsoft JhengHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+/* 無障礙大字模式：所有 rem 字級隨 html font-size 一起放大 */
+html {
+  font-size: 16px;
+}
+html[data-font-scale='large'] {
+  font-size: 18px;
+}
+html[data-font-scale='xlarge'] {
+  font-size: 20px;
+}
+
+@keyframes float-soft {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@layer utilities {
+  .bg-gradient-primary {
+    background-image: var(--gradient-primary);
+  }
+  .bg-gradient-soft {
+    background-image: var(--gradient-soft);
+  }
+  .bg-gradient-night {
+    background-image: var(--gradient-night);
+  }
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+  .animate-float {
+    animation: float-soft 4s ease-in-out infinite;
+  }
+  .animate-fade-up {
+    animation: fade-up 0.5s ease-out backwards;
+  }
+  .animate-slide-up {
+    animation: slide-up 0.32s cubic-bezier(0.32, 0.72, 0, 1) both;
+  }
+  .animate-drawer {
+    animation: drawer-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .bg-page {
+    background-image: radial-gradient(circle at 50% 0%, #efe7d6 0%, #e4dac6 60%, #d8ccb4 100%);
+  }
+  .font-en {
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  }
+  .font-handwriting {
+    font-family: 'Caveat', 'Kalam', 'GenJyuuGothic', 'Noto Sans TC', cursive;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
