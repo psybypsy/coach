@@ -1,8 +1,15 @@
-# perma-coach
+# PSY by PSY Coach
 
 Tan Yee Ming（陳郁敏）教練的職場幸福感書寫平台。PERMA 五題書寫（文字／語音）→ 發布到社群 → AI 每週個人幸福報告。
 
 技術棧：Vite + React + TypeScript + Tailwind CSS + TanStack Router（前端）／FastAPI（後端）／Supabase（資料庫＋登入）。
+
+## 上線網址
+
+- 前端（給教練＋成員用）：https://coach-roan-eta.vercel.app
+- 後端 API：https://perma-coach-api.onrender.com（免費方案，閒置後喚醒約需 50 秒）
+- GitHub：https://github.com/psybypsy/coach
+- 所有服務（GitHub / Vercel / Render / Supabase）都掛在 `psybypsy01@gmail.com` 這個帳號底下，跟舊的 PSY-by-PSY 團隊帳號完全分開。
 
 ---
 
@@ -17,7 +24,7 @@ Tan Yee Ming（陳郁敏）教練的職場幸福感書寫平台。PERMA 五題�
 ## 第一次上手：前端
 
 ```bash
-git clone https://github.com/PSY-by-PSY/coach.git
+git clone https://github.com/psybypsy/coach.git
 cd coach
 npm install
 cp .env.example .env
@@ -76,7 +83,32 @@ uvicorn app:app --reload --port 8000
    git commit -m "說明這次改了什麼"
    git push -u origin 你的名字-這次要做的事
    ```
-4. 到 [GitHub](https://github.com/PSY-by-PSY/coach) 開一個 **Pull Request**，等 review 過再合併進 `main`——避免大家同時改同一份程式碼互相覆蓋。
+4. 到 [GitHub](https://github.com/psybypsy/coach) 開一個 **Pull Request**，等 review 過再合併進 `main`——避免大家同時改同一份程式碼互相覆蓋。
+
+### 重要：關於自動部署
+
+前端（Vercel）是免費方案，**只有專案帳號本人（psybypsy01@gmail.com）的 commit 才會自動觸發部署**，其他協作者 push 的 commit 會被 Vercel 擋下（顯示 "Deployment Blocked"）。
+
+所以：
+- 大家還是照常開分支、push、開 PR。
+- 但**合併 PR 到 `main` 這個動作，請由 psybypsy01@gmail.com 本人在 GitHub 網頁上點「Merge」**，這樣合併出來的 commit 才會被 Vercel 認可、自動部署上線。
+- 如果不是本人合併、部署被擋下了，去 Vercel Dashboard 手動點 Redeploy 也沒用（一樣會被擋），只能請本人重新用她自己的帳號 push 一次（例如空 commit）。
+
+後端（Render）沒有這個限制，任何人 push 到 `main` 都會正常觸發部署。
+
+---
+
+## 邀請新協作者（只有專案負責人需要做）
+
+1. **GitHub**：到 [github.com/psybypsy/coach/settings/access](https://github.com/psybypsy/coach/settings/access) →「Add people」→ 輸入對方 GitHub 帳號 → 對方會收到邀請信，要自己點「接受」才算完成。沒接受之前對方的電腦沒辦法 `git push`。
+2. **App 登入白名單**：Perma-Coach 用 email 白名單 + Magic Link 登入，新成員的 email 要先加進 Supabase 資料庫的 `allowed_emails` 這張表，才能收到登入信。去 Supabase Dashboard → SQL Editor 執行：
+   ```sql
+   -- 一般成員（role 預設就是 'member'，可省略）
+   insert into allowed_emails (email, note) values ('對方的email@example.com', '顯示名稱');
+   -- 教練帳號（能看到全部成員的教練儀表板）
+   insert into allowed_emails (email, role, note) values ('教練email@example.com', 'coach', '顯示名稱');
+   ```
+3. 協作者的登入方式不需要密碼——輸入 email、收信、點連結即可，不需要另外開帳號。
 
 ---
 
