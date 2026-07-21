@@ -63,7 +63,7 @@ function SettingsPage() {
   return (
     <div className="bg-page min-h-screen px-6 py-10">
       <div className="mx-auto max-w-md space-y-6">
-        <h1 className="font-heading text-2xl text-foreground">{t('設定')}</h1>
+        <h1 className="font-heading text-2xl text-foreground">{t('個人資料')}</h1>
 
         <div className="rounded-xl border border-border bg-card p-6 shadow-soft">
           <label htmlFor="name" className="mb-1.5 block text-sm font-semibold text-foreground">

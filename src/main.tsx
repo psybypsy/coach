@@ -50,7 +50,13 @@ function App() {
   return <RouterProvider router={router} context={{ session }} />
 }
 
-createRoot(document.getElementById('root')!).render(
+// 用單例保存 root，避免 dev 熱重載／依賴重新最佳化時對同一個 DOM
+// 重複呼叫 createRoot（會噴 "createRoot() on a container that has already
+// been passed" 及後續連鎖錯誤）。production 只會執行一次，不受影響。
+const container = document.getElementById('root')!
+const w = window as typeof window & { __appRoot?: ReturnType<typeof createRoot> }
+const root = w.__appRoot ?? (w.__appRoot = createRoot(container))
+root.render(
   <StrictMode>
     <LanguageProvider>
       <App />

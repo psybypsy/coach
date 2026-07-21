@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { supabase } from '../lib/supabase'
 import { useLanguage } from '../lib/i18n/context'
-import { useVoiceInput } from '../lib/useVoiceInput'
 import { currentWeekStart } from '../lib/week'
-import { DIMENSION_ORDER, DIMENSION_CONFIGS, type DimensionKey } from '../lib/perma'
+import { DIMENSION_ORDER, DIMENSION_CONFIGS } from '../lib/perma'
 import { loadDraft, saveDraft, clearDraft, emptyAnswers, type JournalAnswers } from '../lib/journalDraft'
 
 export const Route = createFileRoute('/app/journal')({
@@ -27,44 +26,17 @@ function JournalWizard() {
   const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [usedVoice, setUsedVoice] = useState<Record<DimensionKey, boolean>>({
-    P: false, E: false, R: false, M: false, A: false,
-  })
 
   const weekStart = currentWeekStart()
   const currentKey = DIMENSION_ORDER[step]
   const dim = DIMENSION_CONFIGS[currentKey]
-
-  // 語音輸入寫入「目前這一題」——用 ref 追蹤目前維度，避免閉包抓到舊值。
-  const stepKeyRef = useRef<DimensionKey>(currentKey)
-  stepKeyRef.current = currentKey
-  const voice = useVoiceInput((text) => {
-    const key = stepKeyRef.current
-    setUsedVoice((prev) => ({ ...prev, [key]: true }))
-    setAnswers((prev) => ({
-      ...prev,
-      [key]: prev[key].trim() ? `${prev[key].trim()} ${text}` : text,
-    }))
-  })
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
       const { data: userData } = await supabase.auth.getUser()
       const uid = userData.user?.id
-      if (!uid) return
-      // 本週已發布過就導回首頁（每週限填一次）。
-      const { data: existing } = await supabase
-        .from('journal_posts')
-        .select('id')
-        .eq('user_id', uid)
-        .eq('week_start', weekStart)
-        .maybeSingle()
-      if (cancelled) return
-      if (existing) {
-        void navigate({ to: '/app/home' })
-        return
-      }
+      if (!uid || cancelled) return
       const draft = loadDraft(uid, weekStart)
       setUserId(uid)
       setAnswers(draft)
@@ -74,7 +46,7 @@ function JournalWizard() {
     return () => {
       cancelled = true
     }
-  }, [weekStart, navigate])
+  }, [weekStart])
 
   // 每次答案變動就自動存草稿。
   useEffect(() => {
@@ -90,12 +62,10 @@ function JournalWizard() {
 
   const handleNext = () => {
     if (!currentFilled) return
-    if (voice.status === 'recording') voice.stop()
     setStep((s) => Math.min(s + 1, DIMENSION_ORDER.length - 1))
   }
 
   const handleBack = () => {
-    if (voice.status === 'recording') voice.stop()
     setStep((s) => Math.max(s - 1, 0))
   }
 
@@ -109,13 +79,13 @@ function JournalWizard() {
     setSubmitting(true)
     setError(null)
 
-    // 1) 寫入 5 列 perma_entries（個人報告 / 教練儀表板 / AI 週分析沿用）。
+    // 1) 寫入 5 列 perma_entries（個人報告 / AI 週分析沿用）。
     const entries = DIMENSION_ORDER.map((k) => ({
       user_id: userId,
       dimension: k,
       content: answers[k].trim(),
       is_public: true,
-      input_method: usedVoice[k] ? 'voice' : 'text',
+      input_method: 'text',
     }))
     const { error: entriesError } = await supabase.from('perma_entries').insert(entries)
     if (entriesError) {
@@ -124,7 +94,7 @@ function JournalWizard() {
       return
     }
 
-    // 2) 寫入 1 列 journal_posts（社群牆的一則週記合併貼文）。
+    // 2) 寫入 1 列 journal_posts（社群牆的一則週記合併貼文，同一週可多則）。
     const { error: postError } = await supabase.from('journal_posts').insert({
       user_id: userId,
       week_start: weekStart,
@@ -142,7 +112,7 @@ function JournalWizard() {
     }
 
     clearDraft(userId, weekStart)
-    void navigate({ to: '/app/community' })
+    void navigate({ to: '/app/home' })
   }
 
   if (!ready) {
@@ -156,13 +126,10 @@ function JournalWizard() {
   return (
     <div className="bg-page min-h-screen px-6 py-10">
       <div className="mx-auto max-w-md space-y-5">
-        {/* 進度指示 */}
+        {/* 五題進度 */}
         <div className="flex items-center gap-2">
           {DIMENSION_ORDER.map((k, i) => (
-            <div
-              key={k}
-              className={`h-1.5 flex-1 rounded-full ${i <= step ? 'bg-primary' : 'bg-muted'}`}
-            />
+            <div key={k} className={`h-1.5 flex-1 rounded-full ${i <= step ? 'bg-primary' : 'bg-muted'}`} />
           ))}
         </div>
         <p className="text-xs font-semibold text-muted-foreground">
@@ -176,32 +143,15 @@ function JournalWizard() {
           <h1 className="font-heading mt-1 text-xl text-foreground">{t(dim.question)}</h1>
         </div>
 
-        <div className="relative">
-          <textarea
-            value={answers[currentKey]}
-            onChange={(e) => setCurrent(e.target.value)}
-            placeholder={voice.status === 'transcribing' ? t('辨識中…') : t('寫下你的想法')}
-            rows={8}
-            className="w-full rounded-xl border border-border bg-card p-5 pr-16 text-base leading-relaxed text-foreground shadow-soft outline-none placeholder:text-muted-foreground focus:border-primary"
-          />
-          <button
-            type="button"
-            onClick={() => (voice.status === 'recording' ? voice.stop() : voice.start())}
-            disabled={voice.status === 'transcribing'}
-            aria-label={t('語音輸入')}
-            aria-pressed={voice.status === 'recording'}
-            className={`absolute bottom-4 right-4 flex h-11 w-11 items-center justify-center rounded-full shadow-soft transition active:scale-95 disabled:opacity-50 ${
-              voice.status === 'recording' ? 'bg-rust text-white' : 'bg-primary text-primary-foreground'
-            }`}
-          >
-            {voice.status === 'transcribing' ? <SpinnerIcon /> : <MicIcon />}
-          </button>
-        </div>
+        <textarea
+          value={answers[currentKey]}
+          onChange={(e) => setCurrent(e.target.value)}
+          placeholder={t('寫下你的想法')}
+          rows={8}
+          autoFocus
+          className="w-full rounded-xl border border-border bg-card p-5 text-base leading-relaxed text-foreground shadow-soft outline-none placeholder:text-muted-foreground focus:border-primary"
+        />
 
-        {voice.status === 'recording' && (
-          <p className="text-xs font-semibold text-rust">{t('錄音中，再按一次結束')}</p>
-        )}
-        {voice.error && <p className="text-xs text-rust">{voice.error}</p>}
         {error && <p className="text-sm leading-relaxed text-rust">{error}</p>}
 
         <div className="flex items-center gap-3">
@@ -236,17 +186,4 @@ function JournalWizard() {
       </div>
     </div>
   )
-}
-
-function MicIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="9" y="2" width="6" height="12" rx="3" />
-      <path d="M5 10a7 7 0 0 0 14 0M12 19v3" />
-    </svg>
-  )
-}
-
-function SpinnerIcon() {
-  return <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
 }

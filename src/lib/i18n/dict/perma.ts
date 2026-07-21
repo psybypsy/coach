@@ -19,16 +19,22 @@ export const perma: Record<string, Translation> = {
   '發布': { en: 'Post' },
   '發布中…': { en: 'Posting…' },
   '發布失敗，請再試一次。': { en: 'Something went wrong. Please try again.' },
-  '辨識中…': { en: 'Transcribing…' },
-  '語音輸入': { en: 'Voice input' },
-  '錄音中，再按一次結束': { en: 'Recording — tap again to stop' },
 
   // ── 每週書寫入口（home）與 5 題精靈（journal）──
+  '日記': { en: 'Journal' },
+  '開始記錄': { en: 'Start journaling' },
+  '第 {n} 週': { en: 'Week {n}' },
+  '共 {n} 週旅程': { en: '{n}-week journey' },
   '本週 PERMA 書寫': { en: 'This week’s PERMA journal' },
+  '本週 PERMA Self-Reflection': { en: 'This week’s PERMA Self-Reflection' },
   '開始本週書寫': { en: 'Start this week’s journal' },
   '本週書寫已完成': { en: 'This week’s journal is complete' },
-  '你這週的 PERMA 週記已經發布到社群，下週再回來寫一次。': {
-    en: 'Your PERMA journal for this week has been shared to the community. Come back next week to write again.',
+  '本週回顧已完成': { en: 'This week’s reflection is complete' },
+  '你已經完成這週的 PERMA Self-Reflection。下週同一時間，我們會再邀請你回來記錄一次。': {
+    en: "You've completed this week's PERMA Self-Reflection. We'll invite you back at the same time next week for your next one.",
+  },
+  '你已經完成這週的 PERMA Self-Reflection。想再寫一篇隨時都可以，我們也會在每週你固定的時間邀請你回來。': {
+    en: "You've completed a PERMA Self-Reflection this week. You can add another anytime, and we'll invite you back at your usual time each week.",
   },
   '看看社群': { en: 'View community' },
   '書寫是培養覺察、支持建立新習慣的有效方法。我鼓勵你透過回答這 5 個問題來練習。請每週進行一次，最好固定在每週同一天、同一時段（例如每週五下午或週一早上）。系統會協助你記錄，並在接下來的 8 週為你呈現 PERMA 進展報告。':
