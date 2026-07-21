@@ -3,6 +3,8 @@
 import { common } from './dict/common'
 import { login } from './dict/login'
 import { perma } from './dict/perma'
+import { community } from './dict/community'
+import { report } from './dict/report'
 
 export type Translation = { en: string }
 export type Dictionary = Record<string, Translation>
@@ -11,4 +13,6 @@ export const DICTIONARY: Dictionary = {
   ...common,
   ...login,
   ...perma,
+  ...community,
+  ...report,
 }

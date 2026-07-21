@@ -83,7 +83,7 @@ function LoginPage() {
           </p>
         </div>
 
-        <div className="rounded-3xl bg-card p-6 shadow-soft">
+        <div className="rounded-xl border border-border bg-card p-6 shadow-soft">
           {step === 'idle' ? (
             <div className="space-y-4">
               <div>
@@ -98,7 +98,7 @@ function LoginPage() {
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="h-12 w-full rounded-full border border-border bg-background px-5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
+                  className="h-11 w-full rounded-lg border border-border bg-background px-4 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
                 />
               </div>
 
@@ -107,7 +107,7 @@ function LoginPage() {
               <button
                 onClick={handleSendLink}
                 disabled={loading || !email.trim()}
-                className="flex h-12 w-full items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground shadow-soft transition active:scale-[0.98] disabled:opacity-50"
+                className="flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-soft transition hover:bg-primary-glow active:scale-[0.98] disabled:opacity-50"
               >
                 {loading ? t('寄送中…') : t('寄送登入連結')}
               </button>

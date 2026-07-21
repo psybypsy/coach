@@ -1,0 +1,144 @@
+-- ============================================================
+-- perma-coach 資料庫結構（Supabase / PostgreSQL）
+-- 這份檔案是目前線上 Supabase 專案（PSY by PSY Coach）實際結構的存底。
+-- 若要重建一個全新專案，依序在 SQL Editor 貼上整段執行即可。
+-- ============================================================
+
+-- ── 1. 個人資料（登入後自動建立）──────────────────────────────
+create table profiles (
+  id uuid primary key references auth.users on delete cascade,
+  display_name text not null default '',
+  avatar_key text not null default 'avatar1',
+  role text not null default 'member' check (role in ('member', 'coach')),
+  created_at timestamptz not null default now()
+);
+
+-- ── 2. Email 白名單（只有名單內的人能用）──────────────────────
+create table allowed_emails (
+  email text primary key,
+  role text not null default 'member' check (role in ('member', 'coach')),
+  note text
+);
+
+-- ── 3. PERMA 書寫（核心表）─────────────────────────────────────
+create table perma_entries (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  dimension text not null check (dimension in ('P','E','R','M','A')),
+  content text not null,
+  is_public boolean not null default true,
+  input_method text not null default 'text' check (input_method in ('text','voice')),
+  created_at timestamptz not null default now()
+);
+create index on perma_entries (user_id, created_at desc);
+create index on perma_entries (is_public, created_at desc);
+
+-- ── 4. 按讚與留言 ──────────────────────────────────────────────
+create table likes (
+  id uuid primary key default gen_random_uuid(),
+  entry_id uuid not null references perma_entries(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (entry_id, user_id)
+);
+
+create table comments (
+  id uuid primary key default gen_random_uuid(),
+  entry_id uuid not null references perma_entries(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  content text not null,
+  created_at timestamptz not null default now()
+);
+
+-- ── 5. AI 週分析結果（快取）────────────────────────────────────
+create table weekly_reviews (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  period_start date not null,
+  entry_count int not null default 0,
+  content jsonb not null,
+  created_at timestamptz not null default now(),
+  unique (user_id, period_start)
+);
+
+-- ── 6. AI 用量記帳（後端 service_role 寫入，前端不可讀寫）──────
+create table ai_usage_log (
+  id bigint generated always as identity primary key,
+  created_at timestamptz not null default now(),
+  provider text not null,
+  source text not null,
+  model text not null,
+  user_id uuid,
+  input_tokens integer,
+  output_tokens integer,
+  cache_write_tokens integer,
+  cache_read_tokens integer,
+  audio_seconds numeric,
+  cost_usd numeric not null default 0
+);
+alter table ai_usage_log enable row level security;
+
+-- ── 7. RLS：資料庫層的權限牆 ───────────────────────────────────
+alter table profiles enable row level security;
+alter table perma_entries enable row level security;
+alter table likes enable row level security;
+alter table comments enable row level security;
+alter table weekly_reviews enable row level security;
+alter table allowed_emails enable row level security;
+
+-- 判斷目前登入者是否為教練。
+-- 注意：security definer 函式若不明確指定 search_path，在 auth schema
+-- 的觸發器情境下會抓不到 public schema 的資料表（relation does not exist）。
+create or replace function is_coach() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role = 'coach');
+$$;
+
+create policy "read all profiles" on profiles for select to authenticated using (true);
+create policy "update own profile" on profiles for update to authenticated using (id = auth.uid());
+create policy "insert own profile" on profiles for insert to authenticated with check (id = auth.uid());
+
+create policy "read entries" on perma_entries for select to authenticated
+  using (is_public = true or user_id = auth.uid() or is_coach());
+create policy "insert own entries" on perma_entries for insert to authenticated
+  with check (user_id = auth.uid());
+create policy "update own entries" on perma_entries for update to authenticated
+  using (user_id = auth.uid());
+create policy "delete own entries" on perma_entries for delete to authenticated
+  using (user_id = auth.uid());
+
+create policy "read likes" on likes for select to authenticated using (true);
+create policy "insert own like" on likes for insert to authenticated with check (user_id = auth.uid());
+create policy "delete own like" on likes for delete to authenticated using (user_id = auth.uid());
+create policy "read comments" on comments for select to authenticated using (true);
+create policy "insert own comment" on comments for insert to authenticated with check (user_id = auth.uid());
+create policy "delete own comment" on comments for delete to authenticated using (user_id = auth.uid());
+
+create policy "read own or coach" on weekly_reviews for select to authenticated
+  using (user_id = auth.uid() or is_coach());
+
+-- allowed_emails / ai_usage_log：不建任何 policy = 只有 service_role 能讀寫。
+
+-- ── 8. 新使用者登入時自動建 profile ＋ 白名單檢查 ──────────────
+create or replace function handle_new_user() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare allowed record;
+begin
+  select * into allowed from public.allowed_emails where email = new.email;
+  if allowed is null then
+    raise exception '此 Email 不在允許名單內';
+  end if;
+  insert into public.profiles (id, display_name, role)
+  values (new.id, coalesce(allowed.note, split_part(new.email, '@', 1)), allowed.role);
+  return new;
+end;
+$$;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function handle_new_user();
+
+-- ── 9. 白名單名單（依實際邀請對象增減）──────────────────────────
+-- insert into allowed_emails (email, role, note) values
+--   ('coach@example.com', 'coach', '陳郁敏教練 / Tan Yee Ming'),
+--   ('member1@example.com', 'member', '成員一');

@@ -3,53 +3,53 @@
 @tailwind utilities;
 
 :root {
-  --radius: 1.25rem;
+  --radius: 0.875rem;
 
-  /* 暖色系（cream / brown），沿用 MindGym 風格調性；之後要換教練品牌色，改這裡即可。 */
-  --background: #FEFAF0;          /* 奶油底色 */
-  --page: #e4dac6;               /* 外框／頁面暖褐底（徑向漸層用） */
-  --foreground: #542916;          /* 主要深咖啡文字 */
-  --foreground-soft: #5b4636;
+  /* 專業調性：中性灰底＋深藍主色，沿用給企業教練／職場受眾使用。 */
+  --background: #ffffff;
+  --page: #f4f5f7;               /* 外框／頁面底色 */
+  --foreground: #16181d;          /* 主要文字（近黑） */
+  --foreground-soft: #4b5563;
   --card: #ffffff;
-  --card-cream: #FEFAF0;
+  --card-cream: #ffffff;
 
-  --primary: #88B8CE;             /* 品牌藍（主要 CTA） */
-  --primary-foreground: #FEFAF0;
-  --primary-soft: #cfe2ee;
-  --primary-glow: #9fc6dc;
+  --primary: #1e3a5f;             /* 深藍（主要 CTA、品牌色） */
+  --primary-foreground: #ffffff;
+  --primary-soft: #e4ebf2;
+  --primary-glow: #2c4a70;
 
-  --night-deep: #46291c;
-  --night-mid: #6b4a36;
+  --night-deep: #0f1720;
+  --night-mid: #1e293b;
 
-  --gold: #F1C166;
-  --gold-deep: #e0a93f;
-  --tan: #B79858;
-  --olive: #71744F;
-  --blush: #D18197;
+  --gold: #b08d57;                /* 低調金／古銅，教練品牌點綴用 */
+  --gold-deep: #96754a;
+  --tan: #a99878;
+  --olive: #5c6b52;
+  --blush: #9c6b70;
   --rust: #a13a1e;
-  --brown-deep: #46291c;
+  --brown-deep: #16181d;
 
-  --secondary: #f3ead9;
-  --muted: #f1e8d8;
-  --muted-foreground: #876B5F;
-  --accent: #f3e3c4;
+  --secondary: #eef0f3;
+  --muted: #f1f3f5;
+  --muted-foreground: #6b7280;
+  --accent: #e4ebf2;
 
-  --tile-blue: #cfe2ee;
-  --tile-peach: #f3e3c4;
-  --tile-pink: #f3d9df;
-  --tile-mint: #E8E7D3;
-  --tile-lemon: #ece0c8;
+  --tile-blue: #dde6ee;
+  --tile-peach: #ece3d6;
+  --tile-pink: #ecdfe0;
+  --tile-mint: #dee6e0;
+  --tile-lemon: #eae6d8;
 
-  --border: #e3dccd;
-  --border-strong: #542916;
-  --ring: #88B8CE;
+  --border: #e2e5ea;
+  --border-strong: #16181d;
+  --ring: #1e3a5f;
 
-  --gradient-primary: linear-gradient(135deg, #9fc6dc 0%, #88B8CE 100%);
-  --gradient-soft: linear-gradient(135deg, #f6efe0 0%, #efe2c9 100%);
-  --gradient-night: linear-gradient(160deg, #6b5240 0%, #46291c 100%);
-  --shadow-soft: 0 8px 22px -10px rgba(40, 24, 12, 0.30);
+  --gradient-primary: linear-gradient(135deg, #2c4a70 0%, #1e3a5f 100%);
+  --gradient-soft: linear-gradient(135deg, #f7f8fa 0%, #eef1f5 100%);
+  --gradient-night: linear-gradient(160deg, #1e293b 0%, #0f1720 100%);
+  --shadow-soft: 0 6px 20px -8px rgba(16, 24, 40, 0.14);
 
-  font-family: 'GenJyuuGothic', 'Noto Sans TC', ui-sans-serif, system-ui, -apple-system,
+  font-family: 'Inter', 'Noto Sans TC', ui-sans-serif, system-ui, -apple-system,
     'PingFang TC', 'Microsoft JhengHei', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -139,13 +139,10 @@ html[data-font-scale='xlarge'] {
     animation: drawer-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
   .bg-page {
-    background-image: radial-gradient(circle at 50% 0%, #efe7d6 0%, #e4dac6 60%, #d8ccb4 100%);
+    background-color: var(--page);
   }
   .font-en {
     font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  }
-  .font-handwriting {
-    font-family: 'Caveat', 'Kalam', 'GenJyuuGothic', 'Noto Sans TC', cursive;
   }
   .no-scrollbar {
     -ms-overflow-style: none;

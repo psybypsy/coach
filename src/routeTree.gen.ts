@@ -12,7 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AppCommunityRouteImport } from './routes/app.community'
 import { Route as AppHomeRouteImport } from './routes/app.home'
+import { Route as AppReportRouteImport } from './routes/app.report'
 import { Route as AppWriteDimensionRouteImport } from './routes/app.write.$dimension'
 
 const IndexRoute = IndexRouteImport.update({
@@ -30,9 +32,19 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppCommunityRoute = AppCommunityRouteImport.update({
+  id: '/community',
+  path: '/community',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppHomeRoute = AppHomeRouteImport.update({
   id: '/home',
   path: '/home',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppReportRoute = AppReportRouteImport.update({
+  id: '/report',
+  path: '/report',
   getParentRoute: () => AppRoute,
 } as any)
 const AppWriteDimensionRoute = AppWriteDimensionRouteImport.update({
@@ -45,14 +57,18 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/app/community': typeof AppCommunityRoute
   '/app/home': typeof AppHomeRoute
+  '/app/report': typeof AppReportRoute
   '/app/write/$dimension': typeof AppWriteDimensionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/app/community': typeof AppCommunityRoute
   '/app/home': typeof AppHomeRoute
+  '/app/report': typeof AppReportRoute
   '/app/write/$dimension': typeof AppWriteDimensionRoute
 }
 export interface FileRoutesById {
@@ -60,16 +76,39 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/app/community': typeof AppCommunityRoute
   '/app/home': typeof AppHomeRoute
+  '/app/report': typeof AppReportRoute
   '/app/write/$dimension': typeof AppWriteDimensionRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/app' | '/login' | '/app/home' | '/app/write/$dimension'
+  fullPaths:
+    | '/'
+    | '/app'
+    | '/login'
+    | '/app/community'
+    | '/app/home'
+    | '/app/report'
+    | '/app/write/$dimension'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/app' | '/login' | '/app/home' | '/app/write/$dimension'
+  to:
+    | '/'
+    | '/app'
+    | '/login'
+    | '/app/community'
+    | '/app/home'
+    | '/app/report'
+    | '/app/write/$dimension'
   id:
-    '__root__' | '/' | '/app' | '/login' | '/app/home' | '/app/write/$dimension'
+    | '__root__'
+    | '/'
+    | '/app'
+    | '/login'
+    | '/app/community'
+    | '/app/home'
+    | '/app/report'
+    | '/app/write/$dimension'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -101,11 +140,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app/community': {
+      id: '/app/community'
+      path: '/community'
+      fullPath: '/app/community'
+      preLoaderRoute: typeof AppCommunityRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/home': {
       id: '/app/home'
       path: '/home'
       fullPath: '/app/home'
       preLoaderRoute: typeof AppHomeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/report': {
+      id: '/app/report'
+      path: '/report'
+      fullPath: '/app/report'
+      preLoaderRoute: typeof AppReportRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/write/$dimension': {
@@ -119,12 +172,16 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppCommunityRoute: typeof AppCommunityRoute
   AppHomeRoute: typeof AppHomeRoute
+  AppReportRoute: typeof AppReportRoute
   AppWriteDimensionRoute: typeof AppWriteDimensionRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppCommunityRoute: AppCommunityRoute,
   AppHomeRoute: AppHomeRoute,
+  AppReportRoute: AppReportRoute,
   AppWriteDimensionRoute: AppWriteDimensionRoute,
 }
 

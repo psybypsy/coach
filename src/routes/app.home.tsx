@@ -57,7 +57,7 @@ function HomePage() {
                 key={key}
                 to="/app/write/$dimension"
                 params={{ dimension: key }}
-                className={`rounded-3xl border ${dim.borderLight} ${dim.bgLight} p-5 shadow-soft transition active:scale-[0.98]`}
+                className={`block rounded-xl border ${dim.borderLight} ${dim.bgLight} p-5 shadow-soft transition hover:shadow-md active:scale-[0.98]`}
               >
                 <div className={`font-heading text-sm ${dim.textColor} mb-1`}>
                   {language === 'en' ? dim.sublabel : `${dim.label} · ${dim.sublabel}`}

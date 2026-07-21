@@ -9,6 +9,9 @@ export const perma: Record<string, Translation> = {
   '有什麼進展讓你感到驕傲？': { en: 'What progress are you proud of?' },
 
   '今天想寫哪個維度？': { en: 'Which dimension do you want to write about today?' },
+  '書寫': { en: 'Write' },
+  '社群': { en: 'Community' },
+  '個人幸福報告': { en: 'Well-being Report' },
   '寫下你的想法': { en: 'Write your thoughts' },
   '發布到社群': { en: 'Share to community' },
   '只留給自己': { en: 'Keep private' },
@@ -16,4 +19,7 @@ export const perma: Record<string, Translation> = {
   '發布': { en: 'Post' },
   '發布中…': { en: 'Posting…' },
   '發布失敗，請再試一次。': { en: 'Something went wrong. Please try again.' },
+  '辨識中…': { en: 'Transcribing…' },
+  '語音輸入': { en: 'Voice input' },
+  '錄音中，再按一次結束': { en: 'Recording — tap again to stop' },
 }
