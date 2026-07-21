@@ -2,6 +2,8 @@
 
 Tan Yee Ming（陳郁敏）教練的職場幸福感書寫平台。PERMA 五題書寫（文字／語音）→ 發布到社群 → AI 每週個人幸福報告。
 
+> 最後更新：2026-07-22
+
 技術棧：Vite + React + TypeScript + Tailwind CSS + TanStack Router（前端）／FastAPI（後端）／Supabase（資料庫＋登入）。
 
 ## 上線網址
