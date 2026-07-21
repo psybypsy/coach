@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import io
 import json
 import logging
@@ -331,6 +333,272 @@ async def weekly_review(req: WeeklyReviewRequest, authorization: str = Header(..
         "id": None, "user_id": user_id, "period_start": start.isoformat(),
         "entry_count": entry_count, "content": content_json, "created_at": None,
     }
+
+
+# ── 教練深度分析 ───────────────────────────────────────────────
+# 只有教練能呼叫。讀成員的 journal_posts（每週一列，內含 PERMA 五答案），
+# 呼叫 Claude 產出每週情緒 valence 分數＋教練情報簡報，存進 coach_analyses。
+# 移植自 Ming Websit/ipsen-perma.html 的分析層，AI 改走此後端代理。
+_COACH_ANALYSIS_MODEL = "claude-sonnet-5"
+_PERMA_KEYS = ["P", "E", "R", "M", "A"]
+_PERMA_DIM = {
+    "P": "Positive Emotions", "E": "Engagement", "R": "Relationships",
+    "M": "Meaning", "A": "Accomplishment",
+}
+# 標題含這些關鍵字的情報簡報區塊，預設「僅教練可見」（不納入客戶版）。
+_COACH_ONLY_KW = ["假設", "未言", "值得關注", "會談準備", "語言指紋", "風險", "理論"]
+# 客戶交付版預設納入的圖表（教練可在前端調整）。
+_CLIENT_CHART_DEFAULTS = {
+    "summary": True, "trend": True, "dims": True,
+    "radar": True, "affect": False, "cloud": False,
+}
+
+
+async def require_coach(token: str) -> str:
+    """驗證呼叫者已登入且角色為 coach，回傳其 user_id；否則 401/403。"""
+    user_id = await get_user_id(token)
+    resp = await db().get(
+        f"{SUPABASE_REST}/profiles",
+        headers=SUPABASE_HEADERS,
+        params=[("id", f"eq.{user_id}"), ("select", "role"), ("limit", "1")],
+    )
+    rows = resp.json() if resp.status_code == 200 else []
+    if not rows or rows[0].get("role") != "coach":
+        raise HTTPException(status_code=403, detail="僅限教練使用")
+    return user_id
+
+
+def _coach_analysis_system(week_count: int) -> str:
+    return f"""你是資深高階主管教練的分析助理，服務於教練 陳郁敏。你會收到一位團隊成員 {week_count} 次每週 PERMA 反思的原始回答（P=Positive Emotions、E=Engagement、R=Relationships、M=Meaning、A=Accomplishment）。請產出兩部分：每次的情緒 valence 量化分析（含理由），與一份僅供教練的情報簡報。
+
+嚴格照此格式輸出，兩個標記都要出現：
+<<<SCORES>>>
+{{"sessions":[
+ {{"overall":-100至100的整數,
+  "overallReason":"該次整體情緒基調的評分依據，引用回答原話",
+  "dims":{{"P":{{"v":-100至100,"reason":"依據"}},"E":{{"v":0,"reason":""}},"R":{{"v":0,"reason":""}},"M":{{"v":0,"reason":""}},"A":{{"v":0,"reason":""}}}},
+  "emotions":[{{"word":"回答原文中的情緒詞","valence":"positive|negative|neutral","intensity":1至5}}]}}
+]}}
+<<<BRIEF>>>
+[[BLOCK]] 區塊標題
+區塊內文
+[[BLOCK]] 下一個區塊標題
+...
+
+分數規則：
+- sessions 長度必須剛好 {week_count}，依第 1 到第 {week_count} 次順序。
+- valence 為情緒效價：−100 為極度負面、0 為中性、+100 為極度正面。只依文字內容判定，每個分數都要有具體理由並引用當事人原話；未填或空泛給接近 0。
+- 每次抽 6 至 12 個情緒詞。
+
+情報簡報規則（僅教練可見、可含坦率假設、每個判斷都引用原話並註明第幾次）：以 [[BLOCK]] 分隔，每塊第一行為標題、其後為內文（可用 Markdown 的 ## 標題、** 粗體、* 斜體 *、- 條列）。務必依序包含這些區塊：
+[[BLOCK]] 整體情緒與福祉軌跡
+[[BLOCK]] PERMA 五面向剖析
+[[BLOCK]] 優勢與內在資源
+[[BLOCK]] 自我決定論動機
+[[BLOCK]] 語言指紋
+[[BLOCK]] 橫向主題與模式
+[[BLOCK]] 未言之事
+[[BLOCK]] 教練假設
+[[BLOCK]] 值得關注
+[[BLOCK]] 會談準備
+
+其中「PERMA 五面向剖析」「優勢與內在資源」「自我決定論動機」是三個各自獨立的理論專欄，每一欄都必須：(a) 全程扣合此人的具體引文並註明第幾次；(b) 在該欄內文最後另起一行、以「**參考文獻**」為小標，再用 - 條列 2 至 3 筆 APA 格式文獻（期刊名或書名以 * 斜體 * 標示），且只列與該欄主題直接相關者，不得跨欄混用。
+
+各區塊要求：
+- PERMA 五面向剖析：逐一分析 P/E/R/M/A 五面向，標飽滿度（充沛／穩定／稀薄／缺席）、變化與關鍵引文，並以 PERMA 觀點整合此人整體樣態。參考文獻可從下列擇要引用：Seligman, M. E. P. (2011). *Flourish: A visionary new understanding of happiness and well-being*. Free Press.；Fredrickson, B. L. (2001). The role of positive emotions in positive psychology: The broaden-and-build theory of positive emotions. *American Psychologist, 56*(3), 218–226.；Csikszentmihalyi, M. (1990). *Flow: The psychology of optimal experience*. Harper & Row.
+- 優勢與內在資源：辨識此人的性格優勢與可再運用的內在資源，逐一扣合引文。參考文獻可從下列擇要引用：Peterson, C., & Seligman, M. E. P. (2004). *Character strengths and virtues: A handbook and classification*. Oxford University Press.；Linley, P. A., Nielsen, K. M., Gillett, R., & Biswas-Diener, R. (2010). Using signature strengths in pursuit of goals. *International Coaching Psychology Review, 5*(1), 6–15.；Niemiec, R. M. (2013). VIA character strengths: Research and practice. In *Well-being and cultures* (pp. 11–29). Springer.
+- 自我決定論動機：以自我決定論的三項基本心理需求——自主（Autonomy）、勝任（Competence）、關聯（Relatedness）——分別評估其滿足或受挫，並據此判讀其動機品質（趨近內在動機或受控動機）。參考文獻可從下列擇要引用：Deci, E. L., & Ryan, R. M. (2000). The 'what' and 'why' of goal pursuits: Human needs and the self-determination of behavior. *Psychological Inquiry, 11*(4), 227–268.；Ryan, R. M., & Deci, E. L. (2017). *Self-determination theory: Basic psychological needs in motivation, development, and wellness*. Guilford Press.；Gagné, M., & Deci, E. L. (2005). Self-determination theory and work motivation. *Journal of Organizational Behavior, 26*(4), 331–362.
+- 語言指紋：能動性（主動 vs 被動語態）、連結性（我／我們／他們的比重）、時間定向、能量詞 vs 耗竭詞、確定 vs 遲疑。
+- 未言之事：哪個面向始終稀薄或缺席、被迴避的主題。
+- 教練假設：每條明確標為「假設」，附證據引文與一個可探詢的問題。
+- 會談準備：開場建議、要探詢的點、三個為此人量身的有力提問。
+
+語言：繁體中文（台灣）。全篇不得使用任何 emoji。語氣專業、精確，兼具實證理論素養，如資深教練結合學理的臨床筆記。"""
+
+
+_CLIENT_REPORT_SYSTEM = """你是教練 陳郁敏 的寫作助理。以下是教練勾選要納入客戶交付版的分析內容。請改寫成一份給客戶本人閱讀的正式、溫暖、賦能的「個人福祉回顧」。
+
+要求：
+- 移除所有假設、臨床推測、風險或診斷性語言；聚焦優勢、軌跡、意義與前瞻。
+- 保留並適度引用客戶自己的語言。
+- 用 Markdown，以 ## 分節，段落清晰、專業。
+- 結尾給 1 至 2 個溫暖的前瞻邀請。
+- 全篇繁體中文（台灣），不得使用任何 emoji。
+- 不要重複標題頁與署名（系統會自動加上）。"""
+
+
+def _clamp_v(v) -> int:
+    try:
+        n = int(round(float(v)))
+    except (TypeError, ValueError):
+        n = 0
+    return max(-100, min(100, n))
+
+
+def _msg_text(msg) -> str:
+    return "".join(b.text for b in (msg.content or []) if getattr(b, "type", None) == "text")
+
+
+def _parse_analysis(out: str) -> tuple[list, list]:
+    """把 <<<SCORES>>> JSON 與 <<<BRIEF>>> [[BLOCK]] 拆成 sessions 與 blocks。"""
+    bi = out.find("<<<BRIEF>>>")
+    scores_part = out[:bi] if bi >= 0 else out
+    brief_part = out[bi + len("<<<BRIEF>>>"):] if bi >= 0 else ""
+    scores_part = scores_part.replace("<<<SCORES>>>", "")
+
+    match = re.search(r"\{.*\}", scores_part, re.DOTALL)
+    if not match:
+        raise ValueError("分數解析失敗")
+    data = json.loads(match.group())
+
+    sessions = []
+    for s in data.get("sessions") or []:
+        dims_in = s.get("dims") or {}
+        dims = {}
+        for k in _PERMA_KEYS:
+            d = dims_in.get(k) or {}
+            dims[k] = {"v": _clamp_v(d.get("v")), "reason": str(d.get("reason") or "")}
+        emotions = []
+        for e in (s.get("emotions") or []):
+            val = e.get("valence")
+            emotions.append({
+                "word": str(e.get("word") or "")[:20],
+                "valence": val if val in ("positive", "negative", "neutral") else "neutral",
+                "intensity": max(1, min(5, int(round(float(e.get("intensity") or 3))))) if str(e.get("intensity") or "").strip() else 3,
+            })
+        sessions.append({
+            "overall": _clamp_v(s.get("overall")),
+            "overallReason": str(s.get("overallReason") or ""),
+            "dims": dims,
+            "emotions": emotions,
+        })
+
+    blocks = []
+    for part in brief_part.split("[[BLOCK]]"):
+        part = part.strip()
+        if not part:
+            continue
+        nl = part.find("\n")
+        title = (part[:nl] if nl >= 0 else part).strip()
+        body = (part[nl + 1:] if nl >= 0 else "").strip()
+        include = not any(kw in title for kw in _COACH_ONLY_KW)
+        blocks.append({"title": title, "body": body, "include": include})
+
+    return sessions, blocks
+
+
+async def _fetch_member_posts(member_id: str) -> list[dict]:
+    resp = await db().get(
+        f"{SUPABASE_REST}/journal_posts",
+        headers=SUPABASE_HEADERS,
+        params=[
+            ("user_id", f"eq.{member_id}"),
+            ("select", "week_start,p_content,e_content,r_content,m_content,a_content"),
+            ("order", "week_start.asc"),
+        ],
+    )
+    return resp.json() if resp.status_code == 200 else []
+
+
+class CoachMemberRequest(BaseModel):
+    member_id: str
+
+
+@app.post("/api/coach/analyze")
+async def coach_analyze(req: CoachMemberRequest, authorization: str = Header(...)):
+    token = authorization.removeprefix("Bearer ").strip()
+    coach_id = await require_coach(token)
+
+    posts = await _fetch_member_posts(req.member_id)
+    if len(posts) < 2:
+        raise HTTPException(status_code=409, detail="這位成員的週記不足 2 週")
+
+    dump_parts = []
+    for i, p in enumerate(posts):
+        lines = [f"── 第 {i + 1} 次（{p.get('week_start', '')}）"]
+        for k in _PERMA_KEYS:
+            ans = (p.get(f"{k.lower()}_content") or "").strip() or "（未填）"
+            lines.append(f"[{k}] {_PERMA_DIM[k]}：{ans}")
+        dump_parts.append("\n".join(lines))
+    dump = "\n\n".join(dump_parts)
+
+    msg = await claude().messages.create(
+        model=_COACH_ANALYSIS_MODEL,
+        max_tokens=8000,
+        thinking={"type": "disabled"},
+        system=_coach_analysis_system(len(posts)),
+        messages=[{"role": "user", "content": f"成員資料：\n\n{dump}"}],
+    )
+    meter_claude("coach-analyze", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)
+
+    try:
+        sessions, blocks = _parse_analysis(_msg_text(msg))
+    except Exception as exc:
+        logger.warning("coach_analyze parse failed [%s]: %s", type(exc).__name__, exc)
+        raise HTTPException(status_code=502, detail="分析解析失敗，請重新生成")
+
+    row = {
+        "member_id": req.member_id,
+        "based_on": len(posts),
+        "sessions": sessions,
+        "blocks": blocks,
+        "client_charts": _CLIENT_CHART_DEFAULTS,
+        "coach_id": coach_id,
+        "updated_at": datetime.now(TW_TZ).isoformat(),
+    }
+    upsert_resp = await db().post(
+        f"{SUPABASE_REST}/coach_analyses",
+        headers={**SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates,return=representation"},
+        json=row,
+    )
+    if upsert_resp.status_code in (200, 201):
+        rows = upsert_resp.json()
+        if rows:
+            return rows[0]
+    logger.warning("coach_analyses upsert failed: %s", upsert_resp.text)
+    return row
+
+
+@app.post("/api/coach/client-report")
+async def coach_client_report(req: CoachMemberRequest, authorization: str = Header(...)):
+    token = authorization.removeprefix("Bearer ").strip()
+    coach_id = await require_coach(token)
+
+    resp = await db().get(
+        f"{SUPABASE_REST}/coach_analyses",
+        headers=SUPABASE_HEADERS,
+        params=[("member_id", f"eq.{req.member_id}"), ("select", "*"), ("limit", "1")],
+    )
+    rows = resp.json() if resp.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=409, detail="請先生成教練分析")
+    analysis = rows[0]
+
+    included = [b for b in (analysis.get("blocks") or []) if b.get("include")]
+    if not included:
+        raise HTTPException(status_code=409, detail="請先在教練分析勾選要納入客戶版的區塊")
+
+    material = "\n\n".join(f"## {b['title']}\n{b['body']}" for b in included)
+    msg = await claude().messages.create(
+        model=_COACH_ANALYSIS_MODEL,
+        max_tokens=3000,
+        thinking={"type": "disabled"},
+        system=_CLIENT_REPORT_SYSTEM,
+        messages=[{"role": "user", "content": material}],
+    )
+    meter_claude("coach-client-report", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)
+
+    client_text = _msg_text(msg).strip()
+    client_date = datetime.now(TW_TZ).date().isoformat()
+    update_resp = await db().patch(
+        f"{SUPABASE_REST}/coach_analyses",
+        headers={**SUPABASE_HEADERS, "Prefer": "return=representation"},
+        params=[("member_id", f"eq.{req.member_id}")],
+        json={"client_text": client_text, "client_date": client_date},
+    )
+    if update_resp.status_code in (200, 201) and update_resp.json():
+        return update_resp.json()[0]
+    return {**analysis, "client_text": client_text, "client_date": client_date}
 
 
 if __name__ == "__main__":
