@@ -115,6 +115,21 @@ create table ai_usage_log (
 );
 alter table ai_usage_log enable row level security;
 
+-- ── 6b. 教練深度分析結果（一人一列，重新生成即 upsert）──────────
+-- 見遷移 002。sessions/blocks/client_* 由後端（service_role）寫入；
+-- 教練前端可讀取既有分析並儲存「納入客戶版」勾選與手動編輯。
+create table coach_analyses (
+  member_id     uuid primary key references profiles(id) on delete cascade,
+  based_on      integer not null default 0,
+  sessions      jsonb   not null default '[]'::jsonb,
+  blocks        jsonb   not null default '[]'::jsonb,
+  client_charts jsonb   not null default '{}'::jsonb,
+  client_text   text,
+  client_date   date,
+  coach_id      uuid references profiles(id),
+  updated_at    timestamptz not null default now()
+);
+
 -- ── 7. RLS：資料庫層的權限牆 ───────────────────────────────────
 alter table profiles enable row level security;
 alter table perma_entries enable row level security;
@@ -125,6 +140,7 @@ alter table post_likes enable row level security;
 alter table post_comments enable row level security;
 alter table weekly_reviews enable row level security;
 alter table allowed_emails enable row level security;
+alter table coach_analyses enable row level security;
 
 -- 判斷目前登入者是否為教練。
 -- 注意：security definer 函式若不明確指定 search_path，在 auth schema
@@ -172,6 +188,11 @@ create policy "delete own post_comment" on post_comments for delete to authentic
 
 create policy "read own or coach" on weekly_reviews for select to authenticated
   using (user_id = auth.uid() or is_coach());
+
+-- coach_analyses：只有教練能讀寫（後端 service_role 另可略過 RLS 寫入）。
+create policy "coach read analyses"   on coach_analyses for select to authenticated using (is_coach());
+create policy "coach insert analyses" on coach_analyses for insert to authenticated with check (is_coach());
+create policy "coach update analyses" on coach_analyses for update to authenticated using (is_coach());
 
 -- allowed_emails / ai_usage_log：不建任何 policy = 只有 service_role 能讀寫。
 
