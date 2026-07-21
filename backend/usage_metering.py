@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 PRICING: dict[str, dict[str, float]] = {
+    "claude-sonnet-5":   {"input": 3.0, "output": 15.0},
     "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
     "claude-sonnet-4-5": {"input": 3.0, "output": 15.0},
     "claude-opus-4-8":   {"input": 5.0, "output": 25.0},
