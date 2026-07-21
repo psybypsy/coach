@@ -23,7 +23,7 @@ export const DIMENSION_CONFIGS: Record<DimensionKey, DimensionConfig> = {
   P: {
     key: 'P',
     label: '情緒力',
-    sublabel: 'Positive Emotion',
+    sublabel: 'Positive Emotions',
     question: '這週有什麼讓你充滿能量的事？',
     textColor: 'text-amber-800',
     bgLight: 'bg-amber-50',

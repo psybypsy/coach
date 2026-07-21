@@ -15,8 +15,10 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppCoachRouteImport } from './routes/app.coach'
 import { Route as AppCommunityRouteImport } from './routes/app.community'
 import { Route as AppHomeRouteImport } from './routes/app.home'
+import { Route as AppJournalRouteImport } from './routes/app.journal'
 import { Route as AppReportRouteImport } from './routes/app.report'
-import { Route as AppWriteDimensionRouteImport } from './routes/app.write.$dimension'
+import { Route as AppSettingsRouteImport } from './routes/app.settings'
+import { Route as AppWelcomeRouteImport } from './routes/app.welcome'
 import { Route as AppCoachMemberIdRouteImport } from './routes/app.coach.member.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -49,14 +51,24 @@ const AppHomeRoute = AppHomeRouteImport.update({
   path: '/home',
   getParentRoute: () => AppRoute,
 } as any)
+const AppJournalRoute = AppJournalRouteImport.update({
+  id: '/journal',
+  path: '/journal',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppReportRoute = AppReportRouteImport.update({
   id: '/report',
   path: '/report',
   getParentRoute: () => AppRoute,
 } as any)
-const AppWriteDimensionRoute = AppWriteDimensionRouteImport.update({
-  id: '/write/$dimension',
-  path: '/write/$dimension',
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppWelcomeRoute = AppWelcomeRouteImport.update({
+  id: '/welcome',
+  path: '/welcome',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCoachMemberIdRoute = AppCoachMemberIdRouteImport.update({
@@ -72,8 +84,10 @@ export interface FileRoutesByFullPath {
   '/app/coach': typeof AppCoachRouteWithChildren
   '/app/community': typeof AppCommunityRoute
   '/app/home': typeof AppHomeRoute
+  '/app/journal': typeof AppJournalRoute
   '/app/report': typeof AppReportRoute
-  '/app/write/$dimension': typeof AppWriteDimensionRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/welcome': typeof AppWelcomeRoute
   '/app/coach/member/$id': typeof AppCoachMemberIdRoute
 }
 export interface FileRoutesByTo {
@@ -83,8 +97,10 @@ export interface FileRoutesByTo {
   '/app/coach': typeof AppCoachRouteWithChildren
   '/app/community': typeof AppCommunityRoute
   '/app/home': typeof AppHomeRoute
+  '/app/journal': typeof AppJournalRoute
   '/app/report': typeof AppReportRoute
-  '/app/write/$dimension': typeof AppWriteDimensionRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/welcome': typeof AppWelcomeRoute
   '/app/coach/member/$id': typeof AppCoachMemberIdRoute
 }
 export interface FileRoutesById {
@@ -95,8 +111,10 @@ export interface FileRoutesById {
   '/app/coach': typeof AppCoachRouteWithChildren
   '/app/community': typeof AppCommunityRoute
   '/app/home': typeof AppHomeRoute
+  '/app/journal': typeof AppJournalRoute
   '/app/report': typeof AppReportRoute
-  '/app/write/$dimension': typeof AppWriteDimensionRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/welcome': typeof AppWelcomeRoute
   '/app/coach/member/$id': typeof AppCoachMemberIdRoute
 }
 export interface FileRouteTypes {
@@ -108,8 +126,10 @@ export interface FileRouteTypes {
     | '/app/coach'
     | '/app/community'
     | '/app/home'
+    | '/app/journal'
     | '/app/report'
-    | '/app/write/$dimension'
+    | '/app/settings'
+    | '/app/welcome'
     | '/app/coach/member/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -119,8 +139,10 @@ export interface FileRouteTypes {
     | '/app/coach'
     | '/app/community'
     | '/app/home'
+    | '/app/journal'
     | '/app/report'
-    | '/app/write/$dimension'
+    | '/app/settings'
+    | '/app/welcome'
     | '/app/coach/member/$id'
   id:
     | '__root__'
@@ -130,8 +152,10 @@ export interface FileRouteTypes {
     | '/app/coach'
     | '/app/community'
     | '/app/home'
+    | '/app/journal'
     | '/app/report'
-    | '/app/write/$dimension'
+    | '/app/settings'
+    | '/app/welcome'
     | '/app/coach/member/$id'
   fileRoutesById: FileRoutesById
 }
@@ -185,6 +209,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppHomeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/journal': {
+      id: '/app/journal'
+      path: '/journal'
+      fullPath: '/app/journal'
+      preLoaderRoute: typeof AppJournalRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/report': {
       id: '/app/report'
       path: '/report'
@@ -192,11 +223,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppReportRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/write/$dimension': {
-      id: '/app/write/$dimension'
-      path: '/write/$dimension'
-      fullPath: '/app/write/$dimension'
-      preLoaderRoute: typeof AppWriteDimensionRouteImport
+    '/app/settings': {
+      id: '/app/settings'
+      path: '/settings'
+      fullPath: '/app/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/welcome': {
+      id: '/app/welcome'
+      path: '/welcome'
+      fullPath: '/app/welcome'
+      preLoaderRoute: typeof AppWelcomeRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/coach/member/$id': {
@@ -225,16 +263,20 @@ interface AppRouteChildren {
   AppCoachRoute: typeof AppCoachRouteWithChildren
   AppCommunityRoute: typeof AppCommunityRoute
   AppHomeRoute: typeof AppHomeRoute
+  AppJournalRoute: typeof AppJournalRoute
   AppReportRoute: typeof AppReportRoute
-  AppWriteDimensionRoute: typeof AppWriteDimensionRoute
+  AppSettingsRoute: typeof AppSettingsRoute
+  AppWelcomeRoute: typeof AppWelcomeRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppCoachRoute: AppCoachRouteWithChildren,
   AppCommunityRoute: AppCommunityRoute,
   AppHomeRoute: AppHomeRoute,
+  AppJournalRoute: AppJournalRoute,
   AppReportRoute: AppReportRoute,
-  AppWriteDimensionRoute: AppWriteDimensionRoute,
+  AppSettingsRoute: AppSettingsRoute,
+  AppWelcomeRoute: AppWelcomeRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

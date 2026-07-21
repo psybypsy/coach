@@ -20,7 +20,8 @@ export function getLanguage(): Language {
   } catch {
     // localStorage 不可用時退回預設
   }
-  return 'zh-TW'
+  // 預設英文；使用者可切換成繁中，切換後會記在 localStorage。
+  return 'en'
 }
 
 export function persistLanguage(lang: Language): void {

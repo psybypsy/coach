@@ -22,4 +22,31 @@ export const perma: Record<string, Translation> = {
   '辨識中…': { en: 'Transcribing…' },
   '語音輸入': { en: 'Voice input' },
   '錄音中，再按一次結束': { en: 'Recording — tap again to stop' },
+
+  // ── 每週書寫入口（home）與 5 題精靈（journal）──
+  '本週 PERMA 書寫': { en: 'This week’s PERMA journal' },
+  '開始本週書寫': { en: 'Start this week’s journal' },
+  '本週書寫已完成': { en: 'This week’s journal is complete' },
+  '你這週的 PERMA 週記已經發布到社群，下週再回來寫一次。': {
+    en: 'Your PERMA journal for this week has been shared to the community. Come back next week to write again.',
+  },
+  '看看社群': { en: 'View community' },
+  '書寫是培養覺察、支持建立新習慣的有效方法。我鼓勵你透過回答這 5 個問題來練習。請每週進行一次，最好固定在每週同一天、同一時段（例如每週五下午或週一早上）。系統會協助你記錄，並在接下來的 8 週為你呈現 PERMA 進展報告。':
+    {
+      en: 'Journaling is an effective way to develop awareness and supporting the building of new habits. I encourage you to do this by answering these 5 questions. Do this weekly, ideally the same day and time of the week (for example every Friday afternoon or Monday morning). The system can help you record your activities and provide a report of your PERMA progress during the next 8 weeks.',
+    },
+  '第 {n} 題，共 5 題': { en: 'Question {n} of 5' },
+  '上一題': { en: 'Back' },
+  '下一題': { en: 'Next' },
+  '系統會自動保存草稿': { en: 'Your draft is saved automatically' },
+  '請先完成全部 5 題再發布。': { en: 'Please answer all 5 questions before posting.' },
+
+  // ── 歡迎設定名字（welcome）與個人設定（settings）──
+  '歡迎！先設定你的名字': { en: 'Welcome! First, set your name' },
+  '這個名字會顯示在社群的貼文上。之後也可以在「設定」頁隨時修改。': {
+    en: 'This name will appear on your community posts. You can change it anytime in Settings.',
+  },
+  '這個名字會顯示在社群的貼文上。': { en: 'This name will appear on your community posts.' },
+  '例如：怡明': { en: 'e.g. Yee Ming' },
+  '開始使用': { en: 'Get started' },
 }

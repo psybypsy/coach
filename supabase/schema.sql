@@ -10,6 +10,7 @@ create table profiles (
   display_name text not null default '',
   avatar_key text not null default 'avatar1',
   role text not null default 'member' check (role in ('member', 'coach')),
+  has_set_name boolean not null default false, -- 首次登入設定過名字後為 true
   created_at timestamptz not null default now()
 );
 
@@ -33,7 +34,25 @@ create table perma_entries (
 create index on perma_entries (user_id, created_at desc);
 create index on perma_entries (is_public, created_at desc);
 
+-- ── 3b. 週記合併貼文（社群牆單位：一人一週一則，內含 PERMA 五答案）──
+-- 每週填完 5 題會同時寫入這裡（社群牆讀取）＋ 5 列 perma_entries（報告/教練/AI 沿用）。
+create table journal_posts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  week_start date not null,
+  p_content text not null default '',
+  e_content text not null default '',
+  r_content text not null default '',
+  m_content text not null default '',
+  a_content text not null default '',
+  is_public boolean not null default true,
+  created_at timestamptz not null default now(),
+  unique (user_id, week_start)
+);
+create index on journal_posts (is_public, created_at desc);
+
 -- ── 4. 按讚與留言 ──────────────────────────────────────────────
+-- 舊的 likes / comments 掛在單題 perma_entries 上（保留，未使用）。
 create table likes (
   id uuid primary key default gen_random_uuid(),
   entry_id uuid not null references perma_entries(id) on delete cascade,
@@ -45,6 +64,23 @@ create table likes (
 create table comments (
   id uuid primary key default gen_random_uuid(),
   entry_id uuid not null references perma_entries(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  content text not null,
+  created_at timestamptz not null default now()
+);
+
+-- 社群牆實際使用的按讚 / 留言（掛在 journal_posts 上）。
+create table post_likes (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references journal_posts(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (post_id, user_id)
+);
+
+create table post_comments (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references journal_posts(id) on delete cascade,
   user_id uuid not null references profiles(id) on delete cascade,
   content text not null,
   created_at timestamptz not null default now()
@@ -81,8 +117,11 @@ alter table ai_usage_log enable row level security;
 -- ── 7. RLS：資料庫層的權限牆 ───────────────────────────────────
 alter table profiles enable row level security;
 alter table perma_entries enable row level security;
+alter table journal_posts enable row level security;
 alter table likes enable row level security;
 alter table comments enable row level security;
+alter table post_likes enable row level security;
+alter table post_comments enable row level security;
 alter table weekly_reviews enable row level security;
 alter table allowed_emails enable row level security;
 
@@ -107,12 +146,28 @@ create policy "update own entries" on perma_entries for update to authenticated
 create policy "delete own entries" on perma_entries for delete to authenticated
   using (user_id = auth.uid());
 
+create policy "read journal_posts" on journal_posts for select to authenticated
+  using (is_public = true or user_id = auth.uid() or is_coach());
+create policy "insert own journal_post" on journal_posts for insert to authenticated
+  with check (user_id = auth.uid());
+create policy "update own journal_post" on journal_posts for update to authenticated
+  using (user_id = auth.uid());
+create policy "delete own journal_post" on journal_posts for delete to authenticated
+  using (user_id = auth.uid());
+
 create policy "read likes" on likes for select to authenticated using (true);
 create policy "insert own like" on likes for insert to authenticated with check (user_id = auth.uid());
 create policy "delete own like" on likes for delete to authenticated using (user_id = auth.uid());
 create policy "read comments" on comments for select to authenticated using (true);
 create policy "insert own comment" on comments for insert to authenticated with check (user_id = auth.uid());
 create policy "delete own comment" on comments for delete to authenticated using (user_id = auth.uid());
+
+create policy "read post_likes" on post_likes for select to authenticated using (true);
+create policy "insert own post_like" on post_likes for insert to authenticated with check (user_id = auth.uid());
+create policy "delete own post_like" on post_likes for delete to authenticated using (user_id = auth.uid());
+create policy "read post_comments" on post_comments for select to authenticated using (true);
+create policy "insert own post_comment" on post_comments for insert to authenticated with check (user_id = auth.uid());
+create policy "delete own post_comment" on post_comments for delete to authenticated using (user_id = auth.uid());
 
 create policy "read own or coach" on weekly_reviews for select to authenticated
   using (user_id = auth.uid() or is_coach());

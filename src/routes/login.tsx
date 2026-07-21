@@ -3,6 +3,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import { supabase } from '../lib/supabase'
 import { useLanguage } from '../lib/i18n/context'
 import { LanguageSwitcherCompact } from '../components/LanguageSwitcher'
+import { BRAND, coachName } from '../lib/brand'
 
 export const Route = createFileRoute('/login')({
   beforeLoad: ({ context }) => {
@@ -73,13 +74,11 @@ function LoginPage() {
       <LanguageSwitcherCompact className="fixed right-4 top-[calc(env(safe-area-inset-top)+1rem)]" />
 
       <div className="w-full max-w-sm space-y-6">
-        {/* 以教練個人為主的品牌：名字最大、PSY by PSY 只在底部小小標註 */}
+        {/* 品牌：Ipsen Taiwan 為主，教練名稱為輔 */}
         <div className="space-y-1.5 text-center">
-          <h1 className="font-heading text-3xl text-foreground">
-            {language === 'en' ? 'Tan Yee Ming' : '陳郁敏'}
-          </h1>
+          <h1 className="font-heading text-3xl text-foreground">{BRAND.name}</h1>
           <p className="text-foreground-soft text-sm">
-            {language === 'en' ? 'Executive Coach' : '教練'} · {t('職場幸福感書寫')}
+            {coachName(language)} · {t('職場幸福感書寫')}
           </p>
         </div>
 
@@ -138,7 +137,7 @@ function LoginPage() {
         </div>
 
         <p className="text-center text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-          Powered by PSY by PSY
+          {BRAND.name}
         </p>
       </div>
     </div>
