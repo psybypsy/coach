@@ -12,10 +12,12 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AppCoachRouteImport } from './routes/app.coach'
 import { Route as AppCommunityRouteImport } from './routes/app.community'
 import { Route as AppHomeRouteImport } from './routes/app.home'
 import { Route as AppReportRouteImport } from './routes/app.report'
 import { Route as AppWriteDimensionRouteImport } from './routes/app.write.$dimension'
+import { Route as AppCoachMemberIdRouteImport } from './routes/app.coach.member.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -31,6 +33,11 @@ const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppCoachRoute = AppCoachRouteImport.update({
+  id: '/coach',
+  path: '/coach',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppCommunityRoute = AppCommunityRouteImport.update({
   id: '/community',
@@ -52,34 +59,45 @@ const AppWriteDimensionRoute = AppWriteDimensionRouteImport.update({
   path: '/write/$dimension',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCoachMemberIdRoute = AppCoachMemberIdRouteImport.update({
+  id: '/member/$id',
+  path: '/member/$id',
+  getParentRoute: () => AppCoachRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/app/coach': typeof AppCoachRouteWithChildren
   '/app/community': typeof AppCommunityRoute
   '/app/home': typeof AppHomeRoute
   '/app/report': typeof AppReportRoute
   '/app/write/$dimension': typeof AppWriteDimensionRoute
+  '/app/coach/member/$id': typeof AppCoachMemberIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/app/coach': typeof AppCoachRouteWithChildren
   '/app/community': typeof AppCommunityRoute
   '/app/home': typeof AppHomeRoute
   '/app/report': typeof AppReportRoute
   '/app/write/$dimension': typeof AppWriteDimensionRoute
+  '/app/coach/member/$id': typeof AppCoachMemberIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/app/coach': typeof AppCoachRouteWithChildren
   '/app/community': typeof AppCommunityRoute
   '/app/home': typeof AppHomeRoute
   '/app/report': typeof AppReportRoute
   '/app/write/$dimension': typeof AppWriteDimensionRoute
+  '/app/coach/member/$id': typeof AppCoachMemberIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -87,28 +105,34 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/login'
+    | '/app/coach'
     | '/app/community'
     | '/app/home'
     | '/app/report'
     | '/app/write/$dimension'
+    | '/app/coach/member/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/app'
     | '/login'
+    | '/app/coach'
     | '/app/community'
     | '/app/home'
     | '/app/report'
     | '/app/write/$dimension'
+    | '/app/coach/member/$id'
   id:
     | '__root__'
     | '/'
     | '/app'
     | '/login'
+    | '/app/coach'
     | '/app/community'
     | '/app/home'
     | '/app/report'
     | '/app/write/$dimension'
+    | '/app/coach/member/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -140,6 +164,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app/coach': {
+      id: '/app/coach'
+      path: '/coach'
+      fullPath: '/app/coach'
+      preLoaderRoute: typeof AppCoachRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/community': {
       id: '/app/community'
       path: '/community'
@@ -168,10 +199,30 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWriteDimensionRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/coach/member/$id': {
+      id: '/app/coach/member/$id'
+      path: '/member/$id'
+      fullPath: '/app/coach/member/$id'
+      preLoaderRoute: typeof AppCoachMemberIdRouteImport
+      parentRoute: typeof AppCoachRoute
+    }
   }
 }
 
+interface AppCoachRouteChildren {
+  AppCoachMemberIdRoute: typeof AppCoachMemberIdRoute
+}
+
+const AppCoachRouteChildren: AppCoachRouteChildren = {
+  AppCoachMemberIdRoute: AppCoachMemberIdRoute,
+}
+
+const AppCoachRouteWithChildren = AppCoachRoute._addFileChildren(
+  AppCoachRouteChildren,
+)
+
 interface AppRouteChildren {
+  AppCoachRoute: typeof AppCoachRouteWithChildren
   AppCommunityRoute: typeof AppCommunityRoute
   AppHomeRoute: typeof AppHomeRoute
   AppReportRoute: typeof AppReportRoute
@@ -179,6 +230,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppCoachRoute: AppCoachRouteWithChildren,
   AppCommunityRoute: AppCommunityRoute,
   AppHomeRoute: AppHomeRoute,
   AppReportRoute: AppReportRoute,

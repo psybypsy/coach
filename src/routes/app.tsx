@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { createFileRoute, redirect, Outlet, Link, useRouterState } from '@tanstack/react-router'
 import { supabase } from '../lib/supabase'
 import { useLanguage } from '../lib/i18n/context'
@@ -15,6 +16,21 @@ export const Route = createFileRoute('/app')({
 function AppShell() {
   const { t, language } = useLanguage()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const [role, setRole] = useState<'member' | 'coach' | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const { data: userData } = await supabase.auth.getUser()
+      const userId = userData.user?.id
+      if (!userId) return
+      const { data } = await supabase.from('profiles').select('role').eq('id', userId).single()
+      if (!cancelled) setRole((data?.role as 'member' | 'coach') ?? 'member')
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -24,6 +40,7 @@ function AppShell() {
     { to: '/app/home' as const, label: t('書寫') },
     { to: '/app/community' as const, label: t('社群') },
     { to: '/app/report' as const, label: t('個人幸福報告') },
+    ...(role === 'coach' ? [{ to: '/app/coach' as const, label: t('教練儀表板') }] : []),
   ]
 
   return (

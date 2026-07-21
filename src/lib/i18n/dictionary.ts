@@ -5,6 +5,7 @@ import { login } from './dict/login'
 import { perma } from './dict/perma'
 import { community } from './dict/community'
 import { report } from './dict/report'
+import { coach } from './dict/coach'
 
 export type Translation = { en: string }
 export type Dictionary = Record<string, Translation>
@@ -15,4 +16,5 @@ export const DICTIONARY: Dictionary = {
   ...perma,
   ...community,
   ...report,
+  ...coach,
 }
