@@ -46,12 +46,9 @@ function AppShell() {
       // 首次登入尚未設定名字 → 導去歡迎頁設定；設定過就不再出現。
       if (data && !data.has_set_name && !pathname.startsWith('/app/welcome')) {
         void navigate({ to: '/app/welcome' })
-      } else if (data?.role === 'coach' && pathname === '/app/home') {
-        // coach 登入後（登入連結固定導向 /app/home）自動跳去教練後台，
-        // 他的主要用途就是進後台；只攔截 /app/home 這個落地頁，
-        // 不影響手動造訪 /app/journal、/app/community 等其他頁面。
-        void navigate({ to: '/app/coach' })
       }
+      // 註：coach 不自動跳轉到教練後台（避免無法查看成員介面）。
+      // 改由導覽列的「教練後台」按鈕一鍵進入，root/成員頁對 coach 一樣可正常瀏覽。
     })()
     return () => {
       cancelled = true
