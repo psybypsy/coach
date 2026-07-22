@@ -66,6 +66,18 @@ export const coach: Record<string, Translation> = {
   '翻譯中…': { en: 'Translating…' },
   '請切回 EN 編輯原文': { en: 'Switch to EN to edit the source text' },
 
+  // 情報簡報區塊 canonical 標題（依固定順序，預設英文）
+  '整體情緒與福祉軌跡': { en: 'Overall Emotional & Well-being Trajectory' },
+  'PERMA 五面向剖析': { en: 'PERMA Five-Dimension Profile' },
+  '優勢與內在資源': { en: 'Strengths & Inner Resources' },
+  '自我決定論動機': { en: 'Self-Determination Motivation' },
+  '語言指紋': { en: 'Linguistic Fingerprint' },
+  '橫向主題與模式': { en: 'Cross-cutting Themes & Patterns' },
+  '未言之事': { en: 'The Unsaid' },
+  '教練假設': { en: 'Coaching Hypotheses' },
+  '值得關注': { en: 'Worth Watching' },
+  '會談準備': { en: 'Session Preparation' },
+
   // 圖表標題（deep analysis / 客戶版共用）
   '情緒 valence 摘要': { en: 'Valence summary' },
   '整體情緒 valence 趨勢': { en: 'Overall valence trend' },
