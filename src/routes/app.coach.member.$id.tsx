@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import html2pdf from 'html2pdf.js'
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { supabase } from '../lib/supabase'
 import { useLanguage } from '../lib/i18n/context'
@@ -319,6 +320,24 @@ function MemberDetailPage() {
   function toggleChart(key: string, val: boolean) {
     if (!analysis) return
     void persist({ client_charts: { ...analysis.client_charts, [key]: val } })
+  }
+
+  // #3 下載 PDF：直接把「客戶報告」那份文件轉成 PDF 下載（不經列印對話框）。
+  // 整份等比縮進 A4 寬度，所以不會有文字被裁切的問題。
+  function downloadClientPdf() {
+    const el = document.getElementById('cv-print-area')
+    if (!el) return
+    void html2pdf()
+      .set({
+        margin: [12, 12, 14, 12],
+        filename: 'Personal-Well-being-Review.pdf', // 純 ASCII，避免檔名特殊字元讓下載失效
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
+        pagebreak: { mode: ['css', 'legacy'] },
+      })
+      .from(el)
+      .save()
   }
 
   function toggleBlockOpen(i: number) {
@@ -742,10 +761,10 @@ function MemberDetailPage() {
                 </button>
                 {analysis.client_text && (
                   <button
-                    onClick={() => window.print()}
+                    onClick={downloadClientPdf}
                     className="rounded-lg border border-border px-4 py-2 text-sm text-foreground-soft"
                   >
-                    {t('列印 / 匯出 PDF')}
+                    {t('下載 PDF')}
                   </button>
                 )}
               </div>

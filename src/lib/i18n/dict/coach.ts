@@ -86,4 +86,5 @@ export const coach: Record<string, Translation> = {
   '五面向 valence 剖面': { en: 'Five-dimension valence profile' },
   '正負情緒平衡': { en: 'Positive–negative affect balance' },
   '情緒詞雲': { en: 'Emotion word cloud' },
+  '下載 PDF': { en: 'Download PDF' },
 }
