@@ -22,7 +22,7 @@ export const coach: Record<string, Translation> = {
   '分析中…': { en: 'Analyzing…' },
   '基於': { en: 'Based on' },
   '週': { en: 'weeks' },
-  '至少需要 2 週書寫': { en: 'Needs at least 2 weeks of entries' },
+  '至少需要 1 次書寫': { en: 'Needs at least 1 entry' },
   '納入客戶版': { en: 'Include in client version' },
   '每次 valence 與評分理由': { en: 'Per-week valence & rationale' },
   '第': { en: 'Week' },
@@ -60,4 +60,12 @@ export const coach: Record<string, Translation> = {
   '個人福祉回顧': { en: 'Personal Well-being Review' },
   '情緒歷程一覽': { en: 'Emotional journey at a glance' },
   '教練　陳郁敏': { en: 'Coach · Tan Yee Ming' },
+
+  // 圖表標題（deep analysis / 客戶版共用）
+  '情緒 valence 摘要': { en: 'Valence summary' },
+  '整體情緒 valence 趨勢': { en: 'Overall valence trend' },
+  '五面向 valence 趨勢': { en: 'Five-dimension valence trends' },
+  '五面向 valence 剖面': { en: 'Five-dimension valence profile' },
+  '正負情緒平衡': { en: 'Positive–negative affect balance' },
+  '情緒詞雲': { en: 'Emotion word cloud' },
 }

@@ -368,7 +368,61 @@ async def require_coach(token: str) -> str:
     return user_id
 
 
-def _coach_analysis_system(week_count: int) -> str:
+def _coach_analysis_system_en(week_count: int) -> str:
+    return f"""You are the analysis assistant to Tan Yee Ming, an executive well-being coach. You will receive one team member's {week_count} weekly PERMA reflections (P=Positive Emotions, E=Engagement, R=Relationships, M=Meaning, A=Accomplishment). Produce two parts: a quantified emotional-valence analysis of each week (with reasons), and a coach-only intelligence brief.
+
+Output in exactly this format; both markers must appear:
+<<<SCORES>>>
+{{"sessions":[
+ {{"overall":integer -100..100,
+  "overallReason":"why this week's overall tone got that score, quoting the person's own words",
+  "dims":{{"P":{{"v":-100..100,"reason":"basis"}},"E":{{"v":0,"reason":""}},"R":{{"v":0,"reason":""}},"M":{{"v":0,"reason":""}},"A":{{"v":0,"reason":""}}}},
+  "emotions":[{{"word":"an emotion word from the text","valence":"positive|negative|neutral","intensity":1..5}}]}}
+]}}
+<<<BRIEF>>>
+[[BLOCK]] Block title
+Block body
+[[BLOCK]] Next block title
+...
+
+Scoring rules:
+- sessions length must be exactly {week_count}, in order from week 1 to week {week_count}.
+- valence is emotional tone: -100 extremely negative, 0 neutral, +100 extremely positive. Judge only from the text; every score needs a concrete reason quoting the person's words; give near 0 when blank or vague.
+- extract 6 to 12 emotion words per week.
+
+Intelligence-brief rules (coach-only; may contain candid hypotheses; quote the person's words and cite which week). Separate blocks with [[BLOCK]]; the first line of each block is its title, the rest is the body (Markdown: ## headings, ** bold **, * italics *, - bullets).
+
+READABILITY — the coach must be able to skim this. For EVERY block, the body MUST start with one bold single-line takeaway in the form "**Takeaway —** ..." capturing the block's single most important point, then a blank line, then the detail as short paragraphs and - bullet points. Prefer bullets over dense prose; keep sentences short.
+
+Include these blocks in exactly this order:
+[[BLOCK]] Overall Emotional & Well-being Trajectory
+[[BLOCK]] PERMA Five-Dimension Profile
+[[BLOCK]] Strengths & Inner Resources
+[[BLOCK]] Self-Determination Motivation
+[[BLOCK]] Linguistic Fingerprint
+[[BLOCK]] Cross-cutting Themes & Patterns
+[[BLOCK]] The Unsaid
+[[BLOCK]] Coaching Hypotheses
+[[BLOCK]] Worth Watching
+[[BLOCK]] Session Preparation
+
+The three theory columns — "PERMA Five-Dimension Profile", "Strengths & Inner Resources", "Self-Determination Motivation" — must each: (a) stay tied to this person's specific quotes with week citations; (b) end with a "**References**" sub-heading listing 2-3 APA-format references (journal or book titles in * italics *) relevant only to that column.
+
+Per-block requirements:
+- PERMA Five-Dimension Profile: analyze P/E/R/M/A one by one, noting fullness (abundant / stable / thin / absent), change over time and key quotes, then integrate the overall pattern through a PERMA lens. References may draw from: Seligman, M. E. P. (2011). *Flourish: A visionary new understanding of happiness and well-being*. Free Press.; Fredrickson, B. L. (2001). The role of positive emotions in positive psychology: The broaden-and-build theory of positive emotions. *American Psychologist, 56*(3), 218-226.; Csikszentmihalyi, M. (1990). *Flow: The psychology of optimal experience*. Harper & Row.
+- Strengths & Inner Resources: identify character strengths and reusable inner resources, each tied to quotes. References may draw from: Peterson, C., & Seligman, M. E. P. (2004). *Character strengths and virtues: A handbook and classification*. Oxford University Press.; Linley, P. A., Nielsen, K. M., Gillett, R., & Biswas-Diener, R. (2010). Using signature strengths in pursuit of goals. *International Coaching Psychology Review, 5*(1), 6-15.; Niemiec, R. M. (2013). VIA character strengths: Research and practice. In *Well-being and cultures* (pp. 11-29). Springer.
+- Self-Determination Motivation: assess the three basic psychological needs — autonomy, competence, relatedness — as satisfied or frustrated, and read the resulting motivation quality (toward intrinsic vs controlled). References may draw from: Deci, E. L., & Ryan, R. M. (2000). The 'what' and 'why' of goal pursuits. *Psychological Inquiry, 11*(4), 227-268.; Ryan, R. M., & Deci, E. L. (2017). *Self-determination theory: Basic psychological needs in motivation, development, and wellness*. Guilford Press.; Gagné, M., & Deci, E. L. (2005). Self-determination theory and work motivation. *Journal of Organizational Behavior, 26*(4), 331-362.
+- Linguistic Fingerprint: agency (active vs passive voice), connectedness (I / we / they balance), time orientation, energy vs depletion words, certainty vs hesitation.
+- The Unsaid: which dimension stays persistently thin or absent, avoided topics.
+- Coaching Hypotheses: label each explicitly as a hypothesis, with an evidence quote and one question to explore.
+- Session Preparation: an opening suggestion, points to probe, and three powerful questions tailored to this person.
+
+Language: English. No emoji anywhere. Tone: professional, precise, theoretically grounded — like a senior coach's clinical notes."""
+
+
+def _coach_analysis_system(week_count: int, language: str = "en") -> str:
+    if language != "zh-TW":
+        return _coach_analysis_system_en(week_count)
     return f"""你是資深高階主管教練的分析助理，服務於教練 陳郁敏。你會收到一位團隊成員 {week_count} 次每週 PERMA 反思的原始回答（P=Positive Emotions、E=Engagement、R=Relationships、M=Meaning、A=Accomplishment）。請產出兩部分：每次的情緒 valence 量化分析（含理由），與一份僅供教練的情報簡報。
 
 嚴格照此格式輸出，兩個標記都要出現：
@@ -390,7 +444,11 @@ def _coach_analysis_system(week_count: int) -> str:
 - valence 為情緒效價：−100 為極度負面、0 為中性、+100 為極度正面。只依文字內容判定，每個分數都要有具體理由並引用當事人原話；未填或空泛給接近 0。
 - 每次抽 6 至 12 個情緒詞。
 
-情報簡報規則（僅教練可見、可含坦率假設、每個判斷都引用原話並註明第幾次）：以 [[BLOCK]] 分隔，每塊第一行為標題、其後為內文（可用 Markdown 的 ## 標題、** 粗體、* 斜體 *、- 條列）。務必依序包含這些區塊：
+情報簡報規則（僅教練可見、可含坦率假設、每個判斷都引用原話並註明第幾次）：以 [[BLOCK]] 分隔，每塊第一行為標題、其後為內文（可用 Markdown 的 ## 標題、** 粗體、* 斜體 *、- 條列）。
+
+可讀性（重要，教練要能快速掃讀）：每個區塊內文都必須以一行粗體重點開頭，格式為「**重點 —** …」點出該區塊最關鍵的一句話，接著空一行，再用簡短段落與 - 條列展開；多用條列、少用長段落、句子精簡。
+
+務必依序包含這些區塊：
 [[BLOCK]] 整體情緒與福祉軌跡
 [[BLOCK]] PERMA 五面向剖析
 [[BLOCK]] 優勢與內在資源
@@ -416,7 +474,18 @@ def _coach_analysis_system(week_count: int) -> str:
 語言：繁體中文（台灣）。全篇不得使用任何 emoji。語氣專業、精確，兼具實證理論素養，如資深教練結合學理的臨床筆記。"""
 
 
-_CLIENT_REPORT_SYSTEM = """你是教練 陳郁敏 的寫作助理。以下是教練勾選要納入客戶交付版的分析內容。請改寫成一份給客戶本人閱讀的正式、溫暖、賦能的「個人福祉回顧」。
+_CLIENT_REPORT_SYSTEM_EN = """You are the writing assistant to coach Tan Yee Ming. Below is the analysis content the coach selected to include in the client version. Rewrite it into a formal, warm, empowering "Personal Well-being Review" for the client to read.
+
+Requirements:
+- Remove all hypotheses, clinical speculation, risk or diagnostic language; focus on strengths, trajectory, meaning and the way forward.
+- Preserve and lightly quote the client's own words.
+- Use Markdown, with ## sections; keep paragraphs short and clear, and use - bullets where they aid readability.
+- End with 1 to 2 warm, forward-looking invitations.
+- Entirely in English. No emoji.
+- Do not repeat the title page or signature (the system adds them)."""
+
+
+_CLIENT_REPORT_SYSTEM_ZH = """你是教練 陳郁敏 的寫作助理。以下是教練勾選要納入客戶交付版的分析內容。請改寫成一份給客戶本人閱讀的正式、溫暖、賦能的「個人福祉回顧」。
 
 要求：
 - 移除所有假設、臨床推測、風險或診斷性語言；聚焦優勢、軌跡、意義與前瞻。
@@ -425,6 +494,10 @@ _CLIENT_REPORT_SYSTEM = """你是教練 陳郁敏 的寫作助理。以下是教
 - 結尾給 1 至 2 個溫暖的前瞻邀請。
 - 全篇繁體中文（台灣），不得使用任何 emoji。
 - 不要重複標題頁與署名（系統會自動加上）。"""
+
+
+def _client_report_system(language: str = "en") -> str:
+    return _CLIENT_REPORT_SYSTEM_ZH if language == "zh-TW" else _CLIENT_REPORT_SYSTEM_EN
 
 
 def _clamp_v(v) -> int:
@@ -473,18 +546,25 @@ def _parse_analysis(out: str) -> tuple[list, list]:
             "emotions": emotions,
         })
 
+    # 前 4 塊（軌跡／PERMA／優勢／SDT）預設納入客戶版；其餘（語言指紋、假設、風險、
+    # 會談準備等）僅教練。用順序判斷而非標題關鍵字，才能同時支援中英文標題。
+    parts = [p.strip() for p in brief_part.split("[[BLOCK]]") if p.strip()]
     blocks = []
-    for part in brief_part.split("[[BLOCK]]"):
-        part = part.strip()
-        if not part:
-            continue
+    for idx, part in enumerate(parts):
         nl = part.find("\n")
         title = (part[:nl] if nl >= 0 else part).strip()
         body = (part[nl + 1:] if nl >= 0 else "").strip()
-        include = not any(kw in title for kw in _COACH_ONLY_KW)
-        blocks.append({"title": title, "body": body, "include": include})
+        blocks.append({"title": title, "body": body, "include": idx < 4})
 
     return sessions, blocks
+
+
+def _detect_lang(text: str) -> str:
+    """依內容裡中文字 vs 拉丁字母的多寡，判斷學員書寫語言；判斷不出來預設英文。
+    政策：分析與客戶回顧都跟隨「學員書寫的語言」，而非教練介面語言。"""
+    cjk = sum(1 for ch in text if 0x4E00 <= ord(ch) <= 0x9FFF)
+    latin = sum(1 for ch in text if "a" <= ch.lower() <= "z")
+    return "zh-TW" if cjk > latin else "en"
 
 
 async def _fetch_member_posts(member_id: str) -> list[dict]:
@@ -502,6 +582,7 @@ async def _fetch_member_posts(member_id: str) -> list[dict]:
 
 class CoachMemberRequest(BaseModel):
     member_id: str
+    language: str = "en"  # 分析與客戶報告的語言，跟隨教練介面（預設英文）
 
 
 @app.post("/api/coach/analyze")
@@ -510,8 +591,13 @@ async def coach_analyze(req: CoachMemberRequest, authorization: str = Header(...
     coach_id = await require_coach(token)
 
     posts = await _fetch_member_posts(req.member_id)
-    if len(posts) < 2:
-        raise HTTPException(status_code=409, detail="這位成員的週記不足 2 週")
+    if len(posts) < 1:
+        raise HTTPException(status_code=409, detail="這位成員還沒有任何週記")
+
+    # 依學員實際書寫內容判斷語言（非教練介面語言）
+    lang = _detect_lang(
+        " ".join((p.get(f"{k.lower()}_content") or "") for p in posts for k in _PERMA_KEYS)
+    )
 
     dump_parts = []
     for i, p in enumerate(posts):
@@ -526,7 +612,7 @@ async def coach_analyze(req: CoachMemberRequest, authorization: str = Header(...
         model=_COACH_ANALYSIS_MODEL,
         max_tokens=8000,
         thinking={"type": "disabled"},
-        system=_coach_analysis_system(len(posts)),
+        system=_coach_analysis_system(len(posts), lang),
         messages=[{"role": "user", "content": f"成員資料：\n\n{dump}"}],
     )
     meter_claude("coach-analyze", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)
@@ -579,11 +665,13 @@ async def coach_client_report(req: CoachMemberRequest, authorization: str = Head
         raise HTTPException(status_code=409, detail="請先在教練分析勾選要納入客戶版的區塊")
 
     material = "\n\n".join(f"## {b['title']}\n{b['body']}" for b in included)
+    # 客戶回顧同樣跟隨學員書寫語言（分析區塊已是該語言，直接由內容判斷）
+    lang = _detect_lang(material)
     msg = await claude().messages.create(
         model=_COACH_ANALYSIS_MODEL,
         max_tokens=3000,
         thinking={"type": "disabled"},
-        system=_CLIENT_REPORT_SYSTEM,
+        system=_client_report_system(lang),
         messages=[{"role": "user", "content": material}],
     )
     meter_claude("coach-client-report", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)

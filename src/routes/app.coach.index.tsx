@@ -32,6 +32,31 @@ function CoachDashboard() {
     void guardAndLoad()
   }, [])
 
+  // #4/#5 即時更新：成員一發布書寫、或有新成員加入，儀表板即時重撈；
+  // 另外在切回分頁 / 視窗聚焦時也重撈，作為 realtime 未啟用時的保底。
+  useEffect(() => {
+    if (checking) return
+    const reload = () => {
+      void load()
+    }
+    const channel = supabase
+      .channel('coach-dashboard')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'perma_entries' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_posts' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, reload)
+      .subscribe()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') reload()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      void supabase.removeChannel(channel)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
+  }, [checking])
+
   async function guardAndLoad() {
     const { data: userData } = await supabase.auth.getUser()
     const userId = userData.user?.id
@@ -62,14 +87,19 @@ function CoachDashboard() {
         .limit(500),
     ])
 
+    // 只統計「成員」的書寫（排除教練自己等非成員），全群數字才正確。
+    const memberIds = new Set((profileRows ?? []).map((p) => p.id))
     const weekCountByUser: Record<string, number> = {}
     const dist: Record<DimensionKey, number> = { P: 0, E: 0, R: 0, M: 0, A: 0 }
+    let totalThisWeekMembers = 0
     for (const e of weekEntries ?? []) {
+      if (!memberIds.has(e.user_id)) continue
+      totalThisWeekMembers += 1
       weekCountByUser[e.user_id] = (weekCountByUser[e.user_id] ?? 0) + 1
       if (e.dimension in dist) dist[e.dimension as DimensionKey] += 1
     }
     setDimDist(dist)
-    setTotalThisWeek((weekEntries ?? []).length)
+    setTotalThisWeek(totalThisWeekMembers)
 
     const lastEntryByUser: Record<string, string> = {}
     for (const e of recentEntries ?? []) {
