@@ -79,40 +79,44 @@ function JournalWizard() {
     setSubmitting(true)
     setError(null)
 
-    // 1) 寫入 5 列 perma_entries（個人報告 / AI 週分析沿用）。
-    const entries = DIMENSION_ORDER.map((k) => ({
-      user_id: userId,
-      dimension: k,
-      content: answers[k].trim(),
-      is_public: true,
-      input_method: 'text',
-    }))
-    const { error: entriesError } = await supabase.from('perma_entries').insert(entries)
-    if (entriesError) {
+    try {
+      // 1) 寫入 5 列 perma_entries（個人報告 / AI 週分析沿用）。
+      const entries = DIMENSION_ORDER.map((k) => ({
+        user_id: userId,
+        dimension: k,
+        content: answers[k].trim(),
+        is_public: true,
+        input_method: 'text',
+      }))
+      const { error: entriesError } = await supabase.from('perma_entries').insert(entries)
+      if (entriesError) {
+        throw new Error(`Failed to save entries: ${entriesError.message}`)
+      }
+
+      // 2) 寫入 1 列 journal_posts（社群牆的一則週記合併貼文，同一週可多則）。
+      const { error: postError } = await supabase.from('journal_posts').insert({
+        user_id: userId,
+        week_start: weekStart,
+        p_content: answers.P.trim(),
+        e_content: answers.E.trim(),
+        r_content: answers.R.trim(),
+        m_content: answers.M.trim(),
+        a_content: answers.A.trim(),
+        is_public: true,
+      })
+      if (postError) {
+        throw new Error(`Failed to save post: ${postError.message}`)
+      }
+
+      clearDraft(userId, weekStart)
+      void navigate({ to: '/app/community' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      console.error('Publish error:', message)
+      setError(t('Something went wrong. Please try again.'))
+    } finally {
       setSubmitting(false)
-      setError(t('發布失敗，請再試一次。'))
-      return
     }
-
-    // 2) 寫入 1 列 journal_posts（社群牆的一則週記合併貼文，同一週可多則）。
-    const { error: postError } = await supabase.from('journal_posts').insert({
-      user_id: userId,
-      week_start: weekStart,
-      p_content: answers.P.trim(),
-      e_content: answers.E.trim(),
-      r_content: answers.R.trim(),
-      m_content: answers.M.trim(),
-      a_content: answers.A.trim(),
-      is_public: true,
-    })
-    setSubmitting(false)
-    if (postError) {
-      setError(t('發布失敗，請再試一次。'))
-      return
-    }
-
-    clearDraft(userId, weekStart)
-    void navigate({ to: '/app/home' })
   }
 
   if (!ready) {

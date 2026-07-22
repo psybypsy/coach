@@ -60,14 +60,34 @@ function AppShell() {
 
   const NAV_ITEMS = [
     { to: '/app/home' as const, label: t('PERMA Self-Reflection') },
-    { to: '/app/community' as const, label: t('社群') },
+    { to: '/app/community' as const, label: t('Community') },
   ]
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <header className="relative border-b border-border">
         <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-5">
-          <span className="font-heading text-sm font-semibold text-foreground">{BRAND.name}</span>
+          {!onWelcome ? (
+            <nav className="flex items-center gap-4">
+              <span className="font-heading text-sm font-semibold text-foreground">{BRAND.name}</span>
+              {NAV_ITEMS.map((item) => {
+                const active = pathname.startsWith(item.to)
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                      active ? 'bg-primary-soft text-primary' : 'text-foreground-soft hover:bg-muted'
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </nav>
+          ) : (
+            <span className="font-heading text-sm font-semibold text-foreground">{BRAND.name}</span>
+          )}
 
           {!onWelcome ? (
             <div className="flex items-center gap-1">
@@ -91,25 +111,6 @@ function AppShell() {
             </button>
           )}
         </div>
-
-        {!onWelcome && (
-          <nav className="mx-auto -mt-1 flex max-w-4xl items-center gap-1 overflow-x-auto px-5 pb-2">
-            {NAV_ITEMS.map((item) => {
-              const active = pathname.startsWith(item.to)
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition ${
-                    active ? 'bg-primary-soft text-primary' : 'text-foreground-soft hover:bg-muted'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              )
-            })}
-          </nav>
-        )}
 
         {/* 選單面板：改名字、語言、登出 */}
         {panel === 'menu' && (
