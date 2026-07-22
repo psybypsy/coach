@@ -73,15 +73,19 @@ function CoachDashboard() {
   async function load() {
     setLoading(true)
 
-    const [{ data: profileRows }, { data: weekEntries }, { data: recentEntries }] = await Promise.all([
+    // 全部指標改以 journal_posts（每次週記＝1 列）為真實來源：
+    // - 本週全群書寫＝本週週記篇數（不再把一次書寫算成 5 列 perma_entries）
+    // - 五維度分布＝本週各面向實際書寫的字數量（因為每篇都必填 5 題，用「篇數」永遠是平的，
+    //   改用字數才反映這週大家在哪個面向著墨最深）
+    const [{ data: profileRows }, { data: weekPosts }, { data: recentPosts }] = await Promise.all([
       supabase.from('profiles').select('id,display_name').eq('role', 'member').order('display_name'),
       supabase
-        .from('perma_entries')
-        .select('id,user_id,dimension')
+        .from('journal_posts')
+        .select('user_id,p_content,e_content,r_content,m_content,a_content')
         .gte('created_at', `${weekStart}T00:00:00`)
         .lte('created_at', `${weekEnd}T23:59:59`),
       supabase
-        .from('perma_entries')
+        .from('journal_posts')
         .select('user_id,created_at')
         .order('created_at', { ascending: false })
         .limit(500),
@@ -92,17 +96,22 @@ function CoachDashboard() {
     const weekCountByUser: Record<string, number> = {}
     const dist: Record<DimensionKey, number> = { P: 0, E: 0, R: 0, M: 0, A: 0 }
     let totalThisWeekMembers = 0
-    for (const e of weekEntries ?? []) {
-      if (!memberIds.has(e.user_id)) continue
+    const len = (s: string | null) => (s ?? '').replace(/\s/g, '').length
+    for (const p of weekPosts ?? []) {
+      if (!memberIds.has(p.user_id)) continue
       totalThisWeekMembers += 1
-      weekCountByUser[e.user_id] = (weekCountByUser[e.user_id] ?? 0) + 1
-      if (e.dimension in dist) dist[e.dimension as DimensionKey] += 1
+      weekCountByUser[p.user_id] = (weekCountByUser[p.user_id] ?? 0) + 1
+      dist.P += len(p.p_content)
+      dist.E += len(p.e_content)
+      dist.R += len(p.r_content)
+      dist.M += len(p.m_content)
+      dist.A += len(p.a_content)
     }
     setDimDist(dist)
     setTotalThisWeek(totalThisWeekMembers)
 
     const lastEntryByUser: Record<string, string> = {}
-    for (const e of recentEntries ?? []) {
+    for (const e of recentPosts ?? []) {
       if (!lastEntryByUser[e.user_id]) lastEntryByUser[e.user_id] = e.created_at
     }
 
