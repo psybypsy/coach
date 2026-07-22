@@ -131,6 +131,9 @@ function MemberDetailPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<'analyze' | 'client' | null>(null)
   const [openRow, setOpenRow] = useState<number | null>(null)
+  const [openBlocks, setOpenBlocks] = useState<number[]>([])
+  // 圖表模塊預設展開；收起的 key 記在這裡（#6：所有模塊都可展開／收合）
+  const [collapsedCharts, setCollapsedCharts] = useState<string[]>([])
   const [editBlock, setEditBlock] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
   const [message, setMessage] = useState<string | null>(null)
@@ -185,7 +188,7 @@ function MemberDetailPage() {
     return fetch(`${API_BASE}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ member_id: id }),
+      body: JSON.stringify({ member_id: id, language }),
     })
   }
 
@@ -242,6 +245,14 @@ function MemberDetailPage() {
   function toggleChart(key: string, val: boolean) {
     if (!analysis) return
     void persist({ client_charts: { ...analysis.client_charts, [key]: val } })
+  }
+
+  function toggleBlockOpen(i: number) {
+    setOpenBlocks((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]))
+  }
+
+  function toggleChartOpen(key: string) {
+    setCollapsedCharts((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
   }
 
   function startEdit(i: number) {
@@ -405,7 +416,7 @@ function MemberDetailPage() {
             <div className="mb-4 flex flex-wrap items-center gap-3">
               <button
                 onClick={runAnalyze}
-                disabled={busy !== null || posts.length < 2}
+                disabled={busy !== null || posts.length < 1}
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
               >
                 {busy === 'analyze' ? t('分析中…') : analysis ? t('重新生成分析') : t('生成情緒分析與情報簡報')}
@@ -415,17 +426,27 @@ function MemberDetailPage() {
                   {t('基於')} {analysis.based_on} {t('週')}
                 </span>
               )}
-              {posts.length < 2 && (
-                <span className="text-xs text-muted-foreground">{t('至少需要 2 週書寫')}</span>
+              {posts.length < 1 && (
+                <span className="text-xs text-muted-foreground">{t('至少需要 1 次書寫')}</span>
               )}
             </div>
 
             {analysis && analysis.sessions.length > 0 && (
               <>
-                {CHART_DEFS.map((c) => (
+                {CHART_DEFS.map((c) => {
+                  const open = !collapsedCharts.includes(c.key)
+                  return (
                   <div key={c.key} className="mb-4">
                     <div className="cv-slbl">
-                      <span>{c.title}</span>
+                      <span
+                        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}
+                        onClick={() => toggleChartOpen(c.key)}
+                      >
+                        <span className="cv-caret" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>
+                          ▶
+                        </span>
+                        {t(c.title)}
+                      </span>
                       <label className="cv-inc">
                         <input
                           type="checkbox"
@@ -435,9 +456,10 @@ function MemberDetailPage() {
                         {t('納入客戶版')}
                       </label>
                     </div>
-                    {renderChart(c.key)}
+                    {open && renderChart(c.key)}
                   </div>
-                ))}
+                  )
+                })}
 
                 {/* 每次 valence 與評分理由 */}
                 <div className="cv-slbl">
@@ -497,14 +519,24 @@ function MemberDetailPage() {
                 <div className="cv-slbl" style={{ marginTop: 22 }}>
                   <span>{t('教練情報簡報')}</span>
                 </div>
-                {analysis.blocks.map((b, i) => (
+                {analysis.blocks.map((b, i) => {
+                  const open = openBlocks.includes(i) || editBlock === i
+                  return (
                   <div key={i} className={`cv-block ${b.include ? '' : 'coachonly'}`}>
-                    <div className="cv-block-hd">
+                    <div
+                      className="cv-block-hd"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => editBlock === null && toggleBlockOpen(i)}
+                    >
+                      <span className="cv-caret" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>
+                        ▶
+                      </span>
                       <span className="cv-block-title">{b.title}</span>
                       <span className={`cv-block-tag ${b.include ? 'inc' : 'only'}`}>
                         {b.include ? t('納入客戶版') : t('僅教練')}
                       </span>
                     </div>
+                    {open && (
                     <div className="cv-block-body">
                       {editBlock === i ? (
                         <>
@@ -547,8 +579,10 @@ function MemberDetailPage() {
                         </>
                       )}
                     </div>
+                    )}
                   </div>
-                ))}
+                  )
+                })}
               </>
             )}
           </section>
@@ -590,7 +624,7 @@ function MemberDetailPage() {
                 )}
               </div>
               {analysis.client_text && (
-                <div className="cv-doc">
+                <div className="cv-doc" id="cv-print-area">
                   <div className="cv-doc-head">
                     <div className="cv-doc-title">{t('個人福祉回顧')}</div>
                     <div className="cv-doc-meta">
@@ -604,7 +638,7 @@ function MemberDetailPage() {
                       {CHART_DEFS.filter((c) => analysis.client_charts?.[c.key]).map((c) => (
                         <div key={c.key} className="mb-4">
                           <div className="cv-slbl">
-                            <span>{c.title}</span>
+                            <span>{t(c.title)}</span>
                           </div>
                           {renderChart(c.key)}
                         </div>
@@ -738,4 +772,16 @@ const COACH_VIZ_CSS = `
 .cv-doc strong{font-weight:800}
 .cv-doc-sign{margin-top:26px;padding-top:16px;border-top:1px solid #E2E5EA;font-size:13px;color:#54606E}
 .cv-doc-charts{margin-top:8px;font-family:-apple-system,'PingFang TC','Noto Sans TC',sans-serif}
+/* #7 可讀性：把每個區塊開頭的「Takeaway / 重點」那一段框起來，讓教練一眼抓到重點 */
+.cv-md{font-size:13.5px;line-height:1.85}
+.cv-md>p:first-child{background:#F6F1E7;border-left:3px solid #B5843A;padding:9px 13px;border-radius:6px;margin:0 0 12px;color:#1C2530}
+.cv-md h2,.cv-md h3{margin:16px 0 7px}
+.cv-md ul{margin:6px 0 12px 20px}
+.cv-md li{margin-bottom:5px;line-height:1.7}
+/* #3 列印：只輸出客戶報告（Personal Well-being Review），不印整頁 */
+@media print{
+  body *{visibility:hidden !important}
+  #cv-print-area,#cv-print-area *{visibility:visible !important}
+  #cv-print-area{position:absolute;left:0;top:0;width:100%;margin:0;border:none;box-shadow:none;padding:0 8mm}
+}
 `

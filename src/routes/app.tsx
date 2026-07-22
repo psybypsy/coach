@@ -25,6 +25,8 @@ function AppShell() {
   const [displayName, setDisplayName] = useState('')
   const [panel, setPanel] = useState<Panel>('none')
   const onWelcome = pathname.startsWith('/app/welcome')
+  // 教練後台不顯示成員導覽（PERMA Self-Reflection / 社群），避免點了跳到成員介面又回不來。
+  const onCoach = pathname.startsWith('/app/coach')
 
   useEffect(() => {
     let cancelled = false
@@ -92,7 +94,7 @@ function AppShell() {
           )}
         </div>
 
-        {!onWelcome && (
+        {!onWelcome && !onCoach && (
           <nav className="mx-auto -mt-1 flex max-w-4xl items-center gap-1 overflow-x-auto px-5 pb-2">
             {NAV_ITEMS.map((item) => {
               const active = pathname.startsWith(item.to)
