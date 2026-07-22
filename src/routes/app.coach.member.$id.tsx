@@ -50,6 +50,8 @@ interface CoachAnalysis {
   client_charts: Record<string, boolean>
   client_text: string | null
   client_date: string | null
+  // 英文分析的翻譯快取（見遷移 003）：預設英文，教練點「中文」時即時翻譯並存這裡
+  translations?: Record<string, { blocks: BriefBlock[]; sessions: SessionScore[] }>
   updated_at: string
 }
 
@@ -129,8 +131,13 @@ function MemberDetailPage() {
   const [posts, setPosts] = useState<JournalPost[]>([])
   const [analysis, setAnalysis] = useState<CoachAnalysis | null>(null)
   const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState<'analyze' | 'client' | null>(null)
+  const [busy, setBusy] = useState<'analyze' | 'client' | 'translate' | null>(null)
+  // 教練簡報內文顯示語言：預設英文（原生生成語言）；中文為即時翻譯的快取版
+  const [briefLang, setBriefLang] = useState<'en' | 'zh-TW'>('en')
   const [openRow, setOpenRow] = useState<number | null>(null)
+  const [openBlocks, setOpenBlocks] = useState<number[]>([])
+  // 圖表模塊預設展開；收起的 key 記在這裡（#6：所有模塊都可展開／收合）
+  const [collapsedCharts, setCollapsedCharts] = useState<string[]>([])
   const [editBlock, setEditBlock] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
   const [message, setMessage] = useState<string | null>(null)
@@ -176,7 +183,7 @@ function MemberDetailPage() {
     setLoading(false)
   }
 
-  async function authFetch(path: string) {
+  async function authFetch(path: string, body?: Record<string, unknown>) {
     const {
       data: { session },
     } = await supabase.auth.getSession()
@@ -185,7 +192,7 @@ function MemberDetailPage() {
     return fetch(`${API_BASE}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ member_id: id }),
+      body: JSON.stringify(body ?? { member_id: id, language }),
     })
   }
 
@@ -196,6 +203,35 @@ function MemberDetailPage() {
       const resp = await authFetch('/api/coach/analyze')
       if (resp.ok) {
         setAnalysis((await resp.json()) as CoachAnalysis)
+        setBriefLang('en') // 新內容、翻譯已作廢，回到英文
+      } else {
+        const body = (await resp.json().catch(() => ({}))) as { detail?: string }
+        setMessage(body.detail || t('發布失敗，請再試一次。'))
+      }
+    } catch {
+      setMessage(t('發布失敗，請再試一次。'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // 切換教練簡報內文語言：英文即時切；中文若無快取則呼叫後端翻譯一次
+  async function switchBriefLang(target: 'en' | 'zh-TW') {
+    if (target === 'en') {
+      setBriefLang('en')
+      return
+    }
+    if (analysis?.translations?.['zh-TW']) {
+      setBriefLang('zh-TW')
+      return
+    }
+    setBusy('translate')
+    setMessage(null)
+    try {
+      const resp = await authFetch('/api/coach/translate', { member_id: id, target: 'zh-TW' })
+      if (resp.ok) {
+        setAnalysis((await resp.json()) as CoachAnalysis)
+        setBriefLang('zh-TW')
       } else {
         const body = (await resp.json().catch(() => ({}))) as { detail?: string }
         setMessage(body.detail || t('發布失敗，請再試一次。'))
@@ -242,6 +278,14 @@ function MemberDetailPage() {
   function toggleChart(key: string, val: boolean) {
     if (!analysis) return
     void persist({ client_charts: { ...analysis.client_charts, [key]: val } })
+  }
+
+  function toggleBlockOpen(i: number) {
+    setOpenBlocks((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]))
+  }
+
+  function toggleChartOpen(key: string) {
+    setCollapsedCharts((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
   }
 
   function startEdit(i: number) {
@@ -377,6 +421,10 @@ function MemberDetailPage() {
   if (checking) return null
 
   const includedBlocks = analysis?.blocks.filter((b) => b.include) ?? []
+  // 內文顯示語言：中文且有快取則用翻譯版，否則用原生英文（依 index 對齊 canonical）
+  const briefTr = briefLang === 'zh-TW' ? analysis?.translations?.['zh-TW'] : undefined
+  const viewBlocks = briefTr?.blocks ?? analysis?.blocks ?? []
+  const viewSessions = briefTr?.sessions ?? analysis?.sessions ?? []
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-8">
@@ -405,7 +453,7 @@ function MemberDetailPage() {
             <div className="mb-4 flex flex-wrap items-center gap-3">
               <button
                 onClick={runAnalyze}
-                disabled={busy !== null || posts.length < 2}
+                disabled={busy !== null || posts.length < 1}
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
               >
                 {busy === 'analyze' ? t('分析中…') : analysis ? t('重新生成分析') : t('生成情緒分析與情報簡報')}
@@ -415,17 +463,48 @@ function MemberDetailPage() {
                   {t('基於')} {analysis.based_on} {t('週')}
                 </span>
               )}
-              {posts.length < 2 && (
-                <span className="text-xs text-muted-foreground">{t('至少需要 2 週書寫')}</span>
+              {posts.length < 1 && (
+                <span className="text-xs text-muted-foreground">{t('至少需要 1 次書寫')}</span>
               )}
             </div>
 
             {analysis && analysis.sessions.length > 0 && (
               <>
-                {CHART_DEFS.map((c) => (
+                {/* 內文語言切換：預設英文；點「中文」即時翻譯一次並快取，之後切換即時 */}
+                <div className="mb-4 flex items-center justify-end gap-2">
+                  <span className="text-xs text-muted-foreground">{t('內文語言')}</span>
+                  <div className="inline-flex overflow-hidden rounded-md border border-border">
+                    {(['en', 'zh-TW'] as const).map((lng) => (
+                      <button
+                        key={lng}
+                        onClick={() => switchBriefLang(lng)}
+                        disabled={busy === 'translate'}
+                        className={`px-3 py-1 text-xs font-semibold transition disabled:opacity-50 ${
+                          briefLang === lng
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-foreground-soft hover:bg-muted'
+                        }`}
+                      >
+                        {lng === 'en' ? 'EN' : busy === 'translate' ? t('翻譯中…') : '中文'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {CHART_DEFS.map((c) => {
+                  const open = !collapsedCharts.includes(c.key)
+                  return (
                   <div key={c.key} className="mb-4">
                     <div className="cv-slbl">
-                      <span>{c.title}</span>
+                      <span
+                        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}
+                        onClick={() => toggleChartOpen(c.key)}
+                      >
+                        <span className="cv-caret" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>
+                          ▶
+                        </span>
+                        {t(c.title)}
+                      </span>
                       <label className="cv-inc">
                         <input
                           type="checkbox"
@@ -435,15 +514,18 @@ function MemberDetailPage() {
                         {t('納入客戶版')}
                       </label>
                     </div>
-                    {renderChart(c.key)}
+                    {open && renderChart(c.key)}
                   </div>
-                ))}
+                  )
+                })}
 
                 {/* 每次 valence 與評分理由 */}
                 <div className="cv-slbl">
                   <span>{t('每次 valence 與評分理由')}</span>
                 </div>
-                {analysis.sessions.map((s, i) => (
+                {analysis.sessions.map((s, i) => {
+                  const vs = viewSessions[i] ?? s // 數字用 canonical，文字用顯示語言版
+                  return (
                   <div key={i} className={`cv-vrow ${openRow === i ? 'open' : ''}`}>
                     <div className="cv-vrow-hd" onClick={() => setOpenRow(openRow === i ? null : i)}>
                       <span className="cv-caret">▶</span>
@@ -463,10 +545,11 @@ function MemberDetailPage() {
                       <div className="cv-vrow-body">
                         <div className="cv-vreason">
                           <strong>{t('整體評分理由。')}</strong>
-                          {s.overallReason}
+                          {vs.overallReason}
                         </div>
                         {KEYS.map((k) => {
                           const dv = s.dims[k] || { v: 0, reason: '' }
+                          const reason = vs.dims[k]?.reason ?? dv.reason
                           return (
                             <div key={k} className="cv-vdim">
                               <span className="cv-vdim-key" style={{ background: DIMCOLOR[k] }}>
@@ -477,12 +560,12 @@ function MemberDetailPage() {
                                 {(dv.v || 0) > 0 ? '+' : ''}
                                 {dv.v || 0}
                               </span>
-                              <span className="cv-vdim-reason">{dv.reason || '—'}</span>
+                              <span className="cv-vdim-reason">{reason || '—'}</span>
                             </div>
                           )
                         })}
                         <div className="cv-emos">
-                          {(s.emotions || []).map((e, j) => (
+                          {(vs.emotions || []).map((e, j) => (
                             <span key={j} className={`cv-emo ${e.valence}`}>
                               {e.word}
                             </span>
@@ -491,20 +574,32 @@ function MemberDetailPage() {
                       </div>
                     )}
                   </div>
-                ))}
+                  )
+                })}
 
                 {/* 情報簡報區塊 */}
                 <div className="cv-slbl" style={{ marginTop: 22 }}>
                   <span>{t('教練情報簡報')}</span>
                 </div>
-                {analysis.blocks.map((b, i) => (
+                {analysis.blocks.map((b, i) => {
+                  const open = openBlocks.includes(i) || editBlock === i
+                  const view = viewBlocks[i] ?? b // 顯示語言版（標題/內文）；納入狀態仍用 canonical
+                  return (
                   <div key={i} className={`cv-block ${b.include ? '' : 'coachonly'}`}>
-                    <div className="cv-block-hd">
-                      <span className="cv-block-title">{b.title}</span>
+                    <div
+                      className="cv-block-hd"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => editBlock === null && toggleBlockOpen(i)}
+                    >
+                      <span className="cv-caret" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>
+                        ▶
+                      </span>
+                      <span className="cv-block-title">{view.title}</span>
                       <span className={`cv-block-tag ${b.include ? 'inc' : 'only'}`}>
                         {b.include ? t('納入客戶版') : t('僅教練')}
                       </span>
                     </div>
+                    {open && (
                     <div className="cv-block-body">
                       {editBlock === i ? (
                         <>
@@ -530,7 +625,7 @@ function MemberDetailPage() {
                         </>
                       ) : (
                         <>
-                          <div className="cv-md" dangerouslySetInnerHTML={{ __html: mdToHtml(b.body) }} />
+                          <div className="cv-md" dangerouslySetInnerHTML={{ __html: mdToHtml(view.body) }} />
                           <div className="cv-block-actions">
                             <label className="cv-inc">
                               <input
@@ -540,15 +635,23 @@ function MemberDetailPage() {
                               />
                               {t('納入客戶交付版')}
                             </label>
-                            <span className="cv-block-edit" onClick={() => startEdit(i)}>
-                              {t('編輯')}
-                            </span>
+                            {briefLang === 'en' ? (
+                              <span className="cv-block-edit" onClick={() => startEdit(i)}>
+                                {t('編輯')}
+                              </span>
+                            ) : (
+                              <span className="cv-block-edit" style={{ opacity: 0.5 }} title={t('請切回 EN 編輯原文')}>
+                                {t('編輯')}
+                              </span>
+                            )}
                           </div>
                         </>
                       )}
                     </div>
+                    )}
                   </div>
-                ))}
+                  )
+                })}
               </>
             )}
           </section>
@@ -590,7 +693,7 @@ function MemberDetailPage() {
                 )}
               </div>
               {analysis.client_text && (
-                <div className="cv-doc">
+                <div className="cv-doc" id="cv-print-area">
                   <div className="cv-doc-head">
                     <div className="cv-doc-title">{t('個人福祉回顧')}</div>
                     <div className="cv-doc-meta">
@@ -604,7 +707,7 @@ function MemberDetailPage() {
                       {CHART_DEFS.filter((c) => analysis.client_charts?.[c.key]).map((c) => (
                         <div key={c.key} className="mb-4">
                           <div className="cv-slbl">
-                            <span>{c.title}</span>
+                            <span>{t(c.title)}</span>
                           </div>
                           {renderChart(c.key)}
                         </div>
@@ -738,4 +841,16 @@ const COACH_VIZ_CSS = `
 .cv-doc strong{font-weight:800}
 .cv-doc-sign{margin-top:26px;padding-top:16px;border-top:1px solid #E2E5EA;font-size:13px;color:#54606E}
 .cv-doc-charts{margin-top:8px;font-family:-apple-system,'PingFang TC','Noto Sans TC',sans-serif}
+/* #7 可讀性：把每個區塊開頭的「Takeaway / 重點」那一段框起來，讓教練一眼抓到重點 */
+.cv-md{font-size:13.5px;line-height:1.85}
+.cv-md>p:first-child{background:#F6F1E7;border-left:3px solid #B5843A;padding:9px 13px;border-radius:6px;margin:0 0 12px;color:#1C2530}
+.cv-md h2,.cv-md h3{margin:16px 0 7px}
+.cv-md ul{margin:6px 0 12px 20px}
+.cv-md li{margin-bottom:5px;line-height:1.7}
+/* #3 列印：只輸出客戶報告（Personal Well-being Review），不印整頁 */
+@media print{
+  body *{visibility:hidden !important}
+  #cv-print-area,#cv-print-area *{visibility:visible !important}
+  #cv-print-area{position:absolute;left:0;top:0;width:100%;margin:0;border:none;box-shadow:none;padding:0 8mm}
+}
 `

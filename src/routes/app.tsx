@@ -25,6 +25,8 @@ function AppShell() {
   const [displayName, setDisplayName] = useState('')
   const [panel, setPanel] = useState<Panel>('none')
   const onWelcome = pathname.startsWith('/app/welcome')
+  // 教練後台不顯示成員導覽（PERMA Self-Reflection / 社群），避免點了跳到成員介面又回不來。
+  const onCoach = pathname.startsWith('/app/coach')
 
   useEffect(() => {
     let cancelled = false
@@ -67,7 +69,8 @@ function AppShell() {
     <div className="flex min-h-screen flex-col bg-background">
       <header className="relative border-b border-border">
         <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-5">
-          {!onWelcome ? (
+          {/* 教練後台與歡迎頁不顯示成員導覽（PERMA / 社群），只留品牌名。 */}
+          {!onWelcome && !onCoach ? (
             <nav className="flex items-center gap-4">
               <span className="font-heading text-sm font-semibold text-foreground">{BRAND.name}</span>
               {NAV_ITEMS.map((item) => {

@@ -127,6 +127,7 @@ create table coach_analyses (
   client_text   text,
   client_date   date,
   coach_id      uuid references profiles(id),
+  translations  jsonb   not null default '{}'::jsonb, -- 見遷移 003：{ "zh-TW": { blocks, sessions } } 英文分析的翻譯快取
   updated_at    timestamptz not null default now()
 );
 
