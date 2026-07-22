@@ -14,7 +14,7 @@ export const Route = createFileRoute('/login')({
   component: LoginPage,
 })
 
-type Step = 'email' | 'otp'
+type Step = 'email' | 'sent'
 
 function getSavedEmails(): string[] {
   try {
@@ -41,28 +41,46 @@ function saveEmailToHistory(email: string) {
 function LoginPage() {
   const { t, language } = useLanguage()
   const [email, setEmail] = useState('')
-  const [otp, setOtp] = useState('')
   const [step, setStep] = useState<Step>('email')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedEmails] = useState(getSavedEmails())
 
   useEffect(() => {
-    // 清空 URL hash（刪除舊的連結驗證錯誤）
-    if (window.location.hash) {
+    const description = readAuthErrorFromUrl()
+    if (description) {
+      setError(t('登入連結已失效或發生錯誤，請重新輸入 email 再試一次。'))
       window.history.replaceState(null, '', window.location.pathname)
     }
-  }, [])
+    // 若本機已有有效 session（登入過且未登出），直接進入 app、跳過登入頁。
+    // 用 getSession（讀 localStorage、即時、不發網路請求）而非 getUser。
+    void (async () => {
+      const { data } = await supabase.auth.getSession()
+      if (data.session) {
+        window.location.href = '/app/home'
+      }
+    })()
+  }, [t])
 
-  const handleSendOtp = async () => {
-    const trimmed = email.trim()
+  const sendLink = async (targetEmail: string) => {
+    const trimmed = targetEmail.trim()
     if (!trimmed) return
+    setEmail(trimmed)
     setLoading(true)
     setError(null)
+
+    // 送出前先確認本機有沒有 session（例如剛在別的分頁登入過）。
+    const { data } = await supabase.auth.getSession()
+    if (data.session?.user.email === trimmed) {
+      window.location.href = '/app/home'
+      return
+    }
+
     const { error } = await supabase.auth.signInWithOtp({
       email: trimmed,
       options: {
         shouldCreateUser: true,
+        emailRedirectTo: `${window.location.origin}/app/home`,
       },
     })
     setLoading(false)
@@ -77,26 +95,15 @@ function LoginPage() {
       return
     }
     saveEmailToHistory(trimmed)
-    setStep('otp')
+    setStep('sent')
   }
 
-  const handleVerifyOtp = async () => {
-    const trimmed = email.trim()
-    const otpTrimmed = otp.trim()
-    if (!trimmed || !otpTrimmed) return
-    setLoading(true)
-    setError(null)
-    const { error } = await supabase.auth.verifyOtp({
-      email: trimmed,
-      token: otpTrimmed,
-      type: 'email',
-    })
-    setLoading(false)
-    if (error) {
-      setError(t('驗證碼有誤，請確認後重試。'))
-      return
-    }
-    saveEmailToHistory(trimmed)
+  function readAuthErrorFromUrl(): string | null {
+    const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
+    const params = new URLSearchParams(hash)
+    const description = params.get('error_description')
+    if (!description) return null
+    return decodeURIComponent(description.replace(/\+/g, ' '))
   }
 
   return (
@@ -127,7 +134,7 @@ function LoginPage() {
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendOtp()}
+                  onKeyDown={(e) => e.key === 'Enter' && void sendLink(email)}
                   className="h-11 w-full rounded-lg border border-border bg-background px-4 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
                 />
               </div>
@@ -140,8 +147,9 @@ function LoginPage() {
                       <button
                         key={e}
                         type="button"
-                        onClick={() => setEmail(e)}
-                        className="rounded-full border border-border bg-muted px-3 py-1.5 text-xs text-foreground transition hover:bg-primary-soft"
+                        onClick={() => void sendLink(e)}
+                        disabled={loading}
+                        className="rounded-full border border-border bg-muted px-3 py-1.5 text-xs text-foreground transition hover:bg-primary-soft disabled:opacity-50"
                       >
                         {e}
                       </button>
@@ -153,11 +161,11 @@ function LoginPage() {
               {error && <p className="text-sm leading-relaxed text-rust">{error}</p>}
 
               <button
-                onClick={() => void handleSendOtp()}
+                onClick={() => void sendLink(email)}
                 disabled={loading || !email.trim()}
                 className="flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-soft transition hover:bg-primary-glow active:scale-[0.98] disabled:opacity-50"
               >
-                {loading ? t('寄送中…') : t('寄送驗證碼')}
+                {loading ? t('寄送中…') : t('寄送登入連結')}
               </button>
 
               <p className="text-center text-xs leading-relaxed text-muted-foreground">
@@ -165,44 +173,16 @@ function LoginPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="text-center">
-                <p className="font-heading text-lg text-foreground">{t('輸入驗證碼')}</p>
-                <p className="mt-1 text-sm text-foreground-soft">{email}</p>
-              </div>
-
-              <div>
-                <label htmlFor="otp" className="mb-1.5 block text-sm font-semibold text-foreground">
-                  {t('驗證碼')}
-                </label>
-                <input
-                  id="otp"
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="000000"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  onKeyDown={(e) => e.key === 'Enter' && handleVerifyOtp()}
-                  maxLength={6}
-                  className="h-11 w-full rounded-lg border border-border bg-background px-4 text-center text-sm font-semibold text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
-                  autoFocus
-                />
-              </div>
-
-              {error && <p className="text-sm leading-relaxed text-rust">{error}</p>}
-
-              <button
-                onClick={() => void handleVerifyOtp()}
-                disabled={loading || otp.length !== 6}
-                className="flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-soft transition hover:bg-primary-glow active:scale-[0.98] disabled:opacity-50"
-              >
-                {loading ? t('驗證中…') : t('確認驗證碼')}
-              </button>
-
+            <div className="space-y-3 text-center">
+              <p className="font-heading text-lg text-foreground">{t('連結已寄出')}</p>
+              <p className="text-sm leading-relaxed text-foreground-soft">
+                {t('已寄送登入連結至')} <span className="font-semibold text-foreground">{email}</span>
+                <br />
+                {t('沒收到嗎？請確認垃圾郵件夾，或稍後再試一次。')}
+              </p>
               <button
                 onClick={() => {
                   setStep('email')
-                  setOtp('')
                   setError(null)
                 }}
                 className="text-xs font-semibold text-muted-foreground underline"
