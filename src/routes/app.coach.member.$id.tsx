@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { supabase } from '../lib/supabase'
 import { useLanguage } from '../lib/i18n/context'
@@ -55,6 +55,22 @@ interface CoachAnalysis {
   updated_at: string
 }
 
+// #2 情報簡報區塊標題一律用「固定的 canonical 標題」（依區塊順序）並走 t()，
+// 預設英文、跟隨介面語言 —— 這樣即使某成員的分析是舊版用中文生成、標題存成中文，
+// 教練介面也不會出現「中文標題混英文框架」。後端固定依此順序產出 10 個區塊。
+const BLOCK_TITLES = [
+  '整體情緒與福祉軌跡',
+  'PERMA 五面向剖析',
+  '優勢與內在資源',
+  '自我決定論動機',
+  '語言指紋',
+  '橫向主題與模式',
+  '未言之事',
+  '教練假設',
+  '值得關注',
+  '會談準備',
+]
+
 const CHART_DEFS: { key: string; title: string }[] = [
   { key: 'summary', title: '情緒 valence 摘要' },
   { key: 'trend', title: '整體情緒 valence 趨勢' },
@@ -101,6 +117,29 @@ function mdToHtml(md: string): string {
   return h
 }
 
+// #6 可收合的 section 標題（點整行展開／收合，帶旋轉三角）
+function SectionHeading({
+  open,
+  onToggle,
+  children,
+}: {
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <h2
+      className="mb-2 flex cursor-pointer select-none items-center gap-2 text-sm font-semibold text-foreground-soft"
+      onClick={onToggle}
+    >
+      <span className="cv-caret" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>
+        ▶
+      </span>
+      {children}
+    </h2>
+  )
+}
+
 function chartData(sessions: SessionScore[]) {
   const ov = sessions.map((s) => s.overall)
   const avg = Math.round(ov.reduce((x, v) => x + v, 0) / ov.length)
@@ -138,6 +177,8 @@ function MemberDetailPage() {
   const [openBlocks, setOpenBlocks] = useState<number[]>([])
   // 圖表模塊預設展開；收起的 key 記在這裡（#6：所有模塊都可展開／收合）
   const [collapsedCharts, setCollapsedCharts] = useState<string[]>([])
+  // #6 最外層三個大 section 也可展開／收合，預設全展開
+  const [openSections, setOpenSections] = useState({ deep: true, client: true, timeline: true })
   const [editBlock, setEditBlock] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
   const [message, setMessage] = useState<string | null>(null)
@@ -446,7 +487,14 @@ function MemberDetailPage() {
 
           {/* ── 教練深度分析 ── */}
           <section className="mb-8">
-            <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('教練深度分析')}</h2>
+            <SectionHeading
+              open={openSections.deep}
+              onToggle={() => setOpenSections((p) => ({ ...p, deep: !p.deep }))}
+            >
+              {t('教練深度分析')}
+            </SectionHeading>
+            {openSections.deep && (
+            <>
             <p className="mb-3 text-xs text-muted-foreground">
               {t('對每週回饋做情緒 valence 分析與情報簡報，僅教練可見。')}
             </p>
@@ -594,7 +642,7 @@ function MemberDetailPage() {
                       <span className="cv-caret" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>
                         ▶
                       </span>
-                      <span className="cv-block-title">{view.title}</span>
+                      <span className="cv-block-title">{t(BLOCK_TITLES[i] ?? view.title)}</span>
                       <span className={`cv-block-tag ${b.include ? 'inc' : 'only'}`}>
                         {b.include ? t('納入客戶版') : t('僅教練')}
                       </span>
@@ -654,12 +702,21 @@ function MemberDetailPage() {
                 })}
               </>
             )}
+            </>
+            )}
           </section>
 
           {/* ── 客戶交付版 ── */}
           {analysis && analysis.sessions.length > 0 && (
             <section className="mb-8">
-              <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('客戶交付版')}</h2>
+              <SectionHeading
+                open={openSections.client}
+                onToggle={() => setOpenSections((p) => ({ ...p, client: !p.client }))}
+              >
+                {t('客戶交付版')}
+              </SectionHeading>
+              {openSections.client && (
+              <>
               <p className="mb-3 text-xs text-muted-foreground">
                 {t('依勾選納入的區塊，生成給客戶本人的正式回顧文件。')}
               </p>
@@ -717,13 +774,20 @@ function MemberDetailPage() {
                   <div className="cv-doc-sign">{t('教練　陳郁敏')}</div>
                 </div>
               )}
+              </>
+              )}
             </section>
           )}
 
           {/* ── 書寫時間軸（原有）── */}
           <section>
-            <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('書寫時間軸')}</h2>
-            {entries.length === 0 ? (
+            <SectionHeading
+              open={openSections.timeline}
+              onToggle={() => setOpenSections((p) => ({ ...p, timeline: !p.timeline }))}
+            >
+              {t('書寫時間軸')}
+            </SectionHeading>
+            {openSections.timeline && (entries.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t('目前還沒有人發布書寫')}</p>
             ) : (
               <div className="flex flex-col gap-3">
@@ -753,7 +817,7 @@ function MemberDetailPage() {
                   )
                 })}
               </div>
-            )}
+            ))}
           </section>
         </>
       )}
@@ -841,9 +905,7 @@ const COACH_VIZ_CSS = `
 .cv-doc strong{font-weight:800}
 .cv-doc-sign{margin-top:26px;padding-top:16px;border-top:1px solid #E2E5EA;font-size:13px;color:#54606E}
 .cv-doc-charts{margin-top:8px;font-family:-apple-system,'PingFang TC','Noto Sans TC',sans-serif}
-/* #7 可讀性：把每個區塊開頭的「Takeaway / 重點」那一段框起來，讓教練一眼抓到重點 */
 .cv-md{font-size:13.5px;line-height:1.85}
-.cv-md>p:first-child{background:#F6F1E7;border-left:3px solid #B5843A;padding:9px 13px;border-radius:6px;margin:0 0 12px;color:#1C2530}
 .cv-md h2,.cv-md h3{margin:16px 0 7px}
 .cv-md ul{margin:6px 0 12px 20px}
 .cv-md li{margin-bottom:5px;line-height:1.7}
