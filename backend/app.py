@@ -500,6 +500,19 @@ def _client_report_system(language: str = "en") -> str:
     return _CLIENT_REPORT_SYSTEM_ZH if language == "zh-TW" else _CLIENT_REPORT_SYSTEM_EN
 
 
+_TRANSLATE_SYSTEM = """You translate an executive-coaching analysis from English into Traditional Chinese (Taiwan, 繁體中文).
+
+You will receive a JSON object with "blocks" and "sessions". Return ONLY a JSON object with the exact same structure, keys, and array lengths, translating these human-readable text fields into natural, professional Traditional Chinese:
+- blocks[].title, blocks[].body
+- sessions[].overallReason, sessions[].dims.P/E/R/M/A.reason, sessions[].emotions[].word
+
+Rules:
+- Preserve ALL Markdown syntax in bodies (##, **, *, -) exactly, including the leading "**Takeaway —** ..." line (translate the word Takeaway to 重點).
+- Keep academic citations / APA references and *italic* work titles in their original language — do NOT translate author names, journal names, or book titles.
+- Do NOT change any numbers, any "valence" values (positive/negative/neutral), "intensity", "v", "include", or any JSON keys.
+- No emoji. Output valid JSON only — no commentary, no code fences."""
+
+
 def _clamp_v(v) -> int:
     try:
         n = int(round(float(v)))
@@ -594,10 +607,9 @@ async def coach_analyze(req: CoachMemberRequest, authorization: str = Header(...
     if len(posts) < 1:
         raise HTTPException(status_code=409, detail="這位成員還沒有任何週記")
 
-    # 依學員實際書寫內容判斷語言（非教練介面語言）
-    lang = _detect_lang(
-        " ".join((p.get(f"{k.lower()}_content") or "") for p in posts for k in _PERMA_KEYS)
-    )
+    # 教練深度分析一律以英文生成（教練工作語言預設英文）；中文由前端點「中文」時
+    # 呼叫 /api/coach/translate 即時翻譯並快取，見遷移 003。
+    lang = "en"
 
     dump_parts = []
     for i, p in enumerate(posts):
@@ -629,6 +641,7 @@ async def coach_analyze(req: CoachMemberRequest, authorization: str = Header(...
         "sessions": sessions,
         "blocks": blocks,
         "client_charts": _CLIENT_CHART_DEFAULTS,
+        "translations": {},  # 重新生成 → 舊翻譯作廢
         "coach_id": coach_id,
         "updated_at": datetime.now(TW_TZ).isoformat(),
     }
@@ -687,6 +700,67 @@ async def coach_client_report(req: CoachMemberRequest, authorization: str = Head
     if update_resp.status_code in (200, 201) and update_resp.json():
         return update_resp.json()[0]
     return {**analysis, "client_text": client_text, "client_date": client_date}
+
+
+class CoachTranslateRequest(BaseModel):
+    member_id: str
+    target: str = "zh-TW"  # 目前只支援翻成繁體中文；英文為原生生成語言
+
+
+@app.post("/api/coach/translate")
+async def coach_translate(req: CoachTranslateRequest, authorization: str = Header(...)):
+    """把已生成的英文分析（blocks + sessions 的文字欄位）翻成目標語言並快取。
+    已快取則直接回傳，不重複呼叫模型。"""
+    token = authorization.removeprefix("Bearer ").strip()
+    coach_id = await require_coach(token)
+
+    resp = await db().get(
+        f"{SUPABASE_REST}/coach_analyses",
+        headers=SUPABASE_HEADERS,
+        params=[("member_id", f"eq.{req.member_id}"), ("select", "*"), ("limit", "1")],
+    )
+    rows = resp.json() if resp.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=409, detail="請先生成教練分析")
+    analysis = rows[0]
+
+    translations = analysis.get("translations") or {}
+    if req.target in translations:  # 已快取，直接回傳
+        return analysis
+
+    source = {"blocks": analysis.get("blocks") or [], "sessions": analysis.get("sessions") or []}
+    msg = await claude().messages.create(
+        model=_COACH_ANALYSIS_MODEL,
+        max_tokens=8000,
+        thinking={"type": "disabled"},
+        system=_TRANSLATE_SYSTEM,
+        messages=[{"role": "user", "content": json.dumps(source, ensure_ascii=False)}],
+    )
+    meter_claude("coach-translate", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)
+
+    try:
+        match = re.search(r"\{.*\}", _msg_text(msg), re.DOTALL)
+        if not match:
+            raise ValueError("找不到 JSON")
+        translated = json.loads(match.group())
+        if not isinstance(translated.get("blocks"), list) or not isinstance(translated.get("sessions"), list):
+            raise ValueError("結構不符")
+        if len(translated["blocks"]) != len(source["blocks"]) or len(translated["sessions"]) != len(source["sessions"]):
+            raise ValueError("長度不符")
+    except Exception as exc:
+        logger.warning("coach_translate parse failed [%s]: %s", type(exc).__name__, exc)
+        raise HTTPException(status_code=502, detail="翻譯解析失敗，請重新嘗試")
+
+    translations[req.target] = {"blocks": translated["blocks"], "sessions": translated["sessions"]}
+    update_resp = await db().patch(
+        f"{SUPABASE_REST}/coach_analyses",
+        headers={**SUPABASE_HEADERS, "Prefer": "return=representation"},
+        params=[("member_id", f"eq.{req.member_id}")],
+        json={"translations": translations},
+    )
+    if update_resp.status_code in (200, 201) and update_resp.json():
+        return update_resp.json()[0]
+    return {**analysis, "translations": translations}
 
 
 if __name__ == "__main__":

@@ -61,6 +61,11 @@ export const coach: Record<string, Translation> = {
   '情緒歷程一覽': { en: 'Emotional journey at a glance' },
   '教練　陳郁敏': { en: 'Coach · Tan Yee Ming' },
 
+  // 內文語言切換
+  '內文語言': { en: 'Text language' },
+  '翻譯中…': { en: 'Translating…' },
+  '請切回 EN 編輯原文': { en: 'Switch to EN to edit the source text' },
+
   // 圖表標題（deep analysis / 客戶版共用）
   '情緒 valence 摘要': { en: 'Valence summary' },
   '整體情緒 valence 趨勢': { en: 'Overall valence trend' },
