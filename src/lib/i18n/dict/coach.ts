@@ -87,4 +87,34 @@ export const coach: Record<string, Translation> = {
   '正負情緒平衡': { en: 'Positive–negative affect balance' },
   '情緒詞雲': { en: 'Emotion word cloud' },
   '下載 PDF': { en: 'Download PDF' },
+  '下載 Word': { en: 'Download Word' },
+  '直接編輯客戶版文字（Markdown：## 標題、** 粗體、- 條列），儲存後即更新交付文件。': {
+    en: 'Edit the client version text directly (Markdown: ## headings, ** bold **, - bullets). Saving updates the deliverable.',
+  },
+
+  // 自訂分析框架
+  '自訂分析框架': { en: 'Custom analysis framework' },
+  '用自己的話描述你想分析什麼，AI 會依心理學文獻生成一個有理論依據的框架；你可以編輯後用它產生一個新的情報簡報區塊。': {
+    en: 'Describe in your own words what you want to analyze. AI will generate a theory-grounded framework from the psychology literature; you can edit it, then use it to produce a new brief block.',
+  },
+  '例如：看這位成員面對轉變時的能動性 / 情緒調節的方式 / 自我批評 vs 自我疼惜': {
+    en: 'e.g. this member’s agency through change / how they regulate emotion / self-criticism vs self-compassion',
+  },
+  'AI 生成分析框架': { en: 'Generate framework with AI' },
+  '生成的分析框架（可編輯）': { en: 'Generated framework (editable)' },
+  '框架名稱': { en: 'Framework name' },
+  '理論依據 / 出處': { en: 'Theory basis / source' },
+  '分析視角': { en: 'Analytical lens' },
+  '分析維度': { en: 'Dimensions' },
+  '維度名': { en: 'Dimension' },
+  '要留意的語言／行為線索': { en: 'Language / behavioral cues to watch for' },
+  '證據規則（引用原話）': { en: 'Evidence rule (quote their words)' },
+  '移除維度': { en: 'Remove dimension' },
+  '新增維度': { en: 'Add dimension' },
+  '參考文獻': { en: 'References' },
+  '用這個框架分析': { en: 'Analyze with this framework' },
+  'AI 框架': { en: 'AI framework' },
+  '刪除': { en: 'Delete' },
+  '請先描述你想分析什麼': { en: 'Describe what you want to analyze first' },
+  '請至少保留一個維度': { en: 'Keep at least one dimension' },
 }

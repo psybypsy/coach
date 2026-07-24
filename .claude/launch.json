@@ -5,13 +5,15 @@
       "name": "perma-coach-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     },
     {
       "name": "perma-coach-dev-5174",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 5174
+      "port": 5174,
+      "autoPort": true
     }
   ]
 }

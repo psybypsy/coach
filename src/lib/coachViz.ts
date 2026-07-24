@@ -87,7 +87,7 @@ export function valLine(series: LineSeries[], count: number): string {
   const iH = H - padT - padB
   const x = (i: number) => (n === 1 ? padL + iW / 2 : padL + (i / (n - 1)) * iW)
   const y = (v: number) => padT + (1 - (v + 100) / 200) * iH
-  let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:none">`
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:none">`
   ;[100, 50, 0, -50, -100].forEach((g) => {
     const yy = y(g)
     const mid = g === 0
@@ -122,7 +122,7 @@ export function valRadar(a: Record<DimKey, number> | null, b: Record<DimKey, num
   const ang = (i: number) => ((-90 + i * 72) * Math.PI) / 180
   const rad = (v: number) => (v + 100) / 200
   const pt = (i: number, f: number): [number, number] => [cx + Math.cos(ang(i)) * R * f, cy + Math.sin(ang(i)) * R * f]
-  let svg = `<svg viewBox="0 0 ${size} ${size + 14}" width="${size}" height="${size + 14}">`
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size + 14}" width="${size}" height="${size + 14}">`
   ;[0, 0.25, 0.5, 0.75, 1].forEach((f) => {
     let d = ''
     for (let i = 0; i < 5; i++) {
@@ -198,7 +198,7 @@ export function affectBalance(sessions: SessionScore[]): string {
   const bw = Math.min(30, (iW / n) * 0.5)
   const cx = (i: number) => padL + (i + 0.5) * (iW / n)
   const sc = (iH / 2 - 6) / maxV
-  let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:none">`
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:none">`
   svg += `<text x="${padL}" y="${padT - 4}" font-size="9" fill="${HEX.pos}">正向</text><text x="${padL}" y="${H - 14}" font-size="9" fill="${HEX.neg}">負向</text>`
   svg += `<line x1="${padL}" y1="${cy}" x2="${W - padR}" y2="${cy}" stroke="${HEX.border2}" stroke-width="1.5"/>`
   data.forEach((d, i) => {
