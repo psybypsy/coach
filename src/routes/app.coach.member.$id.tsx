@@ -41,6 +41,22 @@ interface BriefBlock {
   title: string
   body: string
   include: boolean
+  custom?: boolean // 由教練自訂框架生成的區塊
+}
+
+interface FwDimension {
+  name: string
+  look_for: string
+  evidence_rule: string
+}
+
+interface Framework {
+  name: string
+  basis: string
+  lens: string
+  dimensions: FwDimension[]
+  references: string[]
+  note: string
 }
 
 interface CoachAnalysis {
@@ -132,7 +148,10 @@ function MemberDetailPage() {
   const [posts, setPosts] = useState<JournalPost[]>([])
   const [analysis, setAnalysis] = useState<CoachAnalysis | null>(null)
   const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState<'analyze' | 'client' | 'translate' | null>(null)
+  const [busy, setBusy] = useState<'analyze' | 'client' | 'translate' | 'framework' | null>(null)
+  // 自訂分析框架：描述 → AI 生成可編輯的框架草稿 → 用它分析
+  const [fwDesc, setFwDesc] = useState('')
+  const [fwDraft, setFwDraft] = useState<Framework | null>(null)
   // 教練簡報內文顯示語言：預設英文（原生生成語言）；中文為即時翻譯的快取版
   const [briefLang, setBriefLang] = useState<'en' | 'zh-TW'>('en')
   const [openRow, setOpenRow] = useState<number | null>(null)
@@ -141,6 +160,9 @@ function MemberDetailPage() {
   const [collapsedCharts, setCollapsedCharts] = useState<string[]>([])
   const [editBlock, setEditBlock] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
+  // 客戶交付版可直接行內編輯（存進 coach_analyses.client_text）
+  const [editClient, setEditClient] = useState(false)
+  const [clientEditText, setClientEditText] = useState('')
   const [message, setMessage] = useState<string | null>(null)
 
   useEffect(() => {
@@ -262,6 +284,96 @@ function MemberDetailPage() {
     }
   }
 
+  // 教練描述想分析什麼 → AI 上網找對應理論 → 生成可編輯的框架草稿
+  async function genFramework() {
+    const description = fwDesc.trim()
+    if (description.length < 4) {
+      setMessage(t('請先描述你想分析什麼'))
+      return
+    }
+    setBusy('framework')
+    setMessage(null)
+    try {
+      const resp = await authFetch('/api/coach/framework/generate', { description, language })
+      if (resp.ok) {
+        const fw = (await resp.json()) as Partial<Framework>
+        setFwDraft({
+          name: fw.name ?? '',
+          basis: fw.basis ?? '',
+          lens: fw.lens ?? '',
+          dimensions: (fw.dimensions ?? []).map((d) => ({
+            name: d?.name ?? '',
+            look_for: d?.look_for ?? '',
+            evidence_rule: d?.evidence_rule ?? '',
+          })),
+          references: fw.references ?? [],
+          note: fw.note ?? '',
+        })
+      } else {
+        const body = (await resp.json().catch(() => ({}))) as { detail?: string }
+        setMessage(body.detail || t('發布失敗，請再試一次。'))
+      }
+    } catch {
+      setMessage(t('發布失敗，請再試一次。'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // 用教練確認後的框架，對成員週記生成一個情報簡報區塊，append 進既有分析
+  async function runFrameworkAnalysis() {
+    if (!fwDraft) return
+    const dims = fwDraft.dimensions.filter((d) => d.name.trim())
+    if (dims.length === 0) {
+      setMessage(t('請至少保留一個維度'))
+      return
+    }
+    setBusy('framework')
+    setMessage(null)
+    try {
+      const resp = await authFetch('/api/coach/analyze-framework', {
+        member_id: id,
+        framework: { ...fwDraft, dimensions: dims },
+        language,
+      })
+      if (resp.ok) {
+        setAnalysis((await resp.json()) as CoachAnalysis)
+        setBriefLang('en') // 新增區塊、翻譯快取已作廢，回到英文
+        setFwDraft(null)
+        setFwDesc('')
+      } else {
+        const body = (await resp.json().catch(() => ({}))) as { detail?: string }
+        setMessage(body.detail || t('發布失敗，請再試一次。'))
+      }
+    } catch {
+      setMessage(t('發布失敗，請再試一次。'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  function updateFwDim(i: number, key: keyof FwDimension, val: string) {
+    setFwDraft((prev) =>
+      prev
+        ? { ...prev, dimensions: prev.dimensions.map((d, j) => (j === i ? { ...d, [key]: val } : d)) }
+        : prev,
+    )
+  }
+  function addFwDim() {
+    setFwDraft((prev) =>
+      prev ? { ...prev, dimensions: [...prev.dimensions, { name: '', look_for: '', evidence_rule: '' }] } : prev,
+    )
+  }
+  function removeFwDim(i: number) {
+    setFwDraft((prev) => (prev ? { ...prev, dimensions: prev.dimensions.filter((_, j) => j !== i) } : prev))
+  }
+
+  function deleteBlock(i: number) {
+    if (!analysis) return
+    const blocks = analysis.blocks.filter((_, j) => j !== i)
+    void persist({ blocks })
+  }
+
   // 更新 coach_analyses（教練 RLS 允許）並同步本地狀態
   async function persist(patch: Partial<CoachAnalysis>) {
     if (!analysis) return
@@ -286,6 +398,12 @@ function MemberDetailPage() {
   function downloadClientPdf() {
     const el = document.getElementById('cv-print-area')
     if (!el) return
+    // 固定 720px 寬輸出：確保每張圖（尤其雷達＋A/P/M/R/E 清單）在任何視窗寬度下都各自容進一頁 A4
+    const prevWidth = el.style.width
+    el.style.width = '720px'
+    const restore = () => {
+      el.style.width = prevWidth
+    }
     void html2pdf()
       .set({
         margin: [12, 12, 14, 12],
@@ -293,10 +411,134 @@ function MemberDetailPage() {
         image: { type: 'jpeg', quality: 0.95 },
         html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: false },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
-        pagebreak: { mode: ['css', 'legacy'] },
+        // 圖表區另起一頁；圖表間依序流動排版，只有 avoid 擋住整塊圖（含雷達 A/P/M/R/E 清單）被從中間切開
+        pagebreak: {
+          mode: ['css', 'legacy'],
+          before: ['.cv-doc-charts'],
+          avoid: ['.cv-doc-chart', '.cv-rdelta', '.cv-stats', '.cv-wcloud'],
+        },
       })
       .from(el)
       .save()
+      .then(restore, restore)
+  }
+
+  // 客戶版行內編輯：進入編輯 → 改文字 → 存回 client_text
+  function startClientEdit() {
+    if (!analysis?.client_text) return
+    setClientEditText(analysis.client_text)
+    setEditClient(true)
+  }
+  function saveClientEdit() {
+    void persist({ client_text: clientEditText })
+    setEditClient(false)
+  }
+
+  // #B 下載 Word：把客戶版 client_text（Markdown）轉成 .docx，方便教練在 Word 再修改。
+  // 納入客戶版的圖表會用 html2canvas 截成圖片嵌入 Word。docx 動態載入，不進主 bundle。
+  async function downloadClientWord() {
+    if (!analysis?.client_text) return
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun } = await import('docx')
+
+    // 與 mdToHtml 同一個 Markdown 子集：## 標題、- 條列、** 粗體、* 斜體
+    const inlineRuns = (s: string) => {
+      const runs: InstanceType<typeof TextRun>[] = []
+      const re = /\*\*(.+?)\*\*|(?<!\*)\*(?!\*)(.+?)\*(?!\*)/g
+      let last = 0
+      let m: RegExpExecArray | null
+      while ((m = re.exec(s))) {
+        if (m.index > last) runs.push(new TextRun(s.slice(last, m.index)))
+        if (m[1] !== undefined) runs.push(new TextRun({ text: m[1], bold: true }))
+        else if (m[2] !== undefined) runs.push(new TextRun({ text: m[2], italics: true }))
+        last = re.lastIndex
+      }
+      if (last < s.length) runs.push(new TextRun(s.slice(last)))
+      if (runs.length === 0) runs.push(new TextRun(''))
+      return runs
+    }
+    const bodyParagraphs = String(analysis.client_text || '')
+      .split('\n')
+      .flatMap((raw) => {
+        const l = raw.trim()
+        if (!l || l === '---') return [] // 空行與分隔線交給段落間距處理
+        const hm = l.match(/^(#{1,3})\s+(.*)$/)
+        if (hm) {
+          const lvl = hm[1].length
+          return [
+            new Paragraph({
+              children: inlineRuns(hm[2]),
+              heading: lvl === 1 ? HeadingLevel.HEADING_1 : lvl === 2 ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3,
+              spacing: { before: 240, after: 120 },
+            }),
+          ]
+        }
+        if (/^[-*]\s+/.test(l)) {
+          return [new Paragraph({ children: inlineRuns(l.replace(/^[-*]\s+/, '')), bullet: { level: 0 }, spacing: { after: 80 } })]
+        }
+        return [new Paragraph({ children: inlineRuns(l), spacing: { after: 160 } })]
+      })
+
+    // 每張圖各自截一張圖片、各自一頁嵌入 Word（含其標題與雷達的 A/P/M/R/E 清單）。
+    // 需 coachViz 的 SVG 帶 xmlns 才能被 html2canvas 光柵化（見 coachViz.ts）。
+    const chartParagraphs: InstanceType<typeof Paragraph>[] = []
+    const chartEls = [...document.querySelectorAll('#cv-print-area .cv-doc-chart')] as HTMLElement[]
+    if (chartEls.length) {
+      try {
+        const html2canvas = (await import('html2canvas')).default
+        const maxW = 600 // A4 內文寬度上限（px）
+        const maxH = 780 // A4 內文高度上限（px），確保一張圖不溢出到下一頁
+        for (const el of chartEls) {
+          const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false })
+          const buf = await (await fetch(canvas.toDataURL('image/png'))).arrayBuffer()
+          let w = Math.min(maxW, canvas.width / 2)
+          let h = (canvas.height / canvas.width) * w
+          if (h > maxH) {
+            w = (w * maxH) / h
+            h = maxH
+          }
+          chartParagraphs.push(
+            new Paragraph({
+              pageBreakBefore: true, // 每張圖各自一頁
+              children: [new ImageRun({ type: 'png', data: buf, transformation: { width: Math.round(w), height: Math.round(h) } })],
+            }),
+          )
+        }
+      } catch {
+        // 截圖失敗就略過圖表，仍輸出文字版
+      }
+    }
+
+    const doc = new Document({
+      sections: [
+        {
+          children: [
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { after: 80 },
+              children: [new TextRun({ text: t('個人福祉回顧'), bold: true, size: 40 })],
+            }),
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { after: 320 },
+              children: [new TextRun({ text: `${name}　·　${analysis.client_date ?? ''}`, size: 20, color: '54606E' })],
+            }),
+            ...bodyParagraphs,
+            ...chartParagraphs,
+            new Paragraph({
+              spacing: { before: 400 },
+              children: [new TextRun({ text: t('教練　陳郁敏'), size: 22, color: '54606E' })],
+            }),
+          ],
+        },
+      ],
+    })
+    const blob = await Packer.toBlob(doc)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'Personal-Well-being-Review.docx'
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   function toggleBlockOpen(i: number) {
@@ -614,6 +856,7 @@ function MemberDetailPage() {
                         ▶
                       </span>
                       <span className="cv-block-title">{view.title}</span>
+                      {b.custom && <span className="cv-block-tag ai">{t('AI 框架')}</span>}
                       <span className={`cv-block-tag ${b.include ? 'inc' : 'only'}`}>
                         {b.include ? t('納入客戶版') : t('僅教練')}
                       </span>
@@ -654,15 +897,22 @@ function MemberDetailPage() {
                               />
                               {t('納入客戶交付版')}
                             </label>
-                            {briefLang === 'en' ? (
-                              <span className="cv-block-edit" onClick={() => startEdit(i)}>
-                                {t('編輯')}
-                              </span>
-                            ) : (
-                              <span className="cv-block-edit" style={{ opacity: 0.5 }} title={t('請切回 EN 編輯原文')}>
-                                {t('編輯')}
-                              </span>
-                            )}
+                            <span style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                              {b.custom && (
+                                <span className="cv-block-del" onClick={() => deleteBlock(i)}>
+                                  {t('刪除')}
+                                </span>
+                              )}
+                              {briefLang === 'en' ? (
+                                <span className="cv-block-edit" onClick={() => startEdit(i)}>
+                                  {t('編輯')}
+                                </span>
+                              ) : (
+                                <span className="cv-block-edit" style={{ opacity: 0.5 }} title={t('請切回 EN 編輯原文')}>
+                                  {t('編輯')}
+                                </span>
+                              )}
+                            </span>
                           </div>
                         </>
                       )}
@@ -671,6 +921,111 @@ function MemberDetailPage() {
                   </div>
                   )
                 })}
+
+                {/* ── 自訂分析框架：教練描述 → AI 依文獻生成框架 → 產生新的簡報區塊 ── */}
+                <div className="cv-slbl" style={{ marginTop: 26 }}>
+                  <span>{t('自訂分析框架')}</span>
+                </div>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  {t('用自己的話描述你想分析什麼，AI 會依心理學文獻生成一個有理論依據的框架；你可以編輯後用它產生一個新的情報簡報區塊。')}
+                </p>
+                <textarea
+                  className="cv-textarea"
+                  style={{ minHeight: 64 }}
+                  placeholder={t('例如：看這位成員面對轉變時的能動性 / 情緒調節的方式 / 自我批評 vs 自我疼惜')}
+                  value={fwDesc}
+                  onChange={(e) => setFwDesc(e.target.value)}
+                />
+                <div className="mb-4 mt-2 flex flex-wrap gap-3">
+                  <button
+                    onClick={genFramework}
+                    disabled={busy !== null || fwDesc.trim().length < 4}
+                    className="rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary disabled:opacity-50"
+                  >
+                    {busy === 'framework' && !fwDraft ? t('生成中…') : t('AI 生成分析框架')}
+                  </button>
+                </div>
+
+                {fwDraft && (
+                  <div className="cv-fw">
+                    <div className="cv-fw-hd">{t('生成的分析框架（可編輯）')}</div>
+                    <label className="cv-fw-lab">{t('框架名稱')}</label>
+                    <input
+                      className="cv-fw-in"
+                      value={fwDraft.name}
+                      onChange={(e) => setFwDraft({ ...fwDraft, name: e.target.value })}
+                    />
+                    <label className="cv-fw-lab">{t('理論依據 / 出處')}</label>
+                    <input
+                      className="cv-fw-in"
+                      value={fwDraft.basis}
+                      onChange={(e) => setFwDraft({ ...fwDraft, basis: e.target.value })}
+                    />
+                    <label className="cv-fw-lab">{t('分析視角')}</label>
+                    <input
+                      className="cv-fw-in"
+                      value={fwDraft.lens}
+                      onChange={(e) => setFwDraft({ ...fwDraft, lens: e.target.value })}
+                    />
+                    <label className="cv-fw-lab">{t('分析維度')}</label>
+                    {fwDraft.dimensions.map((d, i) => (
+                      <div key={i} className="cv-fw-dim">
+                        <input
+                          className="cv-fw-in"
+                          placeholder={t('維度名')}
+                          value={d.name}
+                          onChange={(e) => updateFwDim(i, 'name', e.target.value)}
+                        />
+                        <input
+                          className="cv-fw-in"
+                          placeholder={t('要留意的語言／行為線索')}
+                          value={d.look_for}
+                          onChange={(e) => updateFwDim(i, 'look_for', e.target.value)}
+                        />
+                        <input
+                          className="cv-fw-in"
+                          placeholder={t('證據規則（引用原話）')}
+                          value={d.evidence_rule}
+                          onChange={(e) => updateFwDim(i, 'evidence_rule', e.target.value)}
+                        />
+                        <button className="cv-fw-del" onClick={() => removeFwDim(i)} title={t('移除維度')}>
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    <button className="cv-fw-add" onClick={addFwDim}>
+                      ＋ {t('新增維度')}
+                    </button>
+                    {fwDraft.references.length > 0 && (
+                      <div className="cv-fw-refs">
+                        <div className="cv-fw-lab" style={{ margin: '0 0 2px' }}>
+                          {t('參考文獻')}
+                        </div>
+                        <ul>
+                          {fwDraft.references.map((r, i) => (
+                            <li key={i}>{r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {fwDraft.note && <div className="cv-fw-note">{fwDraft.note}</div>}
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={runFrameworkAnalysis}
+                        disabled={busy !== null}
+                        className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                      >
+                        {busy === 'framework' ? t('分析中…') : t('用這個框架分析')}
+                      </button>
+                      <button
+                        onClick={() => setFwDraft(null)}
+                        className="rounded-lg border border-border px-4 py-2 text-sm text-foreground-soft"
+                      >
+                        {t('取消')}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </section>
@@ -702,16 +1057,57 @@ function MemberDetailPage() {
                       ? t('重新生成客戶版')
                       : t('生成客戶交付版')}
                 </button>
-                {analysis.client_text && (
-                  <button
-                    onClick={downloadClientPdf}
-                    className="rounded-lg border border-border px-4 py-2 text-sm text-foreground-soft"
-                  >
-                    {t('下載 PDF')}
-                  </button>
+                {analysis.client_text && !editClient && (
+                  <>
+                    <button
+                      onClick={startClientEdit}
+                      className="rounded-lg border border-border px-4 py-2 text-sm text-foreground-soft"
+                    >
+                      {t('編輯')}
+                    </button>
+                    <button
+                      onClick={downloadClientPdf}
+                      className="rounded-lg border border-border px-4 py-2 text-sm text-foreground-soft"
+                    >
+                      {t('下載 PDF')}
+                    </button>
+                    <button
+                      onClick={downloadClientWord}
+                      className="rounded-lg border border-border px-4 py-2 text-sm text-foreground-soft"
+                    >
+                      {t('下載 Word')}
+                    </button>
+                  </>
                 )}
               </div>
-              {analysis.client_text && (
+              {analysis.client_text && editClient && (
+                <div>
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    {t('直接編輯客戶版文字（Markdown：## 標題、** 粗體、- 條列），儲存後即更新交付文件。')}
+                  </p>
+                  <textarea
+                    className="cv-textarea"
+                    style={{ minHeight: 320 }}
+                    value={clientEditText}
+                    onChange={(e) => setClientEditText(e.target.value)}
+                  />
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={saveClientEdit}
+                      className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground"
+                    >
+                      {t('儲存')}
+                    </button>
+                    <button
+                      onClick={() => setEditClient(false)}
+                      className="rounded-md border border-border px-3 py-1 text-xs text-foreground-soft"
+                    >
+                      {t('取消')}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {analysis.client_text && !editClient && (
                 <div className="cv-doc" id="cv-print-area">
                   <div className="cv-doc-head">
                     <div className="cv-doc-title">{t('個人福祉回顧')}</div>
@@ -722,9 +1118,9 @@ function MemberDetailPage() {
                   <div dangerouslySetInnerHTML={{ __html: mdToHtml(analysis.client_text) }} />
                   {CHART_DEFS.some((c) => analysis.client_charts?.[c.key]) && (
                     <div className="cv-doc-charts">
-                      <h2>{t('情緒歷程一覽')}</h2>
-                      {CHART_DEFS.filter((c) => analysis.client_charts?.[c.key]).map((c) => (
-                        <div key={c.key} className="mb-4">
+                      {CHART_DEFS.filter((c) => analysis.client_charts?.[c.key]).map((c, idx) => (
+                        <div key={c.key} className="cv-doc-chart">
+                          {idx === 0 && <h2 className="cv-doc-chart-h">{t('情緒歷程一覽')}</h2>}
                           <div className="cv-slbl">
                             <span>{t(c.title)}</span>
                           </div>
@@ -860,12 +1256,40 @@ const COACH_VIZ_CSS = `
 .cv-doc strong{font-weight:800}
 .cv-doc-sign{margin-top:26px;padding-top:16px;border-top:1px solid #E2E5EA;font-size:13px;color:#54606E}
 .cv-doc-charts{margin-top:8px;font-family:-apple-system,'PingFang TC','Noto Sans TC',sans-serif}
+/* 客戶文件內的圖表要縮進頁寬，避免 PDF／Word 右側被裁切、比例跑掉。
+   SVG 有 viewBox，設 max-width:100%+height:auto 即等比縮放至容器寬；窄圖（雷達）維持原寸。 */
+.cv-doc-charts .cv-chart-wrap{overflow:visible;text-align:center}
+.cv-doc-charts .cv-chart-wrap svg{max-width:100% !important;height:auto !important}
+/* 圖表區塊整體另起一頁，但各圖依序流動排版（不再每張各佔一整頁）；
+   單一圖表本身不可從中間被切（避免雷達的 A/P/M/R/E 清單被切成兩頁）。 */
+.cv-doc-charts{page-break-before:always;break-before:page}
+.cv-doc-chart{break-inside:avoid;page-break-inside:avoid;margin-bottom:30px}
+.cv-doc-chart-h{margin-top:0 !important}
+.cv-rdelta,.cv-stats,.cv-wcloud,.cv-rdelta-row{break-inside:avoid;page-break-inside:avoid}
 /* #7 可讀性：把每個區塊開頭的「Takeaway / 重點」那一段框起來，讓教練一眼抓到重點 */
 .cv-md{font-size:13.5px;line-height:1.85}
 .cv-md>p:first-child{background:#F6F1E7;border-left:3px solid #B5843A;padding:9px 13px;border-radius:6px;margin:0 0 12px;color:#1C2530}
 .cv-md h2,.cv-md h3{margin:16px 0 7px}
 .cv-md ul{margin:6px 0 12px 20px}
 .cv-md li{margin-bottom:5px;line-height:1.7}
+/* 自訂分析框架編輯器 */
+.cv-block-tag.ai{background:#E7ECF5;color:#1F3A5C;border:1.5px solid #B9C6DE}
+.cv-block-del{font-size:11.5px;font-weight:700;color:#B0542C;cursor:pointer}
+.cv-block-del:hover{text-decoration:underline}
+.cv-fw{border:1.5px solid #B5843A;background:#FBF7EE;border-radius:10px;padding:15px 16px;margin-bottom:14px}
+.cv-fw-hd{font-size:12.5px;font-weight:800;color:#1C2530;margin-bottom:11px}
+.cv-fw-lab{display:block;font-size:11.5px;font-weight:700;color:#54606E;margin:8px 0 4px}
+.cv-fw-in{width:100%;border:1.5px solid #CBD1DA;border-radius:7px;padding:8px 11px;font-size:12.5px;font-family:inherit;line-height:1.5;color:#2B3440;background:#fff;margin-bottom:6px}
+.cv-fw-in:focus{outline:none;border-color:#B5843A}
+.cv-fw-dim{position:relative;border:1px dashed #CBD1DA;border-radius:8px;padding:10px 34px 4px 11px;margin-bottom:8px;background:#fff}
+.cv-fw-del{position:absolute;top:8px;right:9px;width:22px;height:22px;border:none;border-radius:6px;background:transparent;color:#8993A1;cursor:pointer;font-size:16px;line-height:1}
+.cv-fw-del:hover{background:#F0E0D6;color:#B0542C}
+.cv-fw-add{font-size:12px;font-weight:700;color:#1F3A5C;cursor:pointer;background:none;border:none;padding:2px 0}
+.cv-fw-add:hover{text-decoration:underline}
+.cv-fw-refs{margin-top:10px;font-size:11.5px;color:#54606E}
+.cv-fw-refs ul{margin:4px 0 0 18px}
+.cv-fw-refs li{margin-bottom:3px;line-height:1.5}
+.cv-fw-note{margin-top:10px;font-size:11.5px;color:#8A6A26;background:#F6EEDC;border-radius:6px;padding:8px 11px}
 /* #3 列印：只輸出客戶報告（Personal Well-being Review），不印整頁 */
 @media print{
   body *{visibility:hidden !important}

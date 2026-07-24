@@ -474,6 +474,87 @@ def _coach_analysis_system(week_count: int, language: str = "en") -> str:
 語言：繁體中文（台灣）。全篇不得使用任何 emoji。語氣專業、精確，兼具實證理論素養，如資深教練結合學理的臨床筆記。"""
 
 
+def _framework_gen_system(language: str = "en") -> str:
+    """教練用自然語言描述想分析什麼 → AI 上網找對應的實證理論 → 生成可套用的結構化框架。"""
+    if language == "zh-TW":
+        return """你是結合心理學文獻與高階主管教練實務的「分析框架設計師」，服務於教練 陳郁敏。教練會用自然語言描述他想在一位成員的每週 PERMA 反思書寫中分析什麼，請優先使用網路搜尋，找出對應且有實證基礎的心理學／諮商／教練理論或模型（例如「面對轉變的能動性」→ 自我決定理論 SDT；「完美主義」→ Frost 多維完美主義；「情緒調節方式」→ Gross 情緒調節歷程模型；「自我批評 vs 自我疼惜」→ Neff 自我疼惜），再轉化成一個可實際套用在反思文字上的結構化分析框架。
+
+規則：
+- 框架必須紮根於具名的理論／模型，並在 basis 標明出處（作者, 年份）。
+- 拆成 2–5 個可觀察的維度；每個維度用 look_for 說明「在反思文字中要留意哪些語言或行為線索」。
+- 每個維度都要有 evidence_rule，要求分析時引用成員原話為證。
+- references 給 2–3 筆與此框架直接相關的 APA 格式文獻（期刊名或書名可用 * 斜體 *）。
+- 這是給教練反思用的分析視角，不是給成員評分的量表。
+
+只輸出 JSON（不要任何其他文字、不要 code fence）：
+{"name":"框架名稱（12字內，好記）","basis":"理論／模型名稱與出處（作者, 年份）","lens":"一句話說明這個框架在看什麼","dimensions":[{"name":"維度名","look_for":"要留意的語言或行為線索","evidence_rule":"引用成員原話作為證據"}],"references":["APA 格式文獻"],"note":"適用情境與限制，一句話"}"""
+    return """You are an analysis-framework designer combining psychology literature with executive-coaching practice, assisting coach Tan Yee Ming. The coach will describe in natural language what they want to analyze in one member's weekly PERMA reflections. Prefer web search to find a validated, evidence-based psychology / counseling / coaching theory or model that matches (e.g. "agency through change" -> Self-Determination Theory; "perfectionism" -> Frost Multidimensional Perfectionism; "how they regulate emotion" -> Gross process model of emotion regulation; "self-criticism vs self-compassion" -> Neff Self-Compassion), then turn it into a structured analysis framework that can actually be applied to the reflection text.
+
+Rules:
+- The framework must be grounded in a named theory/model; state its source in basis (Author, Year).
+- Break it into 2-5 observable dimensions; each dimension's look_for explains which language or behavioral cues to watch for in the reflection text.
+- Every dimension needs an evidence_rule requiring the analysis to quote the member's own words.
+- references: give 2-3 APA-format references directly relevant to this framework (journal or book titles may use * italics *).
+- This is an analytical lens for the coach's reflection, not a scored scale for the member.
+
+Output JSON only (no other text, no code fences):
+{"name":"framework name (short, memorable)","basis":"theory/model name and source (Author, Year)","lens":"one line on what this framework looks at","dimensions":[{"name":"dimension name","look_for":"language or behavioral cues to watch for","evidence_rule":"quote the member's own words as evidence"}],"references":["APA-format reference"],"note":"one line on fit and limitations"}"""
+
+
+def _framework_to_text(fw: dict) -> str:
+    lines = [
+        f"Framework: {fw.get('name', '')}",
+        f"Theory basis: {fw.get('basis', '')}",
+        f"Lens: {fw.get('lens', '')}",
+        "Dimensions:",
+    ]
+    for d in (fw.get("dimensions") or []):
+        lines.append(
+            f"- {d.get('name', '')}: watch for {d.get('look_for', '')} | evidence: {d.get('evidence_rule', '')}"
+        )
+    refs = fw.get("references") or []
+    if refs:
+        lines.append("References to draw from: " + "; ".join(str(r) for r in refs))
+    if fw.get("note"):
+        lines.append(f"Note: {fw['note']}")
+    return "\n".join(lines)
+
+
+def _framework_block_system(fw: dict, week_count: int, language: str = "en") -> str:
+    """用一個(教練生成的)框架，對成員 {week_count} 次每週反思生成單一情報簡報區塊。
+    輸出格式與既有 block 一致，可直接 append 進 coach_analyses.blocks。"""
+    fw_text = _framework_to_text(fw)
+    if language == "zh-TW":
+        return f"""你是資深高階主管教練 陳郁敏 的分析助理。教練提供了一個自訂分析框架，請只用「這個框架」分析一位成員 {week_count} 次每週 PERMA 反思，產出一個情報簡報區塊（僅教練可見、可含坦率假設）。
+
+自訂框架：
+{fw_text}
+
+要求：
+- 全程扣合此人的具體引文並註明第幾次（如「第 3 次」）。
+- 逐一走過框架的每個維度：對照 look_for 找線索、依 evidence_rule 引用原話。
+- 內文以一行粗體重點開頭，格式「**重點 —** …」，接著空一行，再用簡短段落與 - 條列展開；多用條列。
+- 內文最後另起一行，以「**參考文獻**」為小標，用 - 條列該框架的參考文獻（APA 格式，書名／期刊名以 * 斜體 *）。
+- 可用 Markdown（## 標題、** 粗體、* 斜體、- 條列）。全篇不得使用 emoji，語氣如資深教練結合學理的臨床筆記。
+- 繁體中文（台灣）。
+
+只輸出 JSON（不要 code fence）：{{"title":"區塊標題（用框架名稱）","body":"區塊內文"}}"""
+    return f"""You are the analysis assistant to executive well-being coach Tan Yee Ming. The coach supplied a custom analysis framework. Using ONLY this framework, analyze one member's {week_count} weekly PERMA reflections and produce one intelligence-brief block (coach-only; may contain candid hypotheses).
+
+Custom framework:
+{fw_text}
+
+Requirements:
+- Stay tied to this person's specific quotes with week citations (e.g. "week 3").
+- Walk through each dimension of the framework: find cues per look_for, quote the person's words per evidence_rule.
+- Start the body with one bold single-line takeaway "**Takeaway —** ...", then a blank line, then short paragraphs and - bullets; prefer bullets.
+- End the body with a "**References**" sub-heading listing the framework's references as - bullets (APA format; book/journal titles in * italics *).
+- Use Markdown (## headings, ** bold **, * italics *, - bullets). No emoji. Tone: a senior coach's theoretically grounded clinical notes.
+- Language: English.
+
+Output JSON only (no code fences): {{"title":"block title (use the framework name)","body":"block body"}}"""
+
+
 _CLIENT_REPORT_SYSTEM_EN = """You are the writing assistant to coach Tan Yee Ming. Below is the analysis content the coach selected to include in the client version. Rewrite it into a formal, warm, empowering "Personal Well-being Review" for the client to read.
 
 Requirements:
@@ -656,6 +737,139 @@ async def coach_analyze(req: CoachMemberRequest, authorization: str = Header(...
             return rows[0]
     logger.warning("coach_analyses upsert failed: %s", upsert_resp.text)
     return row
+
+
+class CoachFrameworkGenerateRequest(BaseModel):
+    description: str
+    language: str = "en"
+
+
+class CoachFrameworkAnalyzeRequest(BaseModel):
+    member_id: str
+    framework: dict
+    language: str = "en"
+
+
+@app.post("/api/coach/framework/generate")
+async def coach_framework_generate(
+    req: CoachFrameworkGenerateRequest, authorization: str = Header(...)
+):
+    """教練描述想分析什麼 → AI 上網找對應的實證理論 → 回傳可編輯的結構化框架 JSON。"""
+    token = authorization.removeprefix("Bearer ").strip()
+    coach_id = await require_coach(token)
+
+    desc = (req.description or "").strip()
+    if len(desc) < 4:
+        raise HTTPException(status_code=400, detail="請先描述你想分析什麼")
+
+    system = _framework_gen_system(req.language)
+    try:
+        msg = await claude().messages.create(
+            model=_COACH_ANALYSIS_MODEL,
+            max_tokens=2500,
+            thinking={"type": "disabled"},
+            system=system,
+            messages=[{"role": "user", "content": desc}],
+            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+        )
+    except anthropic.APIStatusError:
+        # 組織未開通網路搜尋等情況：退回模型既有知識
+        msg = await claude().messages.create(
+            model=_COACH_ANALYSIS_MODEL,
+            max_tokens=2500,
+            thinking={"type": "disabled"},
+            system=system + "\n(Web search is unavailable here; rely on your own expert knowledge to pick the best-matching validated theory.)",
+            messages=[{"role": "user", "content": desc}],
+        )
+    meter_claude("coach-framework-generate", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)
+
+    text = _msg_text(msg)
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        raise HTTPException(status_code=502, detail="框架生成失敗，請換個描述再試一次")
+    try:
+        fw = json.loads(match.group())
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=502, detail="框架生成失敗，請換個描述再試一次")
+    if not isinstance(fw.get("dimensions"), list) or not fw["dimensions"]:
+        raise HTTPException(status_code=502, detail="框架生成失敗，請換個描述再試一次")
+    return fw
+
+
+@app.post("/api/coach/analyze-framework")
+async def coach_analyze_framework(
+    req: CoachFrameworkAnalyzeRequest, authorization: str = Header(...)
+):
+    """用教練(生成並確認)的自訂框架，對成員週記生成一個情報簡報區塊，append 進既有分析。"""
+    token = authorization.removeprefix("Bearer ").strip()
+    coach_id = await require_coach(token)
+
+    fw = req.framework or {}
+    if not isinstance(fw.get("dimensions"), list) or not fw["dimensions"]:
+        raise HTTPException(status_code=400, detail="框架不完整，請至少保留一個維度")
+
+    resp = await db().get(
+        f"{SUPABASE_REST}/coach_analyses",
+        headers=SUPABASE_HEADERS,
+        params=[("member_id", f"eq.{req.member_id}"), ("select", "*"), ("limit", "1")],
+    )
+    rows = resp.json() if resp.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=409, detail="請先生成教練分析")
+    analysis = rows[0]
+
+    posts = await _fetch_member_posts(req.member_id)
+    if len(posts) < 1:
+        raise HTTPException(status_code=409, detail="這位成員還沒有任何週記")
+
+    # 自訂區塊與既有分析同語言（既有深度分析一律英文，見 /api/coach/analyze）。
+    lang = "en"
+    dump_parts = []
+    for i, p in enumerate(posts):
+        lines = [f"── 第 {i + 1} 次（{p.get('week_start', '')}）"]
+        for k in _PERMA_KEYS:
+            ans = (p.get(f"{k.lower()}_content") or "").strip() or "（未填）"
+            lines.append(f"[{k}] {_PERMA_DIM[k]}：{ans}")
+        dump_parts.append("\n".join(lines))
+    dump = "\n\n".join(dump_parts)
+
+    msg = await claude().messages.create(
+        model=_COACH_ANALYSIS_MODEL,
+        max_tokens=3000,
+        thinking={"type": "disabled"},
+        system=_framework_block_system(fw, len(posts), lang),
+        messages=[{"role": "user", "content": f"成員資料：\n\n{dump}"}],
+    )
+    meter_claude("coach-analyze-framework", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)
+
+    text = _msg_text(msg)
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        raise HTTPException(status_code=502, detail="框架分析失敗，請重新生成")
+    try:
+        parsed = json.loads(match.group())
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=502, detail="框架分析失敗，請重新生成")
+
+    title = str(parsed.get("title") or fw.get("name") or "Custom framework").strip()
+    body = str(parsed.get("body") or "").strip()
+    if not body:
+        raise HTTPException(status_code=502, detail="框架分析失敗，請重新生成")
+
+    # 新區塊預設「僅教練」；custom=True 讓前端標記為 AI 框架、可刪。
+    new_block = {"title": title, "body": body, "include": False, "custom": True}
+    blocks = list(analysis.get("blocks") or []) + [new_block]
+
+    update_resp = await db().patch(
+        f"{SUPABASE_REST}/coach_analyses",
+        headers={**SUPABASE_HEADERS, "Prefer": "return=representation"},
+        params=[("member_id", f"eq.{req.member_id}")],
+        # 追加區塊後，舊翻譯快取的區塊數已對不上 → 作廢，讓教練需要時重新翻譯
+        json={"blocks": blocks, "translations": {}, "updated_at": datetime.now(TW_TZ).isoformat()},
+    )
+    if update_resp.status_code in (200, 201) and update_resp.json():
+        return update_resp.json()[0]
+    return {**analysis, "blocks": blocks, "translations": {}}
 
 
 @app.post("/api/coach/client-report")
