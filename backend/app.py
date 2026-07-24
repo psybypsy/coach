@@ -392,7 +392,7 @@ Scoring rules:
 
 Intelligence-brief rules (coach-only; may contain candid hypotheses; quote the person's words and cite which week). Separate blocks with [[BLOCK]]; the first line of each block is its title, the rest is the body (Markdown: ## headings, ** bold **, * italics *, - bullets).
 
-READABILITY — the coach must be able to skim this. For EVERY block, the body MUST start with one bold single-line takeaway in the form "**Takeaway —** ..." capturing the block's single most important point, then a blank line, then the detail as short paragraphs and - bullet points. Prefer bullets over dense prose; keep sentences short.
+FORMATTING — keep every block skimmable: write in short paragraphs and - bullet points, prefer bullets over dense prose, and keep sentences short.
 
 Include these blocks in exactly this order:
 [[BLOCK]] Overall Emotional & Well-being Trajectory
@@ -446,7 +446,7 @@ def _coach_analysis_system(week_count: int, language: str = "en") -> str:
 
 情報簡報規則（僅教練可見、可含坦率假設、每個判斷都引用原話並註明第幾次）：以 [[BLOCK]] 分隔，每塊第一行為標題、其後為內文（可用 Markdown 的 ## 標題、** 粗體、* 斜體 *、- 條列）。
 
-可讀性（重要，教練要能快速掃讀）：每個區塊內文都必須以一行粗體重點開頭，格式為「**重點 —** …」點出該區塊最關鍵的一句話，接著空一行，再用簡短段落與 - 條列展開；多用條列、少用長段落、句子精簡。
+排版（教練要能快速掃讀）：內文用簡短段落與 - 條列呈現，多用條列、少用長段落、句子精簡。
 
 務必依序包含這些區塊：
 [[BLOCK]] 整體情緒與福祉軌跡
@@ -588,7 +588,7 @@ You will receive a JSON object with "blocks" and "sessions". Return ONLY a JSON 
 - sessions[].overallReason, sessions[].dims.P/E/R/M/A.reason, sessions[].emotions[].word
 
 Rules:
-- Preserve ALL Markdown syntax in bodies (##, **, *, -) exactly, including the leading "**Takeaway —** ..." line (translate the word Takeaway to 重點).
+- Preserve ALL Markdown syntax in bodies (##, **, *, -) exactly.
 - Keep academic citations / APA references and *italic* work titles in their original language — do NOT translate author names, journal names, or book titles.
 - Do NOT change any numbers, any "valence" values (positive/negative/neutral), "intensity", "v", "include", or any JSON keys.
 - No emoji. Output valid JSON only — no commentary, no code fences."""

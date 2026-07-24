@@ -23,6 +23,7 @@ function AppShell() {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const [displayName, setDisplayName] = useState('')
+  const [isCoach, setIsCoach] = useState(false)
   const [panel, setPanel] = useState<Panel>('none')
   const onWelcome = pathname.startsWith('/app/welcome')
   // 教練後台不顯示成員導覽（PERMA Self-Reflection / 社群），避免點了跳到成員介面又回不來。
@@ -36,15 +37,18 @@ function AppShell() {
       if (!userId) return
       const { data } = await supabase
         .from('profiles')
-        .select('display_name, has_set_name')
+        .select('display_name, has_set_name, role')
         .eq('id', userId)
         .single()
       if (cancelled) return
       setDisplayName(data?.display_name ?? '')
+      setIsCoach(data?.role === 'coach')
       // 首次登入尚未設定名字 → 導去歡迎頁設定；設定過就不再出現。
       if (data && !data.has_set_name && !pathname.startsWith('/app/welcome')) {
         void navigate({ to: '/app/welcome' })
       }
+      // 註：coach 不自動跳轉到教練後台（避免無法查看成員介面）。
+      // 改由導覽列的「教練後台」按鈕一鍵進入，root/成員頁對 coach 一樣可正常瀏覽。
     })()
     return () => {
       cancelled = true
@@ -87,6 +91,16 @@ function AppShell() {
                   </Link>
                 )
               })}
+              {/* coach 帳號在成員介面時額外顯示一鍵回教練後台的按鈕（不強制自動跳轉，
+                  避免像陳郁敏這種「既是教練也自己寫週記」的帳號被迫離開成員首頁）。 */}
+              {isCoach && (
+                <Link
+                  to="/app/coach"
+                  className="ml-auto whitespace-nowrap rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground-soft transition hover:bg-muted"
+                >
+                  {t('教練後台')}
+                </Link>
+              )}
             </nav>
           ) : (
             <span className="font-heading text-sm font-semibold text-foreground">{BRAND.name}</span>
