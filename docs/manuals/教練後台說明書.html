@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coach Dashboard 教練後台使用說明書｜Ipsen Taiwan × Tan Yee Ming</title>
+<style>
+:root{
+  --ink:#1B2430; --ink-soft:#54606E; --muted:#8A94A1;
+  --page:#F3F5F8; --card:#FFFFFF; --card-2:#F7F9FB; --border:#E3E7EC; --border-strong:#CDD4DC;
+  --navy:#1F3A5C; --navy-glow:#2E5486; --navy-soft:#E9EEF4; --navy-ink:#16293F;
+  --p:#8A5A08; --p-bg:#FEF7EA; --p-bar:#B45309;
+  --e:#0F6B62; --e-bg:#EBF6F4; --e-bar:#0F766E;
+  --r:#9A1B3B; --r-bg:#FCEEF1; --r-bar:#9F1239;
+  --m:#3A34A0; --m-bg:#EEEEFC; --m-bar:#3730A3;
+  --a:#0A6349; --a-bg:#E9F5EF; --a-bar:#065F46;
+  --pos:#2E7057; --neg:#B0542C; --neu:#54606E;
+  --ok:#2E7057; --ok-bg:#DCEAE2; --ok-bd:#BCD3C8;
+  --warn:#8A6A26; --warn-bg:#F6EEDC; --warn-bd:#E4CF9E;
+  --stripe:linear-gradient(90deg,var(--navy),var(--navy-glow));
+  --shadow:0 1px 2px rgba(20,30,45,.04),0 8px 24px -12px rgba(20,30,45,.18);
+  --shadow-lg:0 20px 50px -24px rgba(20,30,45,.45);
+  --font-body:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --font-serif:"Songti TC","Noto Serif TC",Georgia,"Times New Roman",serif;
+  --maxw:780px;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --ink:#E7ECF2; --ink-soft:#AEB8C4; --muted:#7E8894;
+    --page:#0F1318; --card:#181D24; --card-2:#12161C; --border:#2A313B; --border-strong:#3A424E;
+    --navy:#8FB4E0; --navy-glow:#A9C6EC; --navy-soft:#1C2836; --navy-ink:#CFE0F2;
+    --p:#E6B871; --p-bg:#2A2115; --e:#79CEC2; --e-bg:#12241F; --r:#E79CB0; --r-bg:#2A1720;
+    --m:#A7A2F0; --m-bg:#1C1B2E; --a:#7FCBAE; --a-bg:#122019;
+    --pos:#8CC7AC; --neg:#E0A183; --neu:#AEB8C4;
+    --ok:#8CC7AC; --ok-bg:#16241D; --ok-bd:#2C4A3B; --warn:#D8B876; --warn-bg:#282013; --warn-bd:#4A3D1F;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -14px rgba(0,0,0,.6);
+    --shadow-lg:0 24px 60px -28px rgba(0,0,0,.75);
+  }
+}
+:root[data-theme="light"]{
+  --ink:#1B2430; --ink-soft:#54606E; --muted:#8A94A1;
+  --page:#F3F5F8; --card:#FFFFFF; --card-2:#F7F9FB; --border:#E3E7EC; --border-strong:#CDD4DC;
+  --navy:#1F3A5C; --navy-glow:#2E5486; --navy-soft:#E9EEF4; --navy-ink:#16293F;
+  --p:#8A5A08; --p-bg:#FEF7EA; --e:#0F6B62; --e-bg:#EBF6F4; --r:#9A1B3B; --r-bg:#FCEEF1;
+  --m:#3A34A0; --m-bg:#EEEEFC; --a:#0A6349; --a-bg:#E9F5EF;
+  --pos:#2E7057; --neg:#B0542C; --neu:#54606E;
+  --ok:#2E7057; --ok-bg:#DCEAE2; --ok-bd:#BCD3C8; --warn:#8A6A26; --warn-bg:#F6EEDC; --warn-bd:#E4CF9E;
+}
+:root[data-theme="dark"]{
+  --ink:#E7ECF2; --ink-soft:#AEB8C4; --muted:#7E8894;
+  --page:#0F1318; --card:#181D24; --card-2:#12161C; --border:#2A313B; --border-strong:#3A424E;
+  --navy:#8FB4E0; --navy-glow:#A9C6EC; --navy-soft:#1C2836; --navy-ink:#CFE0F2;
+  --p:#E6B871; --p-bg:#2A2115; --e:#79CEC2; --e-bg:#12241F; --r:#E79CB0; --r-bg:#2A1720;
+  --m:#A7A2F0; --m-bg:#1C1B2E; --a:#7FCBAE; --a-bg:#122019;
+  --pos:#8CC7AC; --neg:#E0A183; --neu:#AEB8C4;
+  --ok:#8CC7AC; --ok-bg:#16241D; --ok-bd:#2C4A3B; --warn:#D8B876; --warn-bg:#282013; --warn-bd:#4A3D1F;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font-family:var(--font-body);line-height:1.7;-webkit-font-smoothing:antialiased;font-size:16px}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 22px}
+h1,h2,h3,h4{line-height:1.25;text-wrap:balance;margin:0}
+p{margin:0}
+a{color:var(--navy);text-decoration:none}
+small{font-size:.8em}
+
+.cover{position:relative;overflow:hidden;background:radial-gradient(120% 90% at 85% -10%,var(--navy-soft),transparent 60%),var(--card);border-bottom:1px solid var(--border)}
+.cover .wrap{padding:76px 22px 60px}
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:var(--navy)}
+.brandline{display:flex;align-items:center;gap:12px;margin-bottom:30px}
+.brandmark{width:38px;height:38px;border-radius:10px;background:var(--stripe);flex:0 0 auto;box-shadow:var(--shadow);position:relative}
+.brandmark::after{content:"";position:absolute;inset:11px;border:2px solid #fff;border-radius:4px;opacity:.9}
+.brandtext{font-weight:800;font-size:15px;letter-spacing:.01em}
+.brandtext span{display:block;font-weight:600;font-size:12px;color:var(--ink-soft);letter-spacing:.04em}
+.cover h1{font-family:var(--font-serif);font-size:clamp(31px,5.6vw,50px);font-weight:800;letter-spacing:.01em;margin:14px 0 0}
+.cover .lead{font-size:18px;color:var(--ink-soft);margin-top:18px;max-width:58ch}
+.cover .metarow{display:flex;flex-wrap:wrap;gap:10px;margin-top:34px}
+.chip{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;padding:7px 13px;border-radius:999px;background:var(--card-2);border:1px solid var(--border);color:var(--ink-soft)}
+.chip b{color:var(--ink)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--navy)}
+
+.toc{margin:44px auto;padding:22px 24px;background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
+.toc h2{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+.toc ol{margin:0;padding:0;list-style:none;counter-reset:toc;display:grid;gap:2px}
+.toc li{counter-increment:toc}
+.toc a{display:flex;gap:14px;align-items:baseline;padding:9px 10px;border-radius:9px;color:var(--ink)}
+.toc a:hover{background:var(--navy-soft)}
+.toc a::before{content:counter(toc,decimal-leading-zero);font-family:var(--font-serif);font-size:13px;font-weight:700;color:var(--navy);min-width:26px}
+.toc a .tt{font-weight:600}
+.toc a .td{color:var(--muted);font-size:13px;margin-left:auto;text-align:right}
+
+section.doc{padding:30px 0 8px}
+.sec-head{display:flex;gap:16px;align-items:flex-start;margin-bottom:20px;padding-top:26px}
+.sec-num{font-family:var(--font-serif);font-size:15px;font-weight:700;color:#fff;background:var(--stripe);min-width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:var(--shadow);margin-top:3px}
+.sec-head h2{font-size:25px;font-weight:800;letter-spacing:.01em}
+.sec-head .sub{color:var(--ink-soft);font-size:14.5px;margin-top:5px}
+.doc p+p{margin-top:13px}
+.doc h3{font-size:17.5px;font-weight:800;margin:32px 0 8px;letter-spacing:.01em;display:flex;align-items:baseline;gap:9px}
+.doc h3 .step{font-family:var(--font-serif);font-size:13px;color:#fff;background:var(--navy);border-radius:6px;padding:1px 9px;flex:0 0 auto}
+.doc h3 .k{color:var(--muted);font-weight:700;font-size:13px}
+hr.soft{border:none;border-top:1px solid var(--border);margin:38px 0}
+
+.steps{list-style:none;margin:20px 0;padding:0;counter-reset:step;display:grid;gap:14px}
+.steps>li{counter-increment:step;position:relative;padding:16px 18px 16px 58px;background:var(--card);border:1px solid var(--border);border-radius:13px;box-shadow:var(--shadow)}
+.steps>li::before{content:counter(step);position:absolute;left:16px;top:15px;width:28px;height:28px;border-radius:50%;background:var(--navy-soft);color:var(--navy);font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border)}
+.steps>li b{font-weight:800}
+.steps>li .st-note{display:block;color:var(--ink-soft);font-size:14px;margin-top:4px}
+
+.note{display:grid;grid-template-columns:auto 1fr;gap:13px;padding:15px 17px;border-radius:12px;margin:20px 0;font-size:14.5px;border:1px solid var(--border);background:var(--card-2)}
+.note .ic{width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex:0 0 auto;margin-top:1px}
+.note.tip{border-color:var(--ok-bd);background:var(--ok-bg)} .note.tip .ic{background:var(--ok);color:#fff}
+.note.warn{border-color:var(--warn-bd);background:var(--warn-bg)} .note.warn .ic{background:var(--warn);color:#fff}
+.note.info .ic{background:var(--navy);color:#fff}
+.note b{font-weight:800}
+.note p+p{margin-top:7px}
+
+.ui{font-family:var(--font-body);font-weight:700;background:var(--navy-soft);color:var(--navy-ink);padding:1px 8px;border-radius:6px;font-size:.92em;white-space:nowrap;border:1px solid var(--border)}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.04em}
+.tag.inc{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok-bd)}
+.tag.only{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn-bd)}
+
+.fig{margin:24px 0}
+.frame{border:1px solid var(--border-strong);border-radius:16px;overflow:hidden;background:var(--card);box-shadow:var(--shadow-lg)}
+.frame .bar{display:flex;align-items:center;gap:7px;padding:10px 14px;background:var(--card-2);border-bottom:1px solid var(--border)}
+.frame .bar i{width:11px;height:11px;border-radius:50%;background:var(--border-strong);display:inline-block}
+.frame .bar .url{margin-left:10px;font-size:11.5px;color:var(--muted);background:var(--page);border:1px solid var(--border);border-radius:7px;padding:3px 12px;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.screen{background:var(--page)}
+.figcap{display:flex;gap:10px;align-items:baseline;margin-top:12px;font-size:13px;color:var(--ink-soft)}
+.figcap .fnum{font-family:var(--font-serif);font-weight:700;color:var(--navy);font-size:12px;border:1px solid var(--border);border-radius:6px;padding:1px 8px;background:var(--card);flex:0 0 auto}
+
+.appbar{display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 18px;background:var(--card);border-bottom:1px solid var(--border)}
+.appbar .nav{display:flex;align-items:center;gap:13px}
+.appbar .logo{font-weight:800;font-size:13.5px}
+.appnav{font-size:13px;font-weight:600;color:var(--ink-soft);padding:5px 10px;border-radius:8px}
+.appnav.active{background:var(--navy-soft);color:var(--navy)}
+.appbar .tools{display:flex;align-items:center;gap:9px;color:var(--ink-soft)}
+.appbar .tools svg{width:19px;height:19px}
+.btn-outline{font-size:12.5px;font-weight:800;color:var(--navy);border:1px solid var(--navy);border-radius:8px;padding:5px 12px;background:var(--card)}
+
+.stage{padding:24px 22px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;box-shadow:var(--shadow)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:800;font-size:13.5px;border-radius:10px;padding:10px 15px;background:var(--stripe);color:#fff;border:none}
+.btn.ghost{background:var(--card);color:var(--ink-soft);border:1px solid var(--border-strong)}
+
+/* stat tiles */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+@media(max-width:620px){.stats{grid-template-columns:repeat(2,1fr)}}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:13px}
+.stat .n{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat .n small{font-size:11px;color:var(--muted);font-weight:700}
+.stat .l{font-size:10.5px;color:var(--muted);margin-top:5px}
+
+/* dashboard bars */
+.balance{display:flex;align-items:flex-end;gap:14px;height:74px;padding:4px 2px}
+.balance .b{display:flex;flex-direction:column;align-items:center;gap:5px;flex:1}
+.balance .bar{width:26px;border-radius:5px 5px 0 0}
+.balance .bar.P{background:var(--p-bg);border:1px solid var(--p-bar)}
+.balance .bar.E{background:var(--e-bg);border:1px solid var(--e-bar)}
+.balance .bar.R{background:var(--r-bg);border:1px solid var(--r-bar)}
+.balance .bar.M{background:var(--m-bg);border:1px solid var(--m-bar)}
+.balance .bar.A{background:var(--a-bg);border:1px solid var(--a-bar)}
+.balance .kl{font-size:11px;font-weight:800}
+.balance .P .kl,.balance .b.P{color:var(--p)}
+.balance .vl{font-size:10px;color:var(--muted)}
+
+/* member table */
+.mtable{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.mtable th{text-align:left;font-size:11px;color:var(--muted);font-weight:700;padding:11px 14px;border-bottom:1px solid var(--border)}
+.mtable td{padding:12px 14px;border-bottom:1px solid var(--border)}
+.mtable tr:last-child td{border-bottom:none}
+.mtable a{font-weight:700;color:var(--navy)}
+.mtable .num{font-variant-numeric:tabular-nums;color:var(--ink-soft)}
+
+/* section label like app */
+.slbl{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:10.5px;font-weight:800;color:var(--muted);letter-spacing:.09em;text-transform:uppercase;margin:18px 0 9px;padding-bottom:6px;border-bottom:1.5px solid var(--border)}
+.inc-chk{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:none;letter-spacing:0}
+.box{width:14px;height:14px;border-radius:3px;border:1.5px solid var(--navy);display:inline-flex;align-items:center;justify-content:center;color:#fff}
+.box.on{background:var(--navy)}
+.box.on::after{content:"✓";font-size:10px;line-height:1}
+
+/* line chart legend */
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:11px;font-weight:700;color:var(--ink-soft);margin:6px 0}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:11px;height:11px;border-radius:2px}
+
+/* per-week valence row */
+.vrow{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:9px;background:var(--card)}
+.vrow-hd{display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--card-2)}
+.vrow-hd .ct{font-size:10px;color:var(--muted)}
+.vrow-hd .wk{font-size:12px;font-weight:800}
+.vrow-hd .dt{font-size:11px;color:var(--muted)}
+.vbadge{margin-left:auto;font-size:11px;font-weight:800;padding:3px 10px;border-radius:20px;font-variant-numeric:tabular-nums}
+.vbadge.pos{background:var(--ok-bg);color:var(--pos)}
+.vbadge.neg{background:#F0E0D6;color:var(--neg)}
+.vrow-bd{padding:13px 14px;border-top:1px solid var(--border)}
+.vreason{font-size:12.5px;line-height:1.7;color:var(--ink);background:var(--card-2);border-left:3px solid var(--navy);border-radius:7px;padding:9px 12px}
+.vdim{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px}
+.vdim:last-of-type{border-bottom:none}
+.vkey{width:20px;height:20px;border-radius:5px;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.vkey.P{background:var(--p-bar)} .vkey.E{background:var(--e-bar)} .vkey.R{background:var(--r-bar)} .vkey.M{background:var(--m-bar)} .vkey.A{background:var(--a-bar)}
+.vname{font-weight:700;width:130px;flex:0 0 auto}
+.vval{font-weight:800;width:38px;font-variant-numeric:tabular-nums}
+.vrs{color:var(--ink-soft);flex:1}
+.emos{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.emo{font-size:11.5px;font-weight:700;padding:4px 11px;border-radius:6px;border:1.5px solid}
+.emo.p{background:var(--ok-bg);border-color:var(--ok-bd);color:var(--pos)}
+.emo.n{background:#F0E0D6;border-color:#E1C3B1;color:var(--neg)}
+
+/* brief block */
+.block{border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-bottom:10px;background:var(--card)}
+.block.only{border-color:var(--warn-bd)}
+.block-hd{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--card-2)}
+.block-hd .ct{color:var(--muted);font-size:11px}
+.block-title{font-weight:800;font-size:13.5px;flex:1}
+.block-bd{padding:13px 15px;border-top:1px solid var(--border);font-size:13.5px;line-height:1.75;color:var(--ink-soft)}
+.block-bd ul{margin:8px 0 0;padding-left:18px}
+.block-actions{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)}
+.editlink{font-size:12px;font-weight:800;color:var(--navy)}
+.textarea{width:100%;min-height:96px;border:1.5px solid var(--border-strong);border-radius:8px;padding:10px 12px;font:inherit;font-size:13px;line-height:1.6;color:var(--ink);background:var(--card);resize:vertical}
+
+/* timeline entries */
+.tl{display:grid;gap:9px}
+.tlitem{border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:var(--card)}
+.tlhd{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.dpill{font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px}
+.dpill.P{background:var(--p-bg);color:var(--p)} .dpill.E{background:var(--e-bg);color:var(--e)} .dpill.R{background:var(--r-bg);color:var(--r)} .dpill.M{background:var(--m-bg);color:var(--m)} .dpill.A{background:var(--a-bg);color:var(--a)}
+.tlitem .priv{font-size:11px;font-weight:800;color:var(--muted);background:var(--card-2);border:1px solid var(--border);padding:2px 7px;border-radius:6px}
+.tlitem .txt{font-size:13.5px;color:var(--ink)}
+.tlitem .dt{font-size:11px;color:var(--muted)}
+
+/* client report doc */
+.rdoc{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px 30px;font-family:var(--font-serif);line-height:1.95;color:var(--ink)}
+@media(max-width:560px){.rdoc{padding:22px 20px}}
+.rdoc .rh{text-align:center;padding-bottom:16px;margin-bottom:18px;border-bottom:2px solid var(--ink)}
+.rdoc .rt{font-size:21px;font-weight:800}
+.rdoc .rm{font-size:12px;color:var(--ink-soft);font-family:var(--font-body)}
+.rdoc h4{font-size:15.5px;font-weight:800;margin:18px 0 6px;padding-bottom:5px;border-bottom:1px solid var(--border)}
+.rdoc p{font-size:14px;margin:0 0 10px}
+.rdoc .sign{margin-top:22px;padding-top:14px;border-top:1px solid var(--border);font-size:13px;color:var(--ink-soft);font-family:var(--font-body)}
+
+.deflist{display:grid;gap:12px;margin:18px 0}
+.deflist .d{display:grid;grid-template-columns:150px 1fr;gap:14px;padding:13px 15px;border:1px solid var(--border);border-radius:11px;background:var(--card);box-shadow:var(--shadow)}
+.deflist .d .t{font-weight:800}
+.deflist .d .t .en{display:block;font-size:12px;color:var(--muted);font-weight:700}
+.deflist .d .x{color:var(--ink-soft);font-size:14.5px}
+@media(max-width:560px){.deflist .d{grid-template-columns:1fr;gap:5px}}
+
+.faq{display:grid;gap:10px;margin:16px 0}
+.faq details{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+.faq summary{cursor:pointer;padding:15px 18px;font-weight:700;list-style:none;display:flex;justify-content:space-between;gap:12px;align-items:center}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"+";color:var(--navy);font-weight:800;font-size:18px}
+.faq details[open] summary::after{content:"–"}
+.faq .a{padding:0 18px 16px;color:var(--ink-soft);font-size:14.5px}
+
+.contact{margin:52px 0 0;padding:34px;border-radius:20px;background:radial-gradient(120% 140% at 100% 0,var(--navy-soft),transparent 55%),var(--card);border:1px solid var(--border);box-shadow:var(--shadow);text-align:center}
+.contact h2{font-family:var(--font-serif);font-size:26px;font-weight:800}
+.contact p{color:var(--ink-soft);margin-top:10px;max-width:48ch;margin-inline:auto}
+.contact .mail{display:inline-flex;align-items:center;gap:10px;margin-top:20px;font-weight:800;font-size:16px;padding:12px 20px;border-radius:12px;background:var(--stripe);color:#fff;box-shadow:var(--shadow)}
+footer{padding:40px 0 60px;text-align:center;color:var(--muted);font-size:12.5px}
+footer .wm{font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft)}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+::selection{background:var(--navy);color:#fff}
+</style>
+
+</head>
+<body>
+
+
+<header class="cover">
+  <div class="wrap">
+    <div class="brandline">
+      <div class="brandmark"></div>
+      <div class="brandtext">Ipsen Taiwan<span>Tan Yee Ming Coach · Workplace Well-being Journal</span></div>
+    </div>
+    <div class="eyebrow">教練後台說明書 · Coach Guide</div>
+    <h1>Coach Dashboard<br>完整操作指南</h1>
+    <p class="lead">給 <b>Tan Yee Ming（陳郁敏）教練</b>的後台使用手冊。從登入路徑、儀表板判讀、情緒分析、手動修改回饋，到勾選客戶版與匯出 PDF——每一步都寫清楚。</p>
+    <div class="metarow">
+      <span class="chip"><span class="dot"></span>對象：<b>Tan Yee Ming 教練</b></span>
+      <span class="chip">網址：<b>coach-roan-eta.vercel.app</b></span>
+      <span class="chip">版本：<b>2026 · 繁體中文</b></span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav class="toc">
+    <h2>目錄 Contents</h2>
+    <ol>
+      <li><a href="#s1"><span class="tt">你的角色與這份指南</span><span class="td">總覽</span></a></li>
+      <li><a href="#s2"><span class="tt">登入與進入教練後台</span><span class="td">完整路徑</span></a></li>
+      <li><a href="#s3"><span class="tt">儀表板總覽</span><span class="td">Coach Dashboard</span></a></li>
+      <li><a href="#s4"><span class="tt">成員分析頁</span><span class="td">深度分析與圖表</span></a></li>
+      <li><a href="#s5"><span class="tt">逐週評分與情報簡報</span><span class="td">valence 與 10 區塊</span></a></li>
+      <li><a href="#s6"><span class="tt">手動修改回饋</span><span class="td">編輯簡報內文</span></a></li>
+      <li><a href="#s7"><span class="tt">檢查學員原文</span><span class="td">書寫時間軸</span></a></li>
+      <li><a href="#s8"><span class="tt">客戶交付版與 PDF</span><span class="td">勾選、生成、匯出</span></a></li>
+      <li><a href="#s9"><span class="tt">每週工作流程與 FAQ</span><span class="td">實務建議</span></a></li>
+    </ol>
+  </nav>
+
+  <!-- S1 -->
+  <section class="doc" id="s1">
+    <div class="sec-head"><div class="sec-num">1</div>
+      <div><h2>你的角色與這份指南</h2>
+      <div class="sub">你同時是「教練」，也是一位「會自己書寫的成員」</div></div></div>
+    <p>身為 Ipsen Taiwan 計畫的教練，你在同一個平台上擁有<b>兩種身分</b>：你可以像一般成員一樣書寫、逛社群；也能進入<b>教練專屬的 Coach Dashboard</b>，查看所有學員的書寫、生成情緒分析、撰寫回饋、並產出交付給學員的正式報告。</p>
+    <p>這份指南聚焦在<b>教練後台</b>。一般成員介面（每週 5 題書寫、社群互動）的操作，請參考另一份《使用者介面說明書》。</p>
+    <div class="note info"><div class="ic">i</div><div><p>本指南的畫面示意，取自實際的 <b>Testing 測試環境</b>操作，並以系統預設的英文介面呈現（右上角<span class="ui">選單</span>可切換繁體中文）。示意中的學員名稱、內容皆為測試資料。</p></div></div>
+  </section>
+
+  <!-- S2 -->
+  <section class="doc" id="s2">
+    <div class="sec-head"><div class="sec-num">2</div>
+      <div><h2>登入與進入教練後台</h2>
+      <div class="sub">從打開網站，到站在 Coach Dashboard 前的完整路徑</div></div></div>
+
+    <ol class="steps">
+      <li><b>開啟網站</b>：在瀏覽器輸入 <span class="ui">coach-roan-eta.vercel.app</span> 並前往。未登入會自動導向登入頁。</li>
+      <li><b>用 Email 登入連結進入 App</b>：輸入你的 Email → 按 <span class="ui">Send login link</span> → 到信箱打開主旨「Your sign-in link」的信 → 點信中的 <span class="ui">Sign in</span>。
+        <span class="st-note">此連結一次性、會過期，請直接在信中點擊。</span></li>
+      <li><b>登入後會先落在「成員首頁」</b>（PERMA Self-Reflection）。系統<u>不會</u>自動把你丟進教練後台——這是刻意的，讓你也能正常瀏覽成員介面。</li>
+      <li><b>點導覽列右側的 <span class="ui">Coach Dashboard</span> 按鈕</b>，即進入教練後台。這顆按鈕只有教練帳號看得到。</li>
+    </ol>
+
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">coach-roan-eta.vercel.app/app/home</span></div>
+        <div class="screen">
+          <div class="appbar">
+            <div class="nav">
+              <span class="logo">Ipsen Taiwan</span>
+              <span class="appnav active">PERMA Self-Reflection</span>
+              <span class="appnav">Community</span>
+              <span class="btn-outline">Coach Dashboard</span>
+            </div>
+            <div class="tools">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </div>
+          </div>
+          <div class="stage" style="color:var(--muted);font-size:13px;text-align:center">〔成員首頁內容〕　—　點右上 <b style="color:var(--navy)">Coach Dashboard</b> 進入後台</div>
+        </div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 1</span><span>教練帳號的導覽列會多一顆 <b>Coach Dashboard</b> 按鈕。在後台頁面時，導覽列會收起成員選項，隨時可回到後台首頁。</span></div>
+    </div>
+    <div class="note tip"><div class="ic">✓</div><div><p><b>之後要再進後台？</b>同一裝置若沒登出，下次打開網址會直接進入 App，一樣點 <span class="ui">Coach Dashboard</span> 即可。也可直接前往 <span class="ui">coach-roan-eta.vercel.app/app/coach</span>。</p></div></div>
+  </section>
+
+  <!-- S3 -->
+  <section class="doc" id="s3">
+    <div class="sec-head"><div class="sec-num">3</div>
+      <div><h2>儀表板總覽</h2>
+      <div class="sub">一眼看懂本週全群的書寫概況，再點進個別學員</div></div></div>
+    <p>進入 Coach Dashboard，最上方是<b>本週的日期範圍</b>，接著是兩張總覽卡片與一張學員清單。畫面會在學員發布新書寫時<b>即時更新</b>。</p>
+
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">coach-roan-eta.vercel.app/app/coach</span></div>
+        <div class="screen"><div class="stage">
+          <h3 style="margin:0;font-size:19px">Coach Dashboard</h3>
+          <p style="color:var(--muted);font-size:13px;margin:2px 0 16px">2026-07-19 – 2026-07-24</p>
+          <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px">
+            <div class="card"><p style="font-size:11px;color:var(--muted);margin:0">Entries this week</p><p style="font-size:30px;font-weight:800;margin:4px 0 0">14</p></div>
+            <div class="card"><p style="font-size:11px;color:var(--muted);margin:0 0 4px">Dimension balance</p>
+              <div class="balance">
+                <div class="b P"><div class="bar P" style="height:56px"></div><span class="kl" style="color:var(--p)">P</span><span class="vl">209</span></div>
+                <div class="b"><div class="bar E" style="height:46px"></div><span class="kl" style="color:var(--e)">E</span><span class="vl">172</span></div>
+                <div class="b"><div class="bar R" style="height:47px"></div><span class="kl" style="color:var(--r)">R</span><span class="vl">177</span></div>
+                <div class="b"><div class="bar M" style="height:44px"></div><span class="kl" style="color:var(--m)">M</span><span class="vl">165</span></div>
+                <div class="b"><div class="bar A" style="height:54px"></div><span class="kl" style="color:var(--a)">A</span><span class="vl">203</span></div>
+              </div>
+            </div>
+          </div>
+          <div style="height:14px"></div>
+          <table class="mtable">
+            <thead><tr><th>Member</th><th>This week</th><th>Last entry</th></tr></thead>
+            <tbody>
+              <tr><td><a>testing</a></td><td class="num">6</td><td class="num">7/22/2026</td></tr>
+              <tr><td><a>林思妤（測試）</a></td><td class="num">8</td><td class="num">7/22/2026</td></tr>
+            </tbody>
+          </table>
+        </div></div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 2</span><span>教練儀表板。點學員名字即進入該學員的分析頁。</span></div>
+    </div>
+
+    <div class="deflist">
+      <div class="d"><div class="t">Entries this week<span class="en">本週全群書寫</span></div><div class="x">本週所有<b>學員</b>發布的週記篇數總和（不含教練自己）。</div></div>
+      <div class="d"><div class="t">Dimension balance<span class="en">五維度分布</span></div><div class="x">本週各面向（P/E/R/M/A）被書寫的<b>字數</b>總量。用字數而非篇數，才看得出這週大家在哪個面向著墨最深（因為每篇都必填 5 題，用篇數會永遠是平的）。</div></div>
+      <div class="d"><div class="t">Member 清單<span class="en">成員 / 本週篇數 / 最近書寫</span></div><div class="x">每位學員的名字、<b>This week</b>本週篇數、<b>Last entry</b>最近一次書寫日期。點名字進入分析頁。</div></div>
+    </div>
+  </section>
+
+  <!-- S4 -->
+  <section class="doc" id="s4">
+    <div class="sec-head"><div class="sec-num">4</div>
+      <div><h2>成員分析頁</h2>
+      <div class="sub">生成情緒分析，並用六組圖表讀懂一位學員的歷程</div></div></div>
+    <p>點進一位學員後，頁面由三大可收合區塊組成：<b>Coach Deep Analysis（教練深度分析）</b>、<b>Client Deliverable（客戶交付版）</b>、<b>Entry timeline（書寫時間軸）</b>。本節先談深度分析。</p>
+
+    <h3><span class="step">4.1</span>生成分析</h3>
+    <p>在 <b>Coach Deep Analysis</b> 區塊，按 <span class="ui">Generate valence analysis &amp; brief（生成情緒分析與情報簡報）</span>。系統會逐週分析該學員的回饋，產出情緒 valence 評分與一份情報簡報。分析完成後，按鈕會變成 <span class="ui">Regenerate analysis（重新生成分析）</span>，旁邊顯示 <span class="ui">Based on N weeks（基於 N 週）</span>。</p>
+    <div class="note info"><div class="ic">i</div><div><p>學員至少要有 <b>1 次書寫</b>才能生成。這份深度分析<b>僅教練可見</b>，學員本人看不到。</p></div></div>
+
+    <h3><span class="step">4.2</span>內文語言：EN / 中文</h3>
+    <p>分析內文<b>預設以英文生成</b>（原生語言）。右上的 <span class="ui">Text language</span> 切換鈕：<span class="ui">EN</span> 即時顯示原文；點 <span class="ui">中文</span> 會<b>即時翻譯一次並快取</b>，之後切換即時。數字與圖表不受語言影響，只有文字敘述會翻譯。</p>
+    <div class="note warn"><div class="ic">!</div><div><p>要<b>手動編輯</b>簡報內文時，請先切回 <span class="ui">EN</span>——只有英文原文可編輯；中文為翻譯版，編輯鈕會停用（提示「Switch to EN to edit the source text」）。</p></div></div>
+
+    <h3><span class="step">4.3</span>六組圖表<span class="k"> · 每組都可勾選「納入客戶版」</span></h3>
+    <p>分析下方是六組視覺化圖表。每組標題左側的三角形可<b>展開／收合</b>；右側的 <span class="ui">Include in client version</span> 核取方塊，決定這張圖<b>要不要放進給學員的客戶版報告</b>。</p>
+
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">coach-roan-eta.vercel.app/app/coach/member/…</span></div>
+        <div class="screen"><div class="stage">
+          <p style="font-size:12px;color:var(--muted);margin:0 0 10px">← Coach Dashboard</p>
+          <h3 style="margin:0 0 4px;font-size:19px">林思妤（測試）</h3>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0">
+            <span class="btn">Regenerate analysis</span>
+            <span style="font-size:12px;color:var(--muted)">Based on 8 weeks</span>
+            <span style="margin-left:auto;font-size:11px;color:var(--muted)">Text language</span>
+            <span style="display:inline-flex;border:1px solid var(--border-strong);border-radius:8px;overflow:hidden;font-size:12px;font-weight:800"><span style="padding:4px 11px;background:var(--navy);color:#fff">EN</span><span style="padding:4px 11px;color:var(--ink-soft)">中文</span></span>
+          </div>
+          <div class="slbl"><span>Valence summary</span><span class="inc-chk"><span class="box on"></span>Include in client version</span></div>
+          <div class="stats">
+            <div class="stat"><div class="n" style="color:var(--pos)">+38</div><div class="l">Mean overall valence</div></div>
+            <div class="stat"><div class="n" style="color:var(--pos)">+25</div><div class="l">Change (last − first)</div></div>
+            <div class="stat"><div class="n">+80 <small>/ −55</small></div><div class="l">High / Low</div></div>
+            <div class="stat"><div class="n" style="font-size:15px">Accomplishment</div><div class="l">Strongest dimension</div></div>
+          </div>
+          <div class="slbl"><span>Overall valence trend</span><span class="inc-chk"><span class="box on"></span>Include in client version</span></div>
+          <svg viewBox="0 0 460 150" style="width:100%;height:auto">
+            <line x1="30" y1="20" x2="460" y2="20" stroke="var(--border)"/>
+            <line x1="30" y1="75" x2="460" y2="75" stroke="var(--border-strong)"/>
+            <line x1="30" y1="130" x2="460" y2="130" stroke="var(--border)"/>
+            <text x="0" y="24" font-size="9" fill="var(--muted)">+100</text>
+            <text x="8" y="79" font-size="9" fill="var(--muted)">0</text>
+            <text x="0" y="133" font-size="9" fill="var(--muted)">−100</text>
+            <polyline points="55,45 111,37 167,92 222,105 278,50 334,39 389,34 445,31" fill="none" stroke="var(--m-bar)" stroke-width="3" stroke-linejoin="round"/>
+            <g font-size="9.5" font-weight="700" fill="var(--ink)">
+              <circle cx="55" cy="45" r="3" fill="var(--m-bar)"/><text x="46" y="37">+55</text>
+              <circle cx="111" cy="37" r="3" fill="var(--m-bar)"/><text x="102" y="29">+70</text>
+              <circle cx="167" cy="92" r="3" fill="var(--m-bar)"/><text x="158" y="108">−30</text>
+              <circle cx="222" cy="105" r="3" fill="var(--m-bar)"/><text x="213" y="121">−55</text>
+              <circle cx="278" cy="50" r="3" fill="var(--m-bar)"/><text x="269" y="42">+45</text>
+              <circle cx="334" cy="39" r="3" fill="var(--m-bar)"/><text x="325" y="31">+65</text>
+              <circle cx="389" cy="34" r="3" fill="var(--m-bar)"/><text x="380" y="26">+75</text>
+              <circle cx="445" cy="31" r="3" fill="var(--m-bar)"/><text x="436" y="23">+80</text>
+            </g>
+            <g font-size="9" fill="var(--muted)"><text x="52" y="145">1</text><text x="108" y="145">2</text><text x="164" y="145">3</text><text x="219" y="145">4</text><text x="275" y="145">5</text><text x="331" y="145">6</text><text x="386" y="145">7</text><text x="442" y="145">8</text></g>
+          </svg>
+          <div class="slbl"><span>+ 還有 4 組圖表…</span></div>
+        </div></div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 3</span><span>深度分析上半部：情緒摘要與整體 valence 趨勢。右側核取方塊控制是否納入客戶版。</span></div>
+    </div>
+
+    <div class="deflist">
+      <div class="d"><div class="t">Valence summary<span class="en">情緒摘要</span></div><div class="x">四個關鍵數字：平均整體 valence、變化（末−首）、最高/最低、最強面向。</div></div>
+      <div class="d"><div class="t">Overall valence trend<span class="en">整體趨勢</span></div><div class="x">逐週整體情緒的折線走勢。</div></div>
+      <div class="d"><div class="t">Five-dimension trends<span class="en">五面向趨勢</span></div><div class="x">P/E/R/M/A 五條線，看各面向如何隨週次起伏。</div></div>
+      <div class="d"><div class="t">Five-dimension profile<span class="en">五面向剖面（雷達）</span></div><div class="x">第一次（虛線）對比最新一次的五角剖面，並列出各面向進步／退步。內圈 −100、中圈 0、外圈 +100。</div></div>
+      <div class="d"><div class="t">Affect balance<span class="en">正負情緒平衡</span></div><div class="x">每週正向（往上）與負向（往下）情緒的分佈。</div></div>
+      <div class="d"><div class="t">Emotion word cloud<span class="en">情緒詞雲</span></div><div class="x">學員文字中出現的情緒詞，並標示正向情緒詞佔比。</div></div>
+    </div>
+    <p style="font-size:13px;color:var(--muted)">valence 是「情緒的正負向強度」，範圍 −100 到 +100：正值偏正向、0 為中性、負值偏負向。</p>
+  </section>
+
+  <!-- S5 -->
+  <section class="doc" id="s5">
+    <div class="sec-head"><div class="sec-num">5</div>
+      <div><h2>逐週評分與情報簡報</h2>
+      <div class="sub">看每一週的評分理由，以及多個區塊的教練情報</div></div></div>
+
+    <h3><span class="step">5.1</span>Per-week valence &amp; rationale<span class="k"> · 逐週評分理由</span></h3>
+    <p>圖表下方是<b>每一週的評分列</b>。點一列可展開，看到系統對那一週的<b>整體評分理由</b>、五個面向各自的分數與理由、以及擷取的情緒詞——理由會直接引用學員原文，方便你核對判斷。</p>
+
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">Per-week valence &amp; rationale</span></div>
+        <div class="screen"><div class="stage">
+          <div class="vrow"><div class="vrow-hd"><span style="color:var(--muted)">▸</span><span><span class="ct">WEEK</span><br><span class="wk">Week 3</span></span><span class="dt">2026-06-15</span><span class="vbadge neg">Overall −30 · 偏負</span></div></div>
+          <div class="vrow"><div class="vrow-hd"><span style="color:var(--muted)">▸</span><span><span class="ct">WEEK</span><br><span class="wk">Week 4</span></span><span class="dt">2026-06-22</span><span class="vbadge neg">Overall −55 · 偏負</span></div></div>
+          <div class="vrow">
+            <div class="vrow-hd"><span style="color:var(--navy)">▾</span><span><span class="ct">WEEK</span><br><span class="wk">Week 5</span></span><span class="dt">2026-06-29</span><span class="vbadge pos">Overall +45 · 正向</span></div>
+            <div class="vrow-bd">
+              <div class="vreason"><b>整體評分理由。</b>A clear recovery week: rest restored energy（「請了一天假去海邊，回來後好很多」）and relational repair（「把誤會解開了」）mark the turning point back upward.</div>
+              <div style="height:8px"></div>
+              <div class="vdim"><span class="vkey P">P</span><span class="vname">Positive Emotions</span><span class="vval" style="color:var(--pos)">+50</span><span class="vrs">Rest brought relief:「請了一天假去海邊，回來後好很多」</span></div>
+              <div class="vdim"><span class="vkey R">R</span><span class="vname">Relationships</span><span class="vval" style="color:var(--pos)">+50</span><span class="vrs">Repaired relationship:「和工程師好好聊過，把誤會解開了」</span></div>
+              <div class="vdim"><span class="vkey M">M</span><span class="vname">Meaning</span><span class="vval" style="color:var(--pos)">+55</span><span class="vrs">Reconnected to purpose:「重新想起這是為了幫小商家」</span></div>
+              <div class="vdim"><span class="vkey A">A</span><span class="vname">Accomplishment</span><span class="vval" style="color:var(--pos)">+45</span><span class="vrs">Solved a hard blocker:「把最卡的付款問題解掉了」</span></div>
+              <div class="emos"><span class="emo p">relieved</span><span class="emo p">restored</span><span class="emo p">reconnected</span><span class="emo p">focused</span><span class="emo p">resolved</span><span class="emo p">hopeful</span></div>
+            </div>
+          </div>
+          <div class="vrow"><div class="vrow-hd"><span style="color:var(--muted)">▸</span><span><span class="ct">WEEK</span><br><span class="wk">Week 6</span></span><span class="dt">2026-07-06</span><span class="vbadge pos">Overall +65 · 高度正向</span></div></div>
+        </div></div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 4</span><span>展開某一週，即可看到整體理由、各面向評分與理由、情緒詞。</span></div>
+    </div>
+
+    <h3><span class="step">5.2</span>Coach intelligence brief<span class="k"> · 教練情報簡報（10 區塊）</span></h3>
+    <p>再往下是<b>情報簡報</b>：由數個主題區塊組成（本例的林思妤共 <b>8 個</b>），涵蓋從「整體情緒與福祉軌跡」到「教練假設」等主題。每個區塊可點開閱讀，並各自帶一個 <span class="ui">Include in client deliverable</span> 核取方塊——決定它是否納入給學員的客戶版。系統預設把前幾個較適合學員閱讀的區塊標為 <span class="tag inc">Include</span>，其餘較敏感的教練洞察標為 <span class="tag only">Coach only</span>。你可以自由調整。</p>
+
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">Coach intelligence brief</span></div>
+        <div class="screen"><div class="stage">
+          <div class="block"><div class="block-hd"><span style="color:var(--muted)">▸</span><span class="block-title">Overall Emotional &amp; Well-being Trajectory</span><span class="tag inc">Include</span></div></div>
+          <div class="block"><div class="block-hd"><span style="color:var(--muted)">▸</span><span class="block-title">PERMA Five-Dimension Profile</span><span class="tag inc">Include</span></div></div>
+          <div class="block"><div class="block-hd"><span style="color:var(--muted)">▸</span><span class="block-title">Strengths &amp; Inner Resources</span><span class="tag inc">Include</span></div></div>
+          <div class="block"><div class="block-hd"><span style="color:var(--muted)">▸</span><span class="block-title">Self-Determination Motivation</span><span class="tag inc">Include</span></div></div>
+          <div class="block only"><div class="block-hd"><span style="color:var(--muted)">▸</span><span class="block-title">Linguistic Fingerprint</span><span class="tag only">Coach only</span></div></div>
+          <div class="block only"><div class="block-hd"><span style="color:var(--muted)">▸</span><span class="block-title">Cross-cutting Themes &amp; Patterns</span><span class="tag only">Coach only</span></div></div>
+          <div class="block only"><div class="block-hd"><span style="color:var(--muted)">▸</span><span class="block-title">The Unsaid</span><span class="tag only">Coach only</span></div></div>
+          <div class="block only"><div class="block-hd"><span style="color:var(--muted)">▸</span><span class="block-title">Coaching Hypotheses</span><span class="tag only">Coach only</span></div></div>
+        </div></div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 5</span><span>林思妤（測試）的 8 個情報簡報區塊：前 4 個 <b>Include</b>、後 4 個 <b>Coach only</b>。標籤顯示各區塊是否納入客戶版。</span></div>
+    </div>
+    <div class="deflist">
+      <div class="d"><div class="t"><span class="tag inc">Include</span></div><div class="x">此區塊會納入之後生成的客戶交付版報告，學員看得到。</div></div>
+      <div class="d"><div class="t"><span class="tag only">Coach only</span></div><div class="x">僅供你參考的教練洞察，<b>不會</b>出現在客戶版。</div></div>
+    </div>
+    <p style="font-size:13px;color:var(--muted)">常見主題區塊：整體情緒與福祉軌跡、PERMA 五面向剖析、優勢與內在資源、自我決定論動機、語言指紋、橫向主題與模式、未言之事、教練假設、值得關注、會談準備——實際區塊數會依分析內容而定（林思妤此例為 8 個）。</p>
+  </section>
+
+  <!-- S6 -->
+  <section class="doc" id="s6">
+    <div class="sec-head"><div class="sec-num">6</div>
+      <div><h2>手動修改回饋</h2>
+      <div class="sub">AI 產出是草稿——你可以親手改寫任何一段</div></div></div>
+    <p>情報簡報是輔助你的<b>草稿</b>，最終回饋由你決定。展開任一區塊，點右下的 <span class="ui">Edit（編輯）</span>，內文會變成可編輯的文字框；改寫完成按 <span class="ui">Save（儲存）</span> 即覆寫並保存，或按 <span class="ui">Cancel</span> 放棄。</p>
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">Coach intelligence brief · Edit</span></div>
+        <div class="screen"><div class="stage">
+          <div class="block">
+            <div class="block-hd"><span style="color:var(--navy)">▾</span><span class="block-title">Strengths &amp; Inner Resources</span><span class="tag inc">Include</span></div>
+            <div class="block-bd">
+              <textarea class="textarea">Self-awareness and self-regulation — You were able to name your own low point honestly ("a bit lost, like I forgot why") and then act on it decisively by taking a day for yourself. This combination of honest reflection and prompt action is a real strength…</textarea>
+              <div style="display:flex;gap:8px;margin-top:10px"><span class="btn" style="padding:7px 14px;font-size:12.5px">Save</span><span class="btn ghost" style="padding:7px 14px;font-size:12.5px">Cancel</span></div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 6</span><span>編輯模式：直接改寫內文後按 <b>Save</b>。支援 <b>**粗體**</b>、清單等簡易 Markdown。</span></div>
+    </div>
+    <div class="note warn"><div class="ic">!</div><div><p>編輯只在 <span class="ui">EN</span> 原文模式可用。若你在「中文」翻譯版下想修改，請先把 <span class="ui">Text language</span> 切回 <span class="ui">EN</span> 再編輯原文。</p></div></div>
+    <div class="note tip"><div class="ic">✓</div><div><p>圖表的數字與趨勢由分析產生、不可手改；若學員新增了書寫、或你想重新計算，按最上方的 <span class="ui">Regenerate analysis</span> 重跑（會覆蓋既有分析，翻譯快取也會重置）。</p></div></div>
+  </section>
+
+  <!-- S7 -->
+  <section class="doc" id="s7">
+    <div class="sec-head"><div class="sec-num">7</div>
+      <div><h2>檢查學員原文</h2>
+      <div class="sub">回到第一手資料：學員到底寫了什麼</div></div></div>
+    <p>分析與簡報都是<b>經過詮釋</b>的結果。要核對第一手內容，請看成員頁最下方的 <b>Entry timeline（書寫時間軸）</b>。這裡<b>逐筆</b>列出該學員所有的書寫，依時間由新到舊排列。</p>
+    <p>每一筆會標示：所屬<b>面向</b>（P/E/R/M/A，以專屬顏色的標籤呈現）、<b>書寫日期</b>、以及<b>學員的原始文字</b>。若某筆內容被學員設為私人，會多一個 <span class="ui">Private（私人）</span> 標籤。你能看到<b>全部</b>內容（含私人），這是教練專屬的權限。</p>
+
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">member · Entry timeline</span></div>
+        <div class="screen"><div class="stage">
+          <p style="font-size:12px;font-weight:800;color:var(--muted);margin:0 0 12px">▾ ENTRY TIMELINE</p>
+          <div class="tl">
+            <div class="tlitem"><div class="tlhd"><span class="dpill A">Accomplishment</span><span class="dt">7/20/2026</span></div><div class="txt">正式上線了，第一天就有真的商家在用，那種「做出有價值的東西」的感覺很踏實。</div></div>
+            <div class="tlitem"><div class="tlhd"><span class="dpill P">Positive Emotions</span><span class="dt">6/29/2026</span></div><div class="txt">請了一天假去海邊，回來後整個人好很多。</div></div>
+            <div class="tlitem"><div class="tlhd"><span class="dpill R">Relationships</span><span class="dt">6/29/2026</span></div><div class="txt">和工程師好好聊過，把之前的誤會解開了。</div></div>
+            <div class="tlitem"><div class="tlhd"><span style="display:flex;gap:6px;align-items:center"><span class="dpill M">Meaning</span><span class="priv">Private</span></span><span class="dt">6/22/2026</span></div><div class="txt">有點迷失，好像忘了當初為什麼想做這個。</div></div>
+          </div>
+        </div></div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 7</span><span>書寫時間軸：逐筆呈現學員原文、面向與日期。私人內容也對教練可見。</span></div>
+    </div>
+    <div class="note info"><div class="ic">i</div><div><p><b>建議：</b>生成分析後，搭配時間軸原文一起讀。分析幫你抓重點與趨勢，原文讓你確認語氣與脈絡——兩者對照，回饋會更貼近學員真實的處境。</p></div></div>
+  </section>
+
+  <!-- S8 -->
+  <section class="doc" id="s8">
+    <div class="sec-head"><div class="sec-num">8</div>
+      <div><h2>客戶交付版與 PDF</h2>
+      <div class="sub">把你挑選的內容，變成一份給學員的正式報告</div></div></div>
+
+    <h3><span class="step">8.1</span>先勾選、再生成</h3>
+    <p>客戶版的內容，完全由你在深度分析裡的<b>勾選</b>決定：每個簡報區塊的 <span class="ui">Include in client deliverable</span>、每張圖表的 <span class="ui">Include in client version</span>，勾起來的才會進客戶版。<b>Client Deliverable</b> 區塊會顯示目前納入的區塊數（例如林思妤此例為 <span class="ui">Blocks included: 4 / 8</span>）。</p>
+    <ol class="steps">
+      <li><b>確認勾選</b>：回到深度分析，勾好你想給學員看的區塊與圖表，取消不想給的。</li>
+      <li><b>生成</b>：在 Client Deliverable 按 <span class="ui">Generate client deliverable（生成客戶交付版）</span>。系統會把勾選的區塊，改寫成給學員本人、溫暖第二人稱的正式回顧文件。改了勾選想更新，按 <span class="ui">Regenerate client version</span> 重生成。</li>
+      <li><b>檢視</b>：報告會顯示在下方（見圖 8），含標題、學員名字與日期、正文，以及你勾選納入的「情緒歷程一覽」圖表，最後署名 <b>Coach · Tan Yee Ming</b>。</li>
+    </ol>
+    <div class="note warn"><div class="ic">!</div><div><p>至少要有 1 個區塊被納入，才能生成客戶版。<b>Coach only</b> 的區塊與未勾選的圖表<b>不會</b>出現在學員的報告裡。</p></div></div>
+
+    <h3><span class="step">8.2</span>客戶報告長什麼樣</h3>
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">Client Deliverable · Personal Well-being Review</span></div>
+        <div class="screen"><div class="stage">
+          <div class="rdoc" id="report">
+            <div class="rh"><div class="rt">Personal Well-being Review</div><div class="rm">林思妤（測試）　·　2026-07-22</div></div>
+            <h4>Your Emotional Journey Over Eight Weeks</h4>
+            <p>Looking back across these eight weeks, a clear and meaningful story emerges. You moved from a strong start, through a challenging dip in the middle, into a recovery that carried you higher than where you began.</p>
+            <p>The turning point deserves real recognition. In week 5, you made a simple but powerful choice: "I took a day off and went to the beach." That one act of self-care became the hinge point for everything that followed — your sense of meaning, your relationships, and your engagement all began lifting together from that moment.</p>
+            <h4>Strengths and Inner Resources</h4>
+            <p>Self-awareness and self-regulation — you named your own low point honestly, then acted on it decisively by taking a day for yourself. Relational courage — when friction arose with a colleague, you did not avoid it; you addressed it directly and repaired it. These are real strengths, not something to take for granted.</p>
+            <div class="sign">Coach · Tan Yee Ming</div>
+          </div>
+        </div></div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 8</span><span>客戶交付版報告「Personal Well-being Review」。以襯線體、正式排版呈現，末尾附你勾選的圖表與教練署名。</span></div>
+    </div>
+
+    <h3><span class="step">8.3</span>匯出 PDF</h3>
+    <p>報告生成後，Client Deliverable 會多一顆 <span class="ui">Print / Export PDF（列印 / 匯出 PDF）</span>。按下它會開啟瀏覽器的<b>列印對話框</b>，而且已特別設定成<b>只輸出這份客戶報告</b>（頁面其他內容不會被印出）。</p>
+    <ol class="steps">
+      <li>按 <span class="ui">Print / Export PDF</span>，開啟列印對話框。</li>
+      <li>在「目的地 / Destination」選擇 <b>另存為 PDF（Save as PDF）</b>。</li>
+      <li>按<b>儲存 / Save</b>，選擇存檔位置，即可得到一份可寄給學員的 PDF。</li>
+    </ol>
+    <div class="note tip"><div class="ic">✓</div><div><p>想直接印在紙上，同一個對話框選實體印表機即可。若預覽出現多餘內容，確認你是從報告下方的 <b>Print / Export PDF</b> 按鈕進入（而非瀏覽器選單的列印）。</p></div></div>
+  </section>
+
+  <!-- S9 -->
+  <section class="doc" id="s9">
+    <div class="sec-head"><div class="sec-num">9</div>
+      <div><h2>每週工作流程與 FAQ</h2>
+      <div class="sub">一套可重複的節奏，讓後台工作更輕鬆</div></div></div>
+    <h3>建議的每週節奏</h3>
+    <ol class="steps">
+      <li><b>看儀表板</b>：掌握本週誰寫了、寫了幾篇、五維度分布。</li>
+      <li><b>逐一點進學員</b>：對有新書寫的學員按 <span class="ui">Regenerate analysis</span> 更新分析。</li>
+      <li><b>對照原文</b>：用 Entry timeline 核對語氣與脈絡。</li>
+      <li><b>整理回饋</b>：編輯簡報區塊、調整 Include / Coach only 勾選。</li>
+      <li><b>交付</b>：生成客戶版 → 匯出 PDF → 寄給學員或於會談中使用。</li>
+    </ol>
+    <div class="faq">
+      <details><summary>學員看得到我的深度分析或「Coach only」內容嗎？</summary><div class="a">看不到。深度分析、逐週評分、以及所有 <b>Coach only</b> 區塊都僅教練可見。學員只會收到你生成、且明確勾選納入的<b>客戶交付版</b>。</div></details>
+      <details><summary>重新生成分析會蓋掉我手動改過的內文嗎？</summary><div class="a">會。<b>Regenerate analysis</b> 會以最新資料重跑，覆蓋既有的簡報內文與翻譯快取。若你已手改過想保留的段落，建議先複製保存，或改用「重新生成客戶版」只更新交付文件。</div></details>
+      <details><summary>切到「中文」後不能編輯？</summary><div class="a">正確。中文是英文原文的即時翻譯版，為避免原文與譯文不同步，編輯只在 <b>EN</b> 模式開放。切回 EN 即可編輯。</div></details>
+      <details><summary>儀表板沒即時更新？</summary><div class="a">儀表板會在學員發布時即時重整；若沒動，切回該分頁或視窗、或按導覽列的<b>重新整理</b>鈕，即會重新抓取最新資料。</div></details>
+      <details><summary>PDF 印出來有多餘內容？</summary><div class="a">請務必從客戶報告下方的 <b>Print / Export PDF</b> 按鈕進入列印——它已設定成只輸出報告區。若用瀏覽器選單的列印，可能會印到整頁。</div></details>
+    </div>
+  </section>
+
+  <div class="contact">
+    <h2>需要協助？</h2>
+    <p>後台操作、分析生成或報告匯出上有任何問題，歡迎隨時來信，我們會盡快協助你。</p>
+    <a class="mail" href="mailto:psybypsy01@gmail.com">✉ psybypsy01@gmail.com</a>
+  </div>
+
+  <footer>
+    <div class="wm">Ipsen Taiwan</div>
+    <p style="margin-top:8px">Tan Yee Ming Coach · Workplace Well-being Journal　教練後台使用說明書</p>
+  </footer>
+</div>
+
+</body>
+</html>
