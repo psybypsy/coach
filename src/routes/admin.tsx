@@ -90,6 +90,7 @@ interface PageResult<T> {
 }
 
 const PAGE_SIZE = 1000
+const ADMIN_EMAIL = 'psybypsy01@gmail.com'
 
 async function fetchEveryRow<T>(
   pageLoader: (from: number, to: number) => Promise<PageResult<T>>,
@@ -188,13 +189,7 @@ function AdminPage() {
       return
     }
 
-    const { data: currentProfile, error: profileError } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', userId)
-      .single()
-
-    if (profileError || currentProfile?.role !== 'coach') {
+    if (userData.user?.email?.toLowerCase() !== ADMIN_EMAIL) {
       setRoleState('denied')
       setLoading(false)
       return
@@ -306,8 +301,8 @@ function AdminPage() {
           <div className="flex items-center justify-between md:block">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/45">PSY by PSY</p>
-              <h1 className="mt-2 font-heading text-xl">教練管理後台</h1>
-              <p className="mt-1 text-xs text-white/50">Coach workspace</p>
+              <h1 className="mt-2 font-heading text-xl">系統管理後台</h1>
+              <p className="mt-1 text-xs text-white/50">Admin workspace</p>
             </div>
             <Link to="/app/home" className="rounded-lg border border-white/15 px-3 py-2 text-xs text-white/75 md:hidden">
               返回前台
@@ -362,7 +357,7 @@ function AdminPage() {
           {emailUnavailable && (activeTab === 'overview' || activeTab === 'members') && (
             <div className="mb-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               <AdminIcon name="info" />
-              <p>會員 email 尚未開放給教練後台。請先在 Supabase 套用 <code className="font-semibold">supabase/admin.sql</code>；其他資料不受影響。</p>
+              <p>會員 email 尚未開放給管理後台。請先套用最新的 Supabase migration；其他資料不受影響。</p>
             </div>
           )}
 
@@ -697,7 +692,7 @@ function AdminSectionLoading() {
 }
 
 function AccessDenied() {
-  return <div className="flex min-h-screen items-center justify-center bg-[#f5f2ec] px-6"><div className="w-full max-w-md rounded-2xl border border-[#e2dcd3] bg-white p-8 text-center shadow-sm"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#f1ece5] text-[#705a49]"><AdminIcon name="lock" /></div><h1 className="mt-5 font-heading text-2xl font-semibold text-[#302b28]">這是教練專用頁面</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">目前登入的帳號沒有管理者權限。如需使用後台，請改用教練帳號登入。</p><Link to="/app/home" className="mt-6 inline-flex h-10 items-center justify-center rounded-xl bg-[#302b28] px-5 text-sm font-semibold text-white">返回使用者頁面</Link></div></div>
+  return <div className="flex min-h-screen items-center justify-center bg-[#f5f2ec] px-6"><div className="w-full max-w-md rounded-2xl border border-[#e2dcd3] bg-white p-8 text-center shadow-sm"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#f1ece5] text-[#705a49]"><AdminIcon name="lock" /></div><h1 className="mt-5 font-heading text-2xl font-semibold text-[#302b28]">這是系統管理者專用頁面</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">目前登入的帳號沒有管理者權限。請使用 {ADMIN_EMAIL} 登入。</p><Link to="/app/home" className="mt-6 inline-flex h-10 items-center justify-center rounded-xl bg-[#302b28] px-5 text-sm font-semibold text-white">返回使用者頁面</Link></div></div>
 }
 
 type IconName = 'grid' | 'users' | 'document' | 'message' | 'chart' | 'arrow' | 'logout' | 'search' | 'refresh' | 'info' | 'download' | 'activity' | 'eye' | 'chevron' | 'close' | 'lock'
