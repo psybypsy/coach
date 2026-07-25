@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import html2pdf from 'html2pdf.js'
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { supabase } from '../lib/supabase'
@@ -59,6 +59,9 @@ interface Framework {
   note: string
 }
 
+// T0 基準點：教練手填的五面向幸福感分數（0–10），作為所有圖表的起點（見遷移 005）
+type BaselineScores = Record<DimKey, number>
+
 interface CoachAnalysis {
   member_id: string
   based_on: number
@@ -69,7 +72,24 @@ interface CoachAnalysis {
   client_date: string | null
   // 英文分析的翻譯快取（見遷移 003）：預設英文，教練點「中文」時即時翻譯並存這裡
   translations?: Record<string, { blocks: BriefBlock[]; sessions: SessionScore[] }>
+  baseline?: BaselineScores | null
   updated_at: string
+}
+
+// T0 分數尺度：0–10 → valence −100~+100（5=0 中性、10=+100、0=−100）
+function baselineToValence(score: number): number {
+  const s = Math.max(0, Math.min(10, score))
+  return Math.round((s - 5) * 20)
+}
+// 由五面向 0–10 分數組出一個「第 0 次」的 SessionScore（overall 取五項平均）
+function makeBaselineSession(b: BaselineScores | null | undefined): SessionScore | null {
+  if (!b || !KEYS.every((k) => typeof b[k] === 'number' && !Number.isNaN(b[k]))) return null
+  const dims = {} as SessionScore['dims']
+  KEYS.forEach((k) => {
+    dims[k] = { v: baselineToValence(b[k]), reason: '' }
+  })
+  const overall = Math.round(KEYS.reduce((sum, k) => sum + dims[k].v, 0) / KEYS.length)
+  return { overall, overallReason: '', dims, emotions: [] }
 }
 
 // #2 情報簡報區塊標題一律用「固定的 canonical 標題」（依區塊順序）並走 t()，
@@ -97,7 +117,7 @@ const CHART_DEFS: { key: string; title: string }[] = [
   { key: 'cloud', title: '情緒詞雲' },
 ]
 
-// ── 極簡 Markdown → HTML（** 粗體、* 斜體、## 標題、- 條列）──
+// ── 極簡 Markdown → HTML（** 粗體、* 斜體、## 標題、- / • 條列、1. 數字條列、縮排巢狀條列）──
 function mdToHtml(md: string): string {
   const esc = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -105,23 +125,44 @@ function mdToHtml(md: string): string {
     esc(s)
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/(?<!\*)\*(?!\*)(.+?)\*(?!\*)/g, '<em>$1</em>')
-  const lines = String(md || '').split('\n')
+  const rawLines = String(md || '').split('\n')
   let h = ''
-  let inList = false
-  for (const line of lines) {
-    const l = line.trim()
-    if (/^[-*] /.test(l)) {
-      if (!inList) {
-        h += '<ul>'
-        inList = true
+  // 依縮排深度堆疊巢狀 <ul>/<ol>：同層同類型接續為 <li> 手足，縮排加深則在目前 <li> 內開新子清單
+  const stack: { type: 'ul' | 'ol'; indent: number }[] = []
+  const closeAllLists = () => {
+    while (stack.length) {
+      h += '</li>'
+      const f = stack.pop()!
+      h += f.type === 'ul' ? '</ul>' : '</ol>'
+    }
+  }
+  for (const raw of rawLines) {
+    const l = raw.trim()
+    const indent = (/^\s*/.exec(raw)?.[0] ?? '').replace(/\t/g, '  ').length
+    const bullet = /^[-*•‣]\s+(.*)$/.exec(l)
+    const numbered = /^\d+[.)]\s+(.*)$/.exec(l)
+    if (bullet || numbered) {
+      const type: 'ul' | 'ol' = bullet ? 'ul' : 'ol'
+      const content = inline((bullet ?? numbered)![1])
+      while (
+        stack.length &&
+        (stack[stack.length - 1].indent > indent ||
+          (stack[stack.length - 1].indent === indent && stack[stack.length - 1].type !== type))
+      ) {
+        h += '</li>'
+        const f = stack.pop()!
+        h += f.type === 'ul' ? '</ul>' : '</ol>'
       }
-      h += '<li>' + inline(l.slice(2)) + '</li>'
+      if (stack.length && stack[stack.length - 1].indent === indent) {
+        h += '</li><li>' + content
+      } else {
+        h += type === 'ul' ? '<ul>' : '<ol>'
+        stack.push({ type, indent })
+        h += '<li>' + content
+      }
       continue
     }
-    if (inList) {
-      h += '</ul>'
-      inList = false
-    }
+    closeAllLists()
     const hm = l.match(/^#{1,3} /)
     if (hm) {
       const lvl = hm[0].trim().length
@@ -130,8 +171,36 @@ function mdToHtml(md: string): string {
       h += '<p>' + inline(l) + '</p>'
     }
   }
-  if (inList) h += '</ul>'
+  closeAllLists()
   return h
+}
+
+interface NavItem {
+  id: string
+  label: string
+  indent?: boolean
+}
+
+// 左側章節導覽：sticky 側欄，點擊平滑捲動、依捲動位置自動高亮目前章節
+function ReportNav({ items, active }: { items: NavItem[]; active: string }) {
+  if (items.length === 0) return null
+  return (
+    <nav className="cv-toc" aria-label="report sections">
+      {items.map((it) => (
+        <a
+          key={it.id}
+          href={`#${it.id}`}
+          className={`cv-toc-link ${it.indent ? 'cv-toc-sub' : ''} ${active === it.id ? 'active' : ''}`}
+          onClick={(e) => {
+            e.preventDefault()
+            document.getElementById(it.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }}
+        >
+          {it.label}
+        </a>
+      ))}
+    </nav>
+  )
 }
 
 // #6 可收合的 section 標題（點整行展開／收合，帶旋轉三角）
@@ -193,10 +262,11 @@ function MemberDetailPage() {
   const [fwDraft, setFwDraft] = useState<Framework | null>(null)
   // 教練簡報內文顯示語言：預設英文（原生生成語言）；中文為即時翻譯的快取版
   const [briefLang, setBriefLang] = useState<'en' | 'zh-TW'>('en')
-  const [openRow, setOpenRow] = useState<number | null>(null)
+  // 子項目預設全收起（外層三大區塊維持展開）：記的是「明確展開」的項目，空陣列＝全部收起
+  const [openRows, setOpenRows] = useState<number[]>([])
   const [openBlocks, setOpenBlocks] = useState<number[]>([])
-  // 圖表模塊預設展開；收起的 key 記在這裡（#6：所有模塊都可展開／收合）
-  const [collapsedCharts, setCollapsedCharts] = useState<string[]>([])
+  // 圖表模塊預設收起；展開的 key 記在這裡（#6：所有模塊都可展開／收合）
+  const [openCharts, setOpenCharts] = useState<string[]>([])
   // #6 最外層三個大 section 也可展開／收合，預設全展開
   const [openSections, setOpenSections] = useState({ deep: true, client: true, timeline: true })
   const [editBlock, setEditBlock] = useState<number | null>(null)
@@ -205,10 +275,61 @@ function MemberDetailPage() {
   const [editClient, setEditClient] = useState(false)
   const [clientEditText, setClientEditText] = useState('')
   const [message, setMessage] = useState<string | null>(null)
+  // 左側章節導覽：目前捲動到哪個章節
+  const [activeNav, setActiveNav] = useState('')
+  // T0 基準點：五面向 0–10 輸入（字串以容許暫時空白），存進 coach_analyses.baseline
+  const emptyBaselineDraft: Record<DimKey, string> = { P: '', E: '', R: '', M: '', A: '' }
+  const [baselineDraft, setBaselineDraft] = useState<Record<DimKey, string>>(emptyBaselineDraft)
+  const [savingBaseline, setSavingBaseline] = useState(false)
+  // 五項都是 0–10 的有效數字才成立；否則視為未設定（圖表不套 T0）
+  const baseline = useMemo<BaselineScores | null>(() => {
+    const nums = {} as BaselineScores
+    for (const k of KEYS) {
+      const raw = baselineDraft[k].trim()
+      const n = Number(raw)
+      if (raw === '' || Number.isNaN(n) || n < 0 || n > 10) return null
+      nums[k] = n
+    }
+    return nums
+  }, [baselineDraft])
 
   useEffect(() => {
     void guardAndLoad()
   }, [id])
+
+  const hasDeepAnalysis = !!analysis && analysis.sessions.length > 0
+  const navItems = useMemo(() => {
+    const items: NavItem[] = [
+      { id: 'sec-baseline', label: t('T0 基準點') },
+      { id: 'sec-deep', label: t('教練深度分析') },
+    ]
+    if (hasDeepAnalysis) {
+      items.push({ id: 'sec-charts', label: t('圖表'), indent: true })
+      items.push({ id: 'sec-blocks', label: t('教練情報簡報'), indent: true })
+      items.push({ id: 'sec-framework', label: t('自訂分析框架'), indent: true })
+      items.push({ id: 'sec-client', label: t('客戶交付版') })
+    }
+    items.push({ id: 'sec-timeline', label: t('書寫時間軸') })
+    return items
+  }, [hasDeepAnalysis, t])
+
+  // 依捲動位置自動高亮側欄目前章節（進入視窗上方 35% 區帶即視為目前章節）
+  useEffect(() => {
+    const els = navItems.map((n) => document.getElementById(n.id)).filter((el): el is HTMLElement => !!el)
+    if (!els.length) return
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting)
+        if (visible.length > 0) {
+          const top = visible.reduce((a, b) => (a.boundingClientRect.top < b.boundingClientRect.top ? a : b))
+          setActiveNav(top.target.id)
+        }
+      },
+      { rootMargin: '0px 0px -65% 0px', threshold: 0 },
+    )
+    els.forEach((el) => obs.observe(el))
+    return () => obs.disconnect()
+  }, [navItems])
 
   async function guardAndLoad() {
     const { data: userData } = await supabase.auth.getUser()
@@ -243,8 +364,33 @@ function MemberDetailPage() {
     setName(profile?.display_name ?? '')
     setEntries((entryRows as unknown as EntryRow[]) ?? [])
     setPosts((postRows as unknown as JournalPost[]) ?? [])
-    setAnalysis((analysisRow as unknown as CoachAnalysis) ?? null)
+    const row = (analysisRow as unknown as CoachAnalysis) ?? null
+    setAnalysis(row)
+    const b = row?.baseline
+    setBaselineDraft(
+      b ? (Object.fromEntries(KEYS.map((k) => [k, String(b[k] ?? '')])) as Record<DimKey, string>) : emptyBaselineDraft,
+    )
     setLoading(false)
+  }
+
+  // 儲存 T0 基準點：upsert coach_analyses（教練 RLS 允許 insert/update；分析未生成也可先存）
+  async function saveBaseline() {
+    if (!baseline) {
+      setMessage(t('請把 T0 的五個面向都填 0–10 的分數'))
+      return
+    }
+    setSavingBaseline(true)
+    setMessage(null)
+    const { error } = await supabase
+      .from('coach_analyses')
+      .upsert({ member_id: id, baseline }, { onConflict: 'member_id' })
+    if (error) {
+      setMessage(t('儲存失敗，請確認已在 Supabase 執行遷移 005（新增 baseline 欄）'))
+    } else {
+      setAnalysis((prev) => (prev ? { ...prev, baseline } : prev))
+      setMessage(t('已儲存 T0 基準點'))
+    }
+    setSavingBaseline(false)
   }
 
   async function authFetch(path: string, body?: Record<string, unknown>) {
@@ -411,8 +557,20 @@ function MemberDetailPage() {
 
   function deleteBlock(i: number) {
     if (!analysis) return
+    if (!window.confirm(t('確定要刪除這個區塊嗎？此動作無法復原。'))) return
     const blocks = analysis.blocks.filter((_, j) => j !== i)
     void persist({ blocks })
+  }
+
+  // 一次刪除所有「僅教練」（未納入客戶版）的區塊，直接寫回分析資料
+  function deleteCoachOnlyBlocks() {
+    if (!analysis) return
+    const remaining = analysis.blocks.filter((b) => b.include)
+    const removedCount = analysis.blocks.length - remaining.length
+    if (removedCount === 0) return
+    if (!window.confirm(t('確定要刪除全部 {n} 個「僅教練」區塊嗎？此動作無法復原。').replace('{n}', String(removedCount))))
+      return
+    void persist({ blocks: remaining })
   }
 
   // 更新 coach_analyses（教練 RLS 允許）並同步本地狀態
@@ -450,7 +608,9 @@ function MemberDetailPage() {
         margin: [12, 12, 14, 12],
         filename: 'Personal-Well-being-Review.pdf', // 純 ASCII，避免檔名特殊字元讓下載失效
         image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: false },
+        // foreignObjectRendering:true 讓內嵌 SVG（雷達圖）交給瀏覽器原生渲染，
+        // 而不是 html2canvas 自己那套不完整的 SVG 解析器——後者對這個雷達圖會裁切掉一半內容。
+        html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: false, foreignObjectRendering: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
         // 圖表區另起一頁；圖表間依序流動排版，只有 avoid 擋住整塊圖（含雷達 A/P/M/R/E 清單）被從中間切開
         pagebreak: {
@@ -529,7 +689,13 @@ function MemberDetailPage() {
         const maxW = 600 // A4 內文寬度上限（px）
         const maxH = 780 // A4 內文高度上限（px），確保一張圖不溢出到下一頁
         for (const el of chartEls) {
-          const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false })
+          const canvas = await html2canvas(el, {
+            scale: 2,
+            backgroundColor: '#ffffff',
+            useCORS: true,
+            logging: false,
+            foreignObjectRendering: true,
+          })
           const buf = await (await fetch(canvas.toDataURL('image/png'))).arrayBuffer()
           let w = Math.min(maxW, canvas.width / 2)
           let h = (canvas.height / canvas.width) * w
@@ -587,7 +753,7 @@ function MemberDetailPage() {
   }
 
   function toggleChartOpen(key: string) {
-    setCollapsedCharts((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
+    setOpenCharts((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
   }
 
   function startEdit(i: number) {
@@ -605,8 +771,13 @@ function MemberDetailPage() {
 
   function renderChart(key: string) {
     if (!analysis) return null
-    const s = analysis.sessions
-    const cd = chartData(s)
+    // T0 基準點：若五面向都填了，就把它當「第 0 次」接在最前面，讓趨勢／五面向／雷達／摘要都以 T0 為起點。
+    // 情緒相關圖（正負平衡、詞雲）與逐次列表不含 T0（T0 沒有情緒詞與理由）。
+    const base = makeBaselineSession(baseline)
+    const cs = base ? [base, ...analysis.sessions] : analysis.sessions
+    const s = cs
+    const cd = chartData(cs)
+    const xLabels = base ? ['T0', ...analysis.sessions.map((_, i) => String(i + 1))] : undefined
     switch (key) {
       case 'summary':
         return (
@@ -650,7 +821,7 @@ function MemberDetailPage() {
           <div
             className="cv-chart-wrap"
             dangerouslySetInnerHTML={{
-              __html: valLine([{ values: cd.ov, color: DIMCOLOR.M, width: 3, label: true }], s.length),
+              __html: valLine([{ values: cd.ov, color: DIMCOLOR.M, width: 3, label: true }], s.length, xLabels),
             }}
           />
         )
@@ -671,6 +842,7 @@ function MemberDetailPage() {
                 __html: valLine(
                   KEYS.map((k) => ({ values: s.map((x) => x.dims[k]?.v || 0), color: DIMCOLOR[k], width: 2 })),
                   s.length,
+                  xLabels,
                 ),
               }}
             />
@@ -680,14 +852,13 @@ function MemberDetailPage() {
         return (
           <>
             <div
-              className="cv-chart-wrap"
-              style={{ textAlign: 'center' }}
+              className="cv-chart-wrap cv-radar-wrap"
               dangerouslySetInnerHTML={{ __html: valRadar(cd.firstDim, cd.lastDim) }}
             />
             <div className="cv-legend" style={{ justifyContent: 'center' }}>
               <span>
                 <i style={{ background: '#8993A1' }} />
-                {t('第一次（虛線）')}
+                {base ? t('T0 基準（虛線）') : t('第一次（虛線）')}
               </span>
               <span>
                 <i style={{ background: '#1F3A5C' }} />
@@ -711,11 +882,11 @@ function MemberDetailPage() {
                 {t('負向（往下）')}
               </span>
             </div>
-            <div className="cv-chart-wrap" dangerouslySetInnerHTML={{ __html: affectBalance(s) }} />
+            <div className="cv-chart-wrap" dangerouslySetInnerHTML={{ __html: affectBalance(analysis.sessions) }} />
           </>
         )
       case 'cloud':
-        return <div dangerouslySetInnerHTML={{ __html: emotionWordCloud(s) }} />
+        return <div dangerouslySetInnerHTML={{ __html: emotionWordCloud(analysis.sessions) }} />
     }
     return null
   }
@@ -729,7 +900,7 @@ function MemberDetailPage() {
   const viewSessions = briefTr?.sessions ?? analysis?.sessions ?? []
 
   return (
-    <div className="mx-auto max-w-3xl px-5 py-8">
+    <div className="mx-auto max-w-6xl px-5 py-8">
       <style>{COACH_VIZ_CSS}</style>
       <Link to="/app/coach" className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground">
         ← {t('教練儀表板')}
@@ -739,15 +910,57 @@ function MemberDetailPage() {
       {loading ? (
         <p className="text-sm text-muted-foreground">{t('載入中…')}</p>
       ) : (
-        <>
+        <div className="flex items-start gap-10">
+          <ReportNav items={navItems} active={activeNav} />
+          <div className="min-w-0 max-w-3xl flex-1">
           {message && (
             <p className="mb-4 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground-soft">
               {message}
             </p>
           )}
 
+          {/* ── T0 基準點（起始幸福感）：填在最前面，作為所有圖表的起點 ── */}
+          <section className="mb-8" id="sec-baseline">
+            <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('T0 基準點（起始幸福感）')}</h2>
+            <p className="mb-3 text-xs text-muted-foreground">
+              {t('填入成員一開始（T0）的五面向幸福感分數（0–10）。填好後，下面的 valence 圖表都會以 T0 為起點；整體分數由五項自動平均。')}
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              {KEYS.map((k) => (
+                <label key={k} className="flex flex-col gap-1">
+                  <span className="text-[11px] font-semibold" style={{ color: DIMCOLOR[k] }}>
+                    {k} · {DIM[k]}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={10}
+                    step={1}
+                    inputMode="numeric"
+                    value={baselineDraft[k]}
+                    onChange={(e) => setBaselineDraft((p) => ({ ...p, [k]: e.target.value }))}
+                    placeholder="0–10"
+                    className="w-20 rounded-md border border-border bg-card px-2 py-1 text-sm text-foreground"
+                  />
+                </label>
+              ))}
+              <button
+                onClick={saveBaseline}
+                disabled={savingBaseline || !baseline}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+              >
+                {savingBaseline ? t('儲存中…') : t('儲存 T0 基準點')}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {baseline
+                ? `${t('整體（自動平均）：')}${makeBaselineSession(baseline)!.overall > 0 ? '+' : ''}${makeBaselineSession(baseline)!.overall}`
+                : t('五個面向都填 0–10 才會套用到圖表。')}
+            </p>
+          </section>
+
           {/* ── 教練深度分析 ── */}
-          <section className="mb-8">
+          <section className="mb-8" id="sec-deep">
             <SectionHeading
               open={openSections.deep}
               onToggle={() => setOpenSections((p) => ({ ...p, deep: !p.deep }))}
@@ -800,8 +1013,9 @@ function MemberDetailPage() {
                   </div>
                 </div>
 
+                <div id="sec-charts">
                 {CHART_DEFS.map((c) => {
-                  const open = !collapsedCharts.includes(c.key)
+                  const open = openCharts.includes(c.key)
                   return (
                   <div key={c.key} className="mb-4">
                     <div className="cv-slbl">
@@ -827,68 +1041,97 @@ function MemberDetailPage() {
                   </div>
                   )
                 })}
-
-                {/* 每次 valence 與評分理由 */}
-                <div className="cv-slbl">
-                  <span>{t('每次 valence 與評分理由')}</span>
-                </div>
-                {analysis.sessions.map((s, i) => {
-                  const vs = viewSessions[i] ?? s // 數字用 canonical，文字用顯示語言版
-                  return (
-                  <div key={i} className={`cv-vrow ${openRow === i ? 'open' : ''}`}>
-                    <div className="cv-vrow-hd" onClick={() => setOpenRow(openRow === i ? null : i)}>
-                      <span className="cv-caret">▶</span>
-                      <span className="cv-vrow-n">
-                        {t('第')} {i + 1} {t('次')}
-                      </span>
-                      <span className="cv-vrow-date">{posts[i]?.week_start ?? ''}</span>
+                {/* 每次 valence 與評分理由：併入圖表清單，整塊當成清單裡的一項，預設收起 */}
+                <div className="mb-4">
+                  <div className="cv-slbl">
+                    <span
+                      style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}
+                      onClick={() => toggleChartOpen('sessions')}
+                    >
                       <span
-                        className="cv-vbadge"
-                        style={{ background: vColor(s.overall) + '20', color: vColor(s.overall) }}
+                        className="cv-caret"
+                        style={{ transform: openCharts.includes('sessions') ? 'rotate(90deg)' : 'none' }}
                       >
-                        {t('整體')} {s.overall > 0 ? '+' : ''}
-                        {s.overall} · {vLabel(s.overall)}
+                        ▶
                       </span>
-                    </div>
-                    {openRow === i && (
-                      <div className="cv-vrow-body">
-                        <div className="cv-vreason">
-                          <strong>{t('整體評分理由。')}</strong>
-                          {vs.overallReason}
-                        </div>
-                        {KEYS.map((k) => {
-                          const dv = s.dims[k] || { v: 0, reason: '' }
-                          const reason = vs.dims[k]?.reason ?? dv.reason
-                          return (
-                            <div key={k} className="cv-vdim">
-                              <span className="cv-vdim-key" style={{ background: DIMCOLOR[k] }}>
-                                {k}
-                              </span>
-                              <span className="cv-vdim-name">{DIM[k]}</span>
-                              <span className="cv-vdim-v" style={{ color: vColor(dv.v || 0) }}>
-                                {(dv.v || 0) > 0 ? '+' : ''}
-                                {dv.v || 0}
-                              </span>
-                              <span className="cv-vdim-reason">{reason || '—'}</span>
-                            </div>
-                          )
-                        })}
-                        <div className="cv-emos">
-                          {(vs.emotions || []).map((e, j) => (
-                            <span key={j} className={`cv-emo ${e.valence}`}>
-                              {e.word}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                      {t('每次 valence 與評分理由')}
+                    </span>
                   </div>
-                  )
-                })}
+                  {openCharts.includes('sessions') &&
+                    analysis.sessions.map((s, i) => {
+                      const vs = viewSessions[i] ?? s // 數字用 canonical，文字用顯示語言版
+                      const rowOpen = openRows.includes(i)
+                      return (
+                      <div key={i} className={`cv-vrow ${rowOpen ? 'open' : ''}`}>
+                        <div
+                          className="cv-vrow-hd"
+                          onClick={() =>
+                            setOpenRows((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]))
+                          }
+                        >
+                          <span className="cv-caret">▶</span>
+                          <span className="cv-vrow-n">
+                            {t('第')} {i + 1} {t('次')}
+                          </span>
+                          <span className="cv-vrow-date">{posts[i]?.week_start ?? ''}</span>
+                          <span
+                            className="cv-vbadge"
+                            style={{ background: vColor(s.overall) + '20', color: vColor(s.overall) }}
+                          >
+                            {t('整體')} {s.overall > 0 ? '+' : ''}
+                            {s.overall} · {vLabel(s.overall)}
+                          </span>
+                        </div>
+                        {rowOpen && (
+                          <div className="cv-vrow-body">
+                            <div className="cv-vreason">
+                              <strong>{t('整體評分理由。')}</strong>
+                              {vs.overallReason}
+                            </div>
+                            {KEYS.map((k) => {
+                              const dv = s.dims[k] || { v: 0, reason: '' }
+                              const reason = vs.dims[k]?.reason ?? dv.reason
+                              return (
+                                <div key={k} className="cv-vdim">
+                                  <span className="cv-vdim-key" style={{ background: DIMCOLOR[k] }}>
+                                    {k}
+                                  </span>
+                                  <span className="cv-vdim-name">{DIM[k]}</span>
+                                  <span className="cv-vdim-v" style={{ color: vColor(dv.v || 0) }}>
+                                    {(dv.v || 0) > 0 ? '+' : ''}
+                                    {dv.v || 0}
+                                  </span>
+                                  <span className="cv-vdim-reason">{reason || '—'}</span>
+                                </div>
+                              )
+                            })}
+                            <div className="cv-emos">
+                              {(vs.emotions || []).map((e, j) => (
+                                <span key={j} className={`cv-emo ${e.valence}`}>
+                                  {e.word}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      )
+                    })}
+                </div>
+                </div>
 
                 {/* 情報簡報區塊 */}
-                <div className="cv-slbl" style={{ marginTop: 22 }}>
+                <div className="cv-slbl" style={{ marginTop: 22 }} id="sec-blocks">
                   <span>{t('教練情報簡報')}</span>
+                  {analysis.blocks.some((b) => !b.include) && (
+                    <span
+                      className="cv-block-del"
+                      style={{ textTransform: 'none', letterSpacing: 'normal' }}
+                      onClick={deleteCoachOnlyBlocks}
+                    >
+                      {t('移除所有僅教練區塊')}
+                    </span>
+                  )}
                 </div>
                 {analysis.blocks.map((b, i) => {
                   const open = openBlocks.includes(i) || editBlock === i
@@ -971,27 +1214,29 @@ function MemberDetailPage() {
                 })}
 
                 {/* ── 自訂分析框架：教練描述 → AI 依文獻生成框架 → 產生新的簡報區塊 ── */}
-                <div className="cv-slbl" style={{ marginTop: 26 }}>
+                <div className="cv-slbl" style={{ marginTop: 26 }} id="sec-framework">
                   <span>{t('自訂分析框架')}</span>
                 </div>
-                <p className="mb-3 text-xs text-muted-foreground">
-                  {t('用自己的話描述你想分析什麼，AI 會依心理學文獻生成一個有理論依據的框架；你可以編輯後用它產生一個新的情報簡報區塊。')}
-                </p>
-                <textarea
-                  className="cv-textarea"
-                  style={{ minHeight: 64 }}
-                  placeholder={t('例如：看這位成員面對轉變時的能動性 / 情緒調節的方式 / 自我批評 vs 自我疼惜')}
-                  value={fwDesc}
-                  onChange={(e) => setFwDesc(e.target.value)}
-                />
-                <div className="mb-4 mt-2 flex flex-wrap gap-3">
-                  <button
-                    onClick={genFramework}
-                    disabled={busy !== null || fwDesc.trim().length < 4}
-                    className="rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary disabled:opacity-50"
-                  >
-                    {busy === 'framework' && !fwDraft ? t('生成中…') : t('AI 生成分析框架')}
-                  </button>
+                <div className="cv-fw-intro">
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    {t('用自己的話描述你想分析什麼，AI 會依心理學文獻生成一個有理論依據的框架；你可以編輯後用它產生一個新的情報簡報區塊。')}
+                  </p>
+                  <textarea
+                    className="cv-textarea"
+                    style={{ minHeight: 64 }}
+                    placeholder={t('例如：看這位成員面對轉變時的能動性 / 情緒調節的方式 / 自我批評 vs 自我疼惜')}
+                    value={fwDesc}
+                    onChange={(e) => setFwDesc(e.target.value)}
+                  />
+                  <div className="mt-2 flex flex-wrap gap-3">
+                    <button
+                      onClick={genFramework}
+                      disabled={busy !== null || fwDesc.trim().length < 4}
+                      className="rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary disabled:opacity-50"
+                    >
+                      {busy === 'framework' && !fwDraft ? t('生成中…') : t('AI 生成分析框架')}
+                    </button>
+                  </div>
                 </div>
 
                 {fwDraft && (
@@ -1082,7 +1327,7 @@ function MemberDetailPage() {
 
           {/* ── 客戶交付版 ── */}
           {analysis && analysis.sessions.length > 0 && (
-            <section className="mb-8">
+            <section className="mb-8" id="sec-client">
               <SectionHeading
                 open={openSections.client}
                 onToggle={() => setOpenSections((p) => ({ ...p, client: !p.client }))}
@@ -1195,7 +1440,7 @@ function MemberDetailPage() {
           )}
 
           {/* ── 書寫時間軸（原有）── */}
-          <section>
+          <section id="sec-timeline">
             <SectionHeading
               open={openSections.timeline}
               onToggle={() => setOpenSections((p) => ({ ...p, timeline: !p.timeline }))}
@@ -1234,7 +1479,8 @@ function MemberDetailPage() {
               </div>
             ))}
           </section>
-        </>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -1248,6 +1494,10 @@ const COACH_VIZ_CSS = `
 .cv-inc input{width:14px;height:14px;accent-color:#1F3A5C;cursor:pointer;margin:0}
 .cv-chart-wrap{overflow-x:auto;padding:4px 0}
 .cv-chart-wrap svg{max-width:none;height:auto}
+/* 雷達圖置中：Tailwind preflight 把所有 svg 設成 display:block（非預設的 inline），
+   所以父層的 text-align:center 完全沒有作用——這才是一直沒置中的真正原因。
+   block 元素本來就該用 margin:auto 置中，不需要 flex 或其他花招。 */
+.cv-radar-wrap svg{margin:0 auto}
 .cv-legend{display:flex;flex-wrap:wrap;gap:14px;margin:8px 0 2px;font-size:11.5px;font-weight:700}
 .cv-legend span{display:inline-flex;align-items:center;gap:6px;color:#54606E}
 .cv-legend i{width:12px;height:12px;border-radius:2px;display:inline-block}
@@ -1260,7 +1510,7 @@ const COACH_VIZ_CSS = `
 .cv-rdelta{border:1.5px solid #E2E5EA;border-radius:10px;margin-top:8px;overflow:hidden}
 .cv-rdelta-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #E2E5EA;font-size:12.5px}
 .cv-rdelta-row:last-child{border-bottom:none}
-.cv-rdelta-key{width:20px;height:20px;border-radius:5px;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.cv-rdelta-key{width:20px;height:20px;border-radius:5px;color:#fff;font-size:11px;font-weight:800;display:inline-block;line-height:20px;text-align:center;flex-shrink:0;font-family:-apple-system,'PingFang TC','Noto Sans TC',sans-serif}
 .cv-rdelta-name{font-weight:700;flex:1}
 .cv-rdelta-val{font-variant-numeric:tabular-nums;color:#54606E;font-weight:600;white-space:nowrap}
 .cv-rdelta-tag{font-size:11px;font-weight:800;padding:3px 11px;border-radius:20px;white-space:nowrap;min-width:82px;text-align:center}
@@ -1278,7 +1528,7 @@ const COACH_VIZ_CSS = `
 .cv-vreason{font-size:12.5px;line-height:1.75;color:#2B3440;margin-bottom:12px;padding:10px 13px;background:#EEF0F3;border-radius:7px;border-left:3px solid #1F3A5C}
 .cv-vdim{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #E2E5EA}
 .cv-vdim:last-child{border-bottom:none}
-.cv-vdim-key{width:20px;height:20px;border-radius:5px;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.cv-vdim-key{width:20px;height:20px;border-radius:5px;color:#fff;font-size:11px;font-weight:800;display:inline-block;line-height:20px;text-align:center;flex-shrink:0;font-family:-apple-system,'PingFang TC','Noto Sans TC',sans-serif}
 .cv-vdim-name{font-size:12px;font-weight:700;width:150px;flex-shrink:0}
 .cv-vdim-v{font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;width:42px;flex-shrink:0}
 .cv-vdim-reason{font-size:11.5px;color:#54606E;line-height:1.5;flex:1}
@@ -1298,9 +1548,7 @@ const COACH_VIZ_CSS = `
 .cv-md{font-size:13px;line-height:1.8;color:#2B3440}
 .cv-md p{margin:0 0 9px}
 .cv-md h2,.cv-md h3{font-size:14px;font-weight:800;margin:13px 0 6px;color:#1C2530}
-.cv-md ul{margin:5px 0 11px 20px}
-.cv-md li{margin-bottom:4px}
-.cv-md strong{font-weight:800}
+.cv-md strong{font-weight:800;color:#8A6A26}
 .cv-md em{color:#54606E}
 .cv-block-actions{display:flex;gap:8px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid #E2E5EA;justify-content:space-between}
 .cv-block-edit{font-size:11.5px;font-weight:700;color:#1F3A5C;cursor:pointer}
@@ -1315,15 +1563,16 @@ const COACH_VIZ_CSS = `
 .cv-doc h2{font-size:16px;font-weight:800;margin:20px 0 8px;padding-bottom:6px;border-bottom:1px solid #E2E5EA}
 .cv-doc h3{font-size:14px;font-weight:800;margin:16px 0 6px}
 .cv-doc p{margin:0 0 12px;font-size:14px}
-.cv-doc ul{margin:6px 0 14px 22px}
-.cv-doc li{margin-bottom:5px;font-size:14px}
-.cv-doc strong{font-weight:800}
+.cv-doc strong{font-weight:800;color:#8A6A26}
 .cv-doc-sign{margin-top:26px;padding-top:16px;border-top:1px solid #E2E5EA;font-size:13px;color:#54606E}
 .cv-doc-charts{margin-top:8px;font-family:-apple-system,'PingFang TC','Noto Sans TC',sans-serif}
 /* 客戶文件內的圖表要縮進頁寬，避免 PDF／Word 右側被裁切、比例跑掉。
    SVG 有 viewBox，設 max-width:100%+height:auto 即等比縮放至容器寬；窄圖（雷達）維持原寸。 */
 .cv-doc-charts .cv-chart-wrap{overflow:visible;text-align:center}
 .cv-doc-charts .cv-chart-wrap svg{max-width:100% !important;height:auto !important}
+/* 雷達圖固定尺寸，PDF/Word 匯出時不要被上面那條縮放規則影響——懷疑 html2canvas 對
+   「縮到 100% 寬度」這個縮放算不準，導致內容被裁切而非等比縮小，先讓它維持原寸排除這個變因。 */
+.cv-doc-charts .cv-radar-wrap svg{max-width:none !important;width:280px !important;height:294px !important}
 /* 圖表區塊整體另起一頁，但各圖依序流動排版（不再每張各佔一整頁）；
    單一圖表本身不可從中間被切（避免雷達的 A/P/M/R/E 清單被切成兩頁）。 */
 .cv-doc-charts{page-break-before:always;break-before:page}
@@ -1332,12 +1581,31 @@ const COACH_VIZ_CSS = `
 .cv-rdelta,.cv-stats,.cv-wcloud,.cv-rdelta-row{break-inside:avoid;page-break-inside:avoid}
 .cv-md{font-size:13.5px;line-height:1.85}
 .cv-md h2,.cv-md h3{margin:16px 0 7px}
-.cv-md ul{margin:6px 0 12px 20px}
-.cv-md li{margin-bottom:5px;line-height:1.7}
+/* 真正的列點：實心圓點／數字，而非單純換行 —— cv-md（教練簡報）與 cv-doc（客戶文件）共用 */
+.cv-md ul,.cv-doc ul{list-style:none;margin:8px 0 14px;padding:0}
+.cv-md ul li,.cv-doc ul li{position:relative;padding-left:20px;margin-bottom:7px;line-height:1.7}
+.cv-md ul li::before,.cv-doc ul li::before{content:'';position:absolute;left:3px;top:.68em;width:5px;height:5px;border-radius:50%;background:#8993A1}
+.cv-md ol,.cv-doc ol{list-style:none;counter-reset:cvol;margin:8px 0 14px;padding:0}
+.cv-md ol li,.cv-doc ol li{position:relative;counter-increment:cvol;padding-left:24px;margin-bottom:7px;line-height:1.7}
+.cv-md ol li::before,.cv-doc ol li::before{content:counter(cvol) '.';position:absolute;left:0;top:0;font-weight:800;color:#1F3A5C;font-variant-numeric:tabular-nums}
+/* 巢狀子條列：縮排一層、標記縮小變淺，清楚區分「維度標籤」與其下的證據 */
+.cv-md li>ul,.cv-doc li>ul,.cv-md li>ol,.cv-doc li>ol{margin:6px 0 2px}
+.cv-md li>ul>li,.cv-doc li>ul>li{padding-left:17px}
+.cv-md li>ul>li::before,.cv-doc li>ul>li::before{width:4px;height:4px;background:#B9C0CB}
+.cv-md li>ol>li,.cv-doc li>ol>li{padding-left:20px;font-size:.96em}
+/* 章節導覽側欄（sticky，隨捲動高亮目前章節） */
+[id^="sec-"]{scroll-margin-top:20px}
+.cv-toc{position:sticky;top:24px;display:flex;flex-direction:column;gap:2px;width:172px;flex-shrink:0;max-height:calc(100vh - 48px);overflow-y:auto}
+.cv-toc-link{font-size:12.5px;font-weight:700;color:#8993A1;padding:7px 10px;border-radius:7px;text-decoration:none;border-left:2px solid transparent;transition:color .15s,background-color .15s}
+.cv-toc-link:hover{color:#1C2530;background:#EEF0F3}
+.cv-toc-link.active{color:#1F3A5C;font-weight:800;background:#EEF0F3;border-left-color:#1F3A5C}
+.cv-toc-sub{padding-left:20px;font-size:11.5px;font-weight:600}
+@media(max-width:1024px){.cv-toc{display:none}}
 /* 自訂分析框架編輯器 */
 .cv-block-tag.ai{background:#E7ECF5;color:#1F3A5C;border:1.5px solid #B9C6DE}
 .cv-block-del{font-size:11.5px;font-weight:700;color:#B0542C;cursor:pointer}
 .cv-block-del:hover{text-decoration:underline}
+.cv-fw-intro{border:1.5px solid #E2E5EA;background:#FAFAF8;border-radius:10px;padding:15px 16px;margin-bottom:14px}
 .cv-fw{border:1.5px solid #B5843A;background:#FBF7EE;border-radius:10px;padding:15px 16px;margin-bottom:14px}
 .cv-fw-hd{font-size:12.5px;font-weight:800;color:#1C2530;margin-bottom:11px}
 .cv-fw-lab{display:block;font-size:11.5px;font-weight:700;color:#54606E;margin:8px 0 4px}

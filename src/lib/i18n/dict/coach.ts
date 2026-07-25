@@ -26,12 +26,20 @@ export const coach: Record<string, Translation> = {
   '至少需要 1 次書寫': { en: 'Needs at least 1 entry' },
   '納入客戶版': { en: 'Include in client version' },
   '每次 valence 與評分理由': { en: 'Per-week valence & rationale' },
+  // 章節導覽側欄的精簡標籤（跟上面的完整標題分開，寬度較窄）
+  '圖表': { en: 'Charts' },
+  '每次 valence': { en: 'Sessions' },
   '第': { en: 'Week' },
   '次': { en: '' },
   '整體': { en: 'Overall' },
   '整體評分理由。': { en: 'Overall rationale. ' },
   '教練情報簡報': { en: 'Coach intelligence brief' },
   '僅教練': { en: 'Coach only' },
+  '確定要刪除這個區塊嗎？此動作無法復原。': { en: 'Delete this block? This cannot be undone.' },
+  '移除所有僅教練區塊': { en: 'Remove all coach-only blocks' },
+  '確定要刪除全部 {n} 個「僅教練」區塊嗎？此動作無法復原。': {
+    en: 'Delete all {n} coach-only blocks? This cannot be undone.',
+  },
   '納入客戶交付版': { en: 'Include in client deliverable' },
   '編輯': { en: 'Edit' },
   '儲存': { en: 'Save' },
@@ -88,6 +96,23 @@ export const coach: Record<string, Translation> = {
   '情緒詞雲': { en: 'Emotion word cloud' },
   '下載 PDF': { en: 'Download PDF' },
   '下載 Word': { en: 'Download Word' },
+
+  // T0 基準點
+  'T0 基準點': { en: 'T0 baseline' },
+  'T0 基準點（起始幸福感）': { en: 'T0 baseline (starting wellbeing)' },
+  '填入成員一開始（T0）的五面向幸福感分數（0–10）。填好後，下面的 valence 圖表都會以 T0 為起點；整體分數由五項自動平均。': {
+    en: 'Enter the member’s starting (T0) wellbeing across the five dimensions (0–10). Once filled, the valence charts below start from T0; the overall score is the average of the five.',
+  },
+  '儲存 T0 基準點': { en: 'Save T0 baseline' },
+  '儲存中…': { en: 'Saving…' },
+  '請把 T0 的五個面向都填 0–10 的分數': { en: 'Fill all five T0 dimensions with a score of 0–10' },
+  '儲存失敗，請確認已在 Supabase 執行遷移 005（新增 baseline 欄）': {
+    en: 'Save failed. Make sure migration 005 (add baseline column) has been run in Supabase.',
+  },
+  '已儲存 T0 基準點': { en: 'T0 baseline saved' },
+  '整體（自動平均）：': { en: 'Overall (auto average): ' },
+  '五個面向都填 0–10 才會套用到圖表。': { en: 'Fill all five dimensions (0–10) to apply to the charts.' },
+  'T0 基準（虛線）': { en: 'T0 baseline (dashed)' },
   '直接編輯客戶版文字（Markdown：## 標題、** 粗體、- 條列），儲存後即更新交付文件。': {
     en: 'Edit the client version text directly (Markdown: ## headings, ** bold **, - bullets). Saving updates the deliverable.',
   },

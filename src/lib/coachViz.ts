@@ -74,8 +74,8 @@ interface LineSeries {
   label?: boolean
 }
 
-// 雙極折線圖（−100 ~ +100）
-export function valLine(series: LineSeries[], count: number): string {
+// 雙極折線圖（−100 ~ +100）。xLabels 可覆蓋 X 軸文字（例如首點為 T0 基準）。
+export function valLine(series: LineSeries[], count: number, xLabels?: string[]): string {
   const n = Math.max(count, 1)
   const W = Math.max(340, 44 + (Math.max(count, 2) - 1) * Math.max(50, Math.min(92, 560 / Math.max(count - 1, 1))))
   const H = 196
@@ -94,7 +94,7 @@ export function valLine(series: LineSeries[], count: number): string {
     svg += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke="${mid ? HEX.border2 : HEX.border}" stroke-width="${mid ? 1.5 : 1}"/><text x="${padL - 7}" y="${yy + 3}" text-anchor="end" font-size="9" fill="${HEX.text3}">${g > 0 ? '+' : ''}${g}</text>`
   })
   for (let i = 0; i < n; i++)
-    svg += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="${HEX.text3}">${i + 1}</text>`
+    svg += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="${HEX.text3}">${esc(xLabels?.[i] ?? i + 1)}</text>`
   series.forEach((s) => {
     const vals = s.values
     if (!vals.length) return

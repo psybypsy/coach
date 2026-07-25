@@ -446,7 +446,7 @@ def _coach_analysis_system(week_count: int, language: str = "en") -> str:
 
 情報簡報規則（僅教練可見、可含坦率假設、每個判斷都引用原話並註明第幾次）：以 [[BLOCK]] 分隔，每塊第一行為標題、其後為內文（可用 Markdown 的 ## 標題、** 粗體、* 斜體 *、- 條列）。
 
-排版（教練要能快速掃讀）：內文用簡短段落與 - 條列呈現，多用條列、少用長段落、句子精簡。
+排版（教練要能快速掃讀）：內文用簡短段落與 - 條列呈現，多用條列、少用長段落、句子精簡。逐一分析多個項目（例如 P/E/R/M/A 五面向、SDT 三需求）時，每個項目先用一行「- **項目名稱**」當作該項目的粗體標籤，再用縮排兩格的子條列「  - 證據 / 引文」列出其下的具體證據，形成有層級的巢狀條列，不要把標籤與證據全部擠在同一層。
 
 務必依序包含這些區塊：
 [[BLOCK]] 整體情緒與福祉軌跡
@@ -532,10 +532,10 @@ def _framework_block_system(fw: dict, week_count: int, language: str = "en") -> 
 
 要求：
 - 全程扣合此人的具體引文並註明第幾次（如「第 3 次」）。
-- 逐一走過框架的每個維度：對照 look_for 找線索、依 evidence_rule 引用原話。
-- 內文以一行粗體重點開頭，格式「**重點 —** …」，接著空一行，再用簡短段落與 - 條列展開；多用條列。
+- 逐一走過框架的每個維度：對照 look_for 找線索、依 evidence_rule 引用原話。每個維度先用一行「- **維度名稱**」當作粗體標籤，再用縮排兩格的子條列「  - 證據 / 引文」列出該維度下的具體證據，形成有層級的巢狀條列，不要把維度標籤跟證據擠在同一層。
+- 內文以一行粗體重點開頭，格式「**重點 —** …」，接著空一行，再依上述巢狀條列格式逐一走過各維度。
 - 內文最後另起一行，以「**參考文獻**」為小標，用 - 條列該框架的參考文獻（APA 格式，書名／期刊名以 * 斜體 *）。
-- 可用 Markdown（## 標題、** 粗體、* 斜體、- 條列）。全篇不得使用 emoji，語氣如資深教練結合學理的臨床筆記。
+- 可用 Markdown（## 標題、** 粗體、* 斜體、- 條列、縮排子條列）。全篇不得使用 emoji，語氣如資深教練結合學理的臨床筆記。
 - 繁體中文（台灣）。
 
 只輸出 JSON（不要 code fence）：{{"title":"區塊標題（用框架名稱）","body":"區塊內文"}}"""
@@ -546,10 +546,10 @@ Custom framework:
 
 Requirements:
 - Stay tied to this person's specific quotes with week citations (e.g. "week 3").
-- Walk through each dimension of the framework: find cues per look_for, quote the person's words per evidence_rule.
-- Start the body with one bold single-line takeaway "**Takeaway —** ...", then a blank line, then short paragraphs and - bullets; prefer bullets.
+- Walk through each dimension of the framework: for each dimension, write one top-level bullet "- **Dimension Name**" as a bold label, then nest its supporting quotes/evidence underneath as indented (2-space) sub-bullets "  - ...". Do not flatten the dimension label and its evidence into the same list level.
+- Start the body with one bold single-line takeaway "**Takeaway —** ...", then a blank line, then the nested-bullet dimension walkthrough described above.
 - End the body with a "**References**" sub-heading listing the framework's references as - bullets (APA format; book/journal titles in * italics *).
-- Use Markdown (## headings, ** bold **, * italics *, - bullets). No emoji. Tone: a senior coach's theoretically grounded clinical notes.
+- Use Markdown (## headings, ** bold **, * italics *, - bullets, indented sub-bullets). No emoji. Tone: a senior coach's theoretically grounded clinical notes.
 - Language: English.
 
 Output JSON only (no code fences): {{"title":"block title (use the framework name)","body":"block body"}}"""
@@ -560,7 +560,8 @@ _CLIENT_REPORT_SYSTEM_EN = """You are the writing assistant to coach Tan Yee Min
 Requirements:
 - Remove all hypotheses, clinical speculation, risk or diagnostic language; focus on strengths, trajectory, meaning and the way forward.
 - Preserve and lightly quote the client's own words.
-- Use Markdown, with ## sections; keep paragraphs short and clear, and use - bullets where they aid readability.
+- Use Markdown, with ## sections; keep paragraphs short and clear, and use - bullets (not numbered lists) where they aid readability — prefer bullets over long paragraphs.
+- Bold (**...**) the key insight or takeaway phrase in each paragraph — 1 short bolded phrase per paragraph, not whole sentences — so a reader skimming just the bold text gets the gist.
 - End with 1 to 2 warm, forward-looking invitations.
 - Entirely in English. No emoji.
 - Do not repeat the title page or signature (the system adds them)."""
@@ -571,7 +572,8 @@ _CLIENT_REPORT_SYSTEM_ZH = """你是教練 陳郁敏 的寫作助理。以下是
 要求：
 - 移除所有假設、臨床推測、風險或診斷性語言；聚焦優勢、軌跡、意義與前瞻。
 - 保留並適度引用客戶自己的語言。
-- 用 Markdown，以 ## 分節，段落清晰、專業。
+- 用 Markdown，以 ## 分節，段落清晰、專業；多用 - 條列（不要用數字條列），少用長段落。
+- 每段用 **粗體** 標出這段的重點短語（一段一個重點、標短語即可，不要整句加粗），讓人快速掃過粗體就能抓到重點。
 - 結尾給 1 至 2 個溫暖的前瞻邀請。
 - 全篇繁體中文（台灣），不得使用任何 emoji。
 - 不要重複標題頁與署名（系統會自動加上）。"""
