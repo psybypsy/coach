@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ipsen Taiwan 幸福感書寫｜使用者介面說明書</title>
+<style>
+:root{
+  --ink:#1B2430; --ink-soft:#54606E; --muted:#8A94A1;
+  --page:#F3F5F8; --card:#FFFFFF; --card-2:#F7F9FB; --border:#E3E7EC; --border-strong:#CDD4DC;
+  --navy:#1F3A5C; --navy-glow:#2E5486; --navy-soft:#E9EEF4; --navy-ink:#16293F;
+  --p:#8A5A08; --p-bg:#FEF7EA; --p-bar:#B45309;
+  --e:#0F6B62; --e-bg:#EBF6F4; --e-bar:#0F766E;
+  --r:#9A1B3B; --r-bg:#FCEEF1; --r-bar:#9F1239;
+  --m:#3A34A0; --m-bg:#EEEEFC; --m-bar:#3730A3;
+  --a:#0A6349; --a-bg:#E9F5EF; --a-bar:#065F46;
+  --ok:#2E7057; --ok-bg:#DCEAE2; --ok-bd:#BCD3C8;
+  --warn:#8A6A26; --warn-bg:#F6EEDC; --warn-bd:#E4CF9E;
+  --stripe:linear-gradient(90deg,var(--navy),var(--navy-glow));
+  --shadow:0 1px 2px rgba(20,30,45,.04),0 8px 24px -12px rgba(20,30,45,.18);
+  --shadow-lg:0 20px 50px -24px rgba(20,30,45,.45);
+  --font-body:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --font-serif:"Songti TC","Noto Serif TC",Georgia,"Times New Roman",serif;
+  --maxw:760px;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --ink:#E7ECF2; --ink-soft:#AEB8C4; --muted:#7E8894;
+    --page:#0F1318; --card:#181D24; --card-2:#12161C; --border:#2A313B; --border-strong:#3A424E;
+    --navy:#8FB4E0; --navy-glow:#A9C6EC; --navy-soft:#1C2836; --navy-ink:#CFE0F2;
+    --p:#E6B871; --p-bg:#2A2115; --e:#79CEC2; --e-bg:#12241F; --r:#E79CB0; --r-bg:#2A1720;
+    --m:#A7A2F0; --m-bg:#1C1B2E; --a:#7FCBAE; --a-bg:#122019;
+    --ok:#8CC7AC; --ok-bg:#16241D; --ok-bd:#2C4A3B; --warn:#D8B876; --warn-bg:#282013; --warn-bd:#4A3D1F;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -14px rgba(0,0,0,.6);
+    --shadow-lg:0 24px 60px -28px rgba(0,0,0,.75);
+  }
+}
+:root[data-theme="light"]{
+  --ink:#1B2430; --ink-soft:#54606E; --muted:#8A94A1;
+  --page:#F3F5F8; --card:#FFFFFF; --card-2:#F7F9FB; --border:#E3E7EC; --border-strong:#CDD4DC;
+  --navy:#1F3A5C; --navy-glow:#2E5486; --navy-soft:#E9EEF4; --navy-ink:#16293F;
+  --p:#8A5A08; --p-bg:#FEF7EA; --e:#0F6B62; --e-bg:#EBF6F4; --r:#9A1B3B; --r-bg:#FCEEF1;
+  --m:#3A34A0; --m-bg:#EEEEFC; --a:#0A6349; --a-bg:#E9F5EF;
+  --ok:#2E7057; --ok-bg:#DCEAE2; --ok-bd:#BCD3C8; --warn:#8A6A26; --warn-bg:#F6EEDC; --warn-bd:#E4CF9E;
+}
+:root[data-theme="dark"]{
+  --ink:#E7ECF2; --ink-soft:#AEB8C4; --muted:#7E8894;
+  --page:#0F1318; --card:#181D24; --card-2:#12161C; --border:#2A313B; --border-strong:#3A424E;
+  --navy:#8FB4E0; --navy-glow:#A9C6EC; --navy-soft:#1C2836; --navy-ink:#CFE0F2;
+  --p:#E6B871; --p-bg:#2A2115; --e:#79CEC2; --e-bg:#12241F; --r:#E79CB0; --r-bg:#2A1720;
+  --m:#A7A2F0; --m-bg:#1C1B2E; --a:#7FCBAE; --a-bg:#122019;
+  --ok:#8CC7AC; --ok-bg:#16241D; --ok-bd:#2C4A3B; --warn:#D8B876; --warn-bg:#282013; --warn-bd:#4A3D1F;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font-family:var(--font-body);
+  line-height:1.7;-webkit-font-smoothing:antialiased;font-size:16px}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 22px}
+h1,h2,h3,h4{line-height:1.25;text-wrap:balance;margin:0}
+p{margin:0}
+a{color:var(--navy);text-decoration:none}
+small{font-size:.8em}
+
+/* ---------- cover ---------- */
+.cover{position:relative;overflow:hidden;background:
+   radial-gradient(120% 90% at 85% -10%,var(--navy-soft),transparent 60%),var(--card);
+   border-bottom:1px solid var(--border)}
+.cover .wrap{padding:76px 22px 60px}
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:var(--navy)}
+.brandline{display:flex;align-items:center;gap:12px;margin-bottom:30px}
+.brandmark{width:38px;height:38px;border-radius:10px;background:var(--stripe);flex:0 0 auto;
+  box-shadow:var(--shadow);position:relative}
+.brandmark::after{content:"";position:absolute;inset:11px;border:2px solid #fff;border-radius:4px;opacity:.9}
+.brandtext{font-weight:800;font-size:15px;letter-spacing:.01em}
+.brandtext span{display:block;font-weight:600;font-size:12px;color:var(--ink-soft);letter-spacing:.04em}
+.cover h1{font-family:var(--font-serif);font-size:clamp(33px,6vw,52px);font-weight:800;letter-spacing:.01em;margin:14px 0 0}
+.cover .lead{font-size:18px;color:var(--ink-soft);margin-top:18px;max-width:56ch}
+.cover .metarow{display:flex;flex-wrap:wrap;gap:10px;margin-top:34px}
+.chip{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;
+  padding:7px 13px;border-radius:999px;background:var(--card-2);border:1px solid var(--border);color:var(--ink-soft)}
+.chip b{color:var(--ink)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--navy)}
+
+/* ---------- toc ---------- */
+.toc{margin:44px auto;padding:22px 24px;background:var(--card);border:1px solid var(--border);
+  border-radius:16px;box-shadow:var(--shadow)}
+.toc h2{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+.toc ol{margin:0;padding:0;list-style:none;counter-reset:toc;display:grid;gap:2px}
+.toc li{counter-increment:toc}
+.toc a{display:flex;gap:14px;align-items:baseline;padding:9px 10px;border-radius:9px;color:var(--ink)}
+.toc a:hover{background:var(--navy-soft)}
+.toc a::before{content:counter(toc,decimal-leading-zero);font-family:var(--font-serif);
+  font-size:13px;font-weight:700;color:var(--navy);min-width:26px}
+.toc a .tt{font-weight:600}
+.toc a .td{color:var(--muted);font-size:13px;margin-left:auto;text-align:right}
+
+/* ---------- section ---------- */
+section.doc{padding:30px 0 8px}
+.sec-head{display:flex;gap:16px;align-items:flex-start;margin-bottom:20px;padding-top:26px}
+.sec-num{font-family:var(--font-serif);font-size:15px;font-weight:700;color:#fff;background:var(--stripe);
+  min-width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  flex:0 0 auto;box-shadow:var(--shadow);margin-top:3px}
+.sec-head h2{font-size:25px;font-weight:800;letter-spacing:.01em}
+.sec-head .sub{color:var(--ink-soft);font-size:14.5px;margin-top:5px}
+.doc p+p{margin-top:13px}
+.doc h3{font-size:17px;font-weight:800;margin:30px 0 8px;letter-spacing:.01em}
+.doc h3 .k{color:var(--muted);font-weight:700;font-size:13px}
+.body-copy{color:var(--ink)}
+hr.soft{border:none;border-top:1px solid var(--border);margin:38px 0}
+
+/* ---------- steps ---------- */
+.steps{list-style:none;margin:20px 0;padding:0;counter-reset:step;display:grid;gap:14px}
+.steps>li{counter-increment:step;position:relative;padding:16px 18px 16px 58px;background:var(--card);
+  border:1px solid var(--border);border-radius:13px;box-shadow:var(--shadow)}
+.steps>li::before{content:counter(step);position:absolute;left:16px;top:15px;width:28px;height:28px;
+  border-radius:50%;background:var(--navy-soft);color:var(--navy);font-weight:800;font-size:14px;
+  display:flex;align-items:center;justify-content:center;border:1px solid var(--border)}
+.steps>li b{font-weight:800}
+.steps>li .st-note{display:block;color:var(--ink-soft);font-size:14px;margin-top:4px}
+
+/* ---------- callouts ---------- */
+.note{display:grid;grid-template-columns:auto 1fr;gap:13px;padding:15px 17px;border-radius:12px;
+  margin:20px 0;font-size:14.5px;border:1px solid var(--border);background:var(--card-2)}
+.note .ic{width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:800;flex:0 0 auto;margin-top:1px}
+.note.tip{border-color:var(--ok-bd);background:var(--ok-bg)} .note.tip .ic{background:var(--ok);color:#fff}
+.note.warn{border-color:var(--warn-bd);background:var(--warn-bg)} .note.warn .ic{background:var(--warn);color:#fff}
+.note.info .ic{background:var(--navy);color:#fff}
+.note b{font-weight:800}
+.note p+p{margin-top:7px}
+
+/* ---------- key / pill inline ---------- */
+.ui{font-family:var(--font-body);font-weight:700;background:var(--navy-soft);color:var(--navy-ink);
+  padding:1px 8px;border-radius:6px;font-size:.92em;white-space:nowrap;border:1px solid var(--border)}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:800;padding:2px 8px;border-radius:6px;
+  text-transform:uppercase;letter-spacing:.04em}
+.tag.inc{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok-bd)}
+.tag.only{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn-bd)}
+
+/* ---------- figure (screen recreation) ---------- */
+.fig{margin:24px 0}
+.frame{border:1px solid var(--border-strong);border-radius:16px;overflow:hidden;background:var(--card);
+  box-shadow:var(--shadow-lg)}
+.frame .bar{display:flex;align-items:center;gap:7px;padding:10px 14px;background:var(--card-2);
+  border-bottom:1px solid var(--border)}
+.frame .bar i{width:11px;height:11px;border-radius:50%;background:var(--border-strong);display:inline-block}
+.frame .bar .url{margin-left:10px;font-size:11.5px;color:var(--muted);font-family:var(--font-body);
+  background:var(--page);border:1px solid var(--border);border-radius:7px;padding:3px 12px;flex:1;overflow:hidden;
+  white-space:nowrap;text-overflow:ellipsis}
+.screen{padding:0;background:var(--page)}
+.figcap{display:flex;gap:10px;align-items:baseline;margin-top:12px;font-size:13px;color:var(--ink-soft)}
+.figcap .fnum{font-family:var(--font-serif);font-weight:700;color:var(--navy);font-size:12px;
+  border:1px solid var(--border);border-radius:6px;padding:1px 8px;background:var(--card);flex:0 0 auto}
+
+/* ---- app chrome inside screens ---- */
+.appbar{display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 18px;
+  background:var(--card);border-bottom:1px solid var(--border)}
+.appbar .nav{display:flex;align-items:center;gap:14px}
+.appbar .logo{font-weight:800;font-size:13.5px}
+.appnav{font-size:13px;font-weight:600;color:var(--ink-soft);padding:5px 11px;border-radius:8px}
+.appnav.active{background:var(--navy-soft);color:var(--navy)}
+.appbar .tools{display:flex;align-items:center;gap:9px;color:var(--ink-soft)}
+.appbar .tools svg{width:19px;height:19px}
+.btn-outline{font-size:12.5px;font-weight:700;color:var(--ink-soft);border:1px solid var(--border-strong);
+  border-radius:8px;padding:5px 11px;background:var(--card)}
+.bell{position:relative}
+.bell .rd{position:absolute;top:-2px;right:-2px;width:8px;height:8px;border-radius:50%;background:#B0542C;border:1.5px solid var(--card)}
+
+.stage{padding:26px 22px}
+.stage.narrow{max-width:430px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--border);border-radius:15px;padding:22px;box-shadow:var(--shadow)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:800;font-size:14px;
+  border-radius:10px;padding:11px 16px;background:var(--stripe);color:#fff;border:none;width:100%}
+.btn.ghost{background:var(--card);color:var(--ink-soft);border:1px solid var(--border-strong)}
+.btn.sm{width:auto;font-size:12.5px;padding:7px 13px}
+.field{height:44px;border:1px solid var(--border-strong);border-radius:10px;background:var(--card-2);
+  display:flex;align-items:center;padding:0 14px;color:var(--muted);font-size:14px}
+.lbl{font-size:13px;font-weight:800;margin-bottom:7px;display:block}
+
+/* perma blocks */
+.perma{border-left:3px solid;border-radius:9px;padding:11px 15px;margin-top:9px}
+.perma .k{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.perma .v{margin-top:3px;color:var(--ink)}
+.perma.P{border-color:var(--p-bar);background:var(--p-bg)} .perma.P .k{color:var(--p)}
+.perma.E{border-color:var(--e-bar);background:var(--e-bg)} .perma.E .k{color:var(--e)}
+.perma.R{border-color:var(--r-bar);background:var(--r-bg)} .perma.R .k{color:var(--r)}
+.perma.M{border-color:var(--m-bar);background:var(--m-bg)} .perma.M .k{color:var(--m)}
+.perma.A{border-color:var(--a-bar);background:var(--a-bg)} .perma.A .k{color:var(--a)}
+
+/* progress */
+.prog{display:flex;gap:6px;margin-bottom:14px}
+.prog i{height:5px;flex:1;border-radius:3px;background:var(--border)}
+.prog i.on{background:var(--stripe)}
+
+/* community post */
+.post{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px;box-shadow:var(--shadow)}
+.post .ph{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.avatar{width:38px;height:38px;border-radius:50%;background:var(--navy-soft);color:var(--navy);
+  font-weight:800;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.who{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+.who .nm{font-weight:800;font-size:14px}
+.mini{font-size:11px;font-weight:800;padding:2px 7px;border-radius:6px;background:var(--card-2);color:var(--ink-soft);border:1px solid var(--border)}
+.mini.coach{background:var(--navy-soft);color:var(--navy);border-color:var(--border)}
+.mini.streak{background:#F6E7D6;color:#9A5A24;border-color:#EAD3B8}
+.when{color:var(--muted);font-size:11.5px;margin-top:3px}
+.postfoot{display:flex;gap:18px;align-items:center;border-top:1px solid var(--border);margin-top:14px;padding-top:11px;
+  color:var(--ink-soft);font-size:13px;font-weight:600}
+.heart{display:inline-flex;gap:6px;align-items:center}
+.dots{color:var(--muted);font-weight:800;letter-spacing:1px}
+.menu-pop{position:absolute;right:0;top:34px;background:var(--card);border:1px solid var(--border);border-radius:12px;
+  box-shadow:var(--shadow-lg);padding:6px;width:132px;z-index:3}
+.menu-pop button{display:block;width:100%;text-align:left;padding:8px 11px;border-radius:8px;border:none;
+  background:none;font:inherit;font-size:13.5px;font-weight:600;color:var(--ink)}
+.menu-pop button.danger{color:#B0542C}
+
+/* popovers */
+.pop{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-lg);
+  padding:16px;max-width:290px}
+.pop h4{font-size:14px;font-weight:800;margin-bottom:6px}
+.pop p{font-size:13px;color:var(--ink-soft)}
+.pop .row{display:flex;justify-content:space-between;align-items:center;padding:9px 11px;border-radius:9px;font-size:13.5px}
+.pop .row:hover{background:var(--card-2)}
+.seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:8px;overflow:hidden;font-size:12px;font-weight:800}
+.seg span{padding:4px 10px} .seg .on{background:var(--stripe);color:#fff}
+
+/* dl definitions */
+.deflist{display:grid;gap:12px;margin:18px 0}
+.deflist .d{display:grid;grid-template-columns:130px 1fr;gap:14px;padding:13px 15px;border:1px solid var(--border);
+  border-radius:11px;background:var(--card);box-shadow:var(--shadow)}
+.deflist .d .t{font-weight:800}
+.deflist .d .t .en{display:block;font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.02em}
+.deflist .d .x{color:var(--ink-soft);font-size:14.5px}
+@media(max-width:560px){.deflist .d{grid-template-columns:1fr;gap:5px}}
+
+/* faq */
+.faq{display:grid;gap:10px;margin:16px 0}
+.faq details{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+.faq summary{cursor:pointer;padding:15px 18px;font-weight:700;list-style:none;display:flex;justify-content:space-between;gap:12px;align-items:center}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"+";color:var(--navy);font-weight:800;font-size:18px}
+.faq details[open] summary::after{content:"–"}
+.faq .a{padding:0 18px 16px;color:var(--ink-soft);font-size:14.5px}
+
+/* perma legend grid */
+.dims{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin:18px 0}
+.dimcard{border:1px solid var(--border);border-left-width:4px;border-radius:11px;padding:13px 15px;background:var(--card);box-shadow:var(--shadow)}
+.dimcard.P{border-left-color:var(--p-bar)} .dimcard.E{border-left-color:var(--e-bar)}
+.dimcard.R{border-left-color:var(--r-bar)} .dimcard.M{border-left-color:var(--m-bar)} .dimcard.A{border-left-color:var(--a-bar)}
+.dimcard .dk{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.dimcard.P .dk{color:var(--p)} .dimcard.E .dk{color:var(--e)} .dimcard.R .dk{color:var(--r)}
+.dimcard.M .dk{color:var(--m)} .dimcard.A .dk{color:var(--a)}
+.dimcard .dq{font-weight:700;margin-top:4px;font-size:14.5px}
+.dimcard .dz{margin-top:12px;font-family:var(--font-serif);font-size:26px;font-weight:800;opacity:.35;line-height:1}
+
+/* contact */
+.contact{margin:52px 0 0;padding:34px;border-radius:20px;background:
+  radial-gradient(120% 140% at 100% 0,var(--navy-soft),transparent 55%),var(--card);
+  border:1px solid var(--border);box-shadow:var(--shadow);text-align:center}
+.contact h2{font-family:var(--font-serif);font-size:26px;font-weight:800}
+.contact p{color:var(--ink-soft);margin-top:10px;max-width:48ch;margin-inline:auto}
+.contact .mail{display:inline-flex;align-items:center;gap:10px;margin-top:20px;font-weight:800;font-size:16px;
+  padding:12px 20px;border-radius:12px;background:var(--stripe);color:#fff;box-shadow:var(--shadow)}
+footer{padding:40px 0 60px;text-align:center;color:var(--muted);font-size:12.5px}
+footer .wm{font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft)}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+::selection{background:var(--navy);color:#fff}
+</style>
+
+</head>
+<body>
+
+
+<header class="cover">
+  <div class="wrap">
+    <div class="brandline">
+      <div class="brandmark"></div>
+      <div class="brandtext">Ipsen Taiwan<span>Tan Yee Ming Coach · Workplace Well-being Journal</span></div>
+    </div>
+    <div class="eyebrow">使用者介面說明書 · User Guide</div>
+    <h1>幸福感書寫，<br>從一封登入信開始</h1>
+    <p class="lead">這是一份寫給 <b>Ipsen Taiwan</b> 團隊成員的操作指南。帶你一步步完成登入、每週書寫、社群互動與通知設定——讓你拿到就能上手。</p>
+    <div class="metarow">
+      <span class="chip"><span class="dot"></span>對象：<b>Ipsen Taiwan 團隊成員</b></span>
+      <span class="chip">網址：<b>coach-roan-eta.vercel.app</b></span>
+      <span class="chip">版本：<b>2026 · 繁體中文</b></span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav class="toc">
+    <h2>目錄 Contents</h2>
+    <ol>
+      <li><a href="#s1"><span class="tt">這是什麼、給誰用</span><span class="td">產品與對象</span></a></li>
+      <li><a href="#s2"><span class="tt">登入流程</span><span class="td">Email 登入連結</span></a></li>
+      <li><a href="#s3"><span class="tt">介面總覽</span><span class="td">頂部導覽列</span></a></li>
+      <li><a href="#s4"><span class="tt">每週書寫（PERMA）</span><span class="td">5 題精靈與發布</span></a></li>
+      <li><a href="#s5"><span class="tt">Community 社群</span><span class="td">按讚、留言、編輯、刪除</span></a></li>
+      <li><a href="#s6"><span class="tt">Notification 通知</span><span class="td">每週回顧提醒</span></a></li>
+      <li><a href="#s7"><span class="tt">選單與個人設定</span><span class="td">改名字、語言、登出</span></a></li>
+      <li><a href="#s8"><span class="tt">隱私與常見問題</span><span class="td">資料與 FAQ</span></a></li>
+    </ol>
+  </nav>
+
+  <!-- S1 -->
+  <section class="doc" id="s1">
+    <div class="sec-head"><div class="sec-num">1</div>
+      <div><h2>這是什麼、給誰用</h2>
+      <div class="sub">一個每週 5 分鐘、陪你建立覺察習慣的職場幸福感工具</div></div></div>
+    <p class="body-copy"><b>Ipsen Taiwan 幸福感書寫（Workplace Well-being Journal）</b>是 Ipsen Taiwan 與 <b>Tan Yee Ming（陳郁敏）教練</b>合作、專為 Ipsen Taiwan 團隊打造的線上書寫平台。它以正向心理學的 <b>PERMA</b> 架構為基礎，每週用 5 個問題，邀請你回顧這一週的情緒、投入、關係、意義與成就。</p>
+    <p class="body-copy">你的每一次書寫，會累積成一份專屬於你的成長軌跡；同時，你也能在 <b>Community 社群</b>看見同事們的分享、彼此鼓勵。這是一套<strong>邀請制</strong>的封閉系統——只有被教練邀請、列在名單內的 Email 才能登入，你的內容不會對外公開。</p>
+    <div class="note info"><div class="ic">i</div><div>
+      <p><b>整個流程很輕：</b>每週收到一封提醒信 → 點開網站 → 回答 5 題 → 發布。大約 5 分鐘。</p>
+      <p>介面預設為英文，右上角<span class="ui">選單</span>可隨時切換<b>繁體中文</b>。本說明書以繁體中文撰寫，畫面示意採用系統預設的英文介面。</p>
+    </div></div>
+  </section>
+
+  <!-- S2 -->
+  <section class="doc" id="s2">
+    <div class="sec-head"><div class="sec-num">2</div>
+      <div><h2>登入流程</h2>
+      <div class="sub">沒有密碼——我們寄一封「登入連結」到你的信箱</div></div></div>
+    <p class="body-copy">本平台採用<strong>「無密碼」的 Email 登入連結（magic link）</strong>：你只要輸入 Email，我們就寄一封含登入連結的信到你的信箱，點一下就登入。不需要、也不會請你設定任何密碼。</p>
+
+    <ol class="steps">
+      <li><b>開啟登入頁</b>，在<span class="ui">Your email</span>欄位輸入你的公司 Email，按下<span class="ui">Send login link（寄送登入連結）</span>。
+        <span class="st-note">只有教練邀請名單內的 Email 才能登入；若出現「not on the invite list」，代表這個信箱還沒被加入名單，請聯繫教練。</span></li>
+      <li><b>畫面出現「Link sent（連結已寄出）」</b>，表示信已寄到你的信箱。
+        <span class="st-note">曾登入過的 Email 會出現在「Recent emails」，下次點一下就能直接重寄。</span></li>
+      <li><b>到你的 Email 信箱，打開主旨為「Your sign-in link」的信</b>（寄件者顯示 <b>陳郁敏 Tan Yee Ming</b>），點信裡的 <span class="ui">Sign in</span> 連結。
+        <span class="st-note">這個連結只能用一次、且會很快過期。請直接在信中點它、不要先複製到別處。</span></li>
+      <li><b>首次登入</b>會請你設定一個<b>顯示名字</b>（會出現在社群貼文上），輸入後按 <span class="ui">Get started</span> 即進入。之後可隨時在設定頁修改。</li>
+    </ol>
+
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">coach-roan-eta.vercel.app/login</span></div>
+        <div class="screen"><div class="stage narrow">
+          <div style="text-align:center;margin-bottom:20px">
+            <div style="font-family:var(--font-serif);font-size:28px;font-weight:800">Ipsen Taiwan</div>
+            <div style="color:var(--ink-soft);font-size:13px;margin-top:4px">Tan Yee Ming Coach · Workplace Well-being Journal</div>
+          </div>
+          <div class="card">
+            <span class="lbl">Your email</span>
+            <div class="field">you@example.com</div>
+            <div style="height:12px"></div>
+            <button class="btn">Send login link</button>
+            <p style="text-align:center;color:var(--muted);font-size:12px;margin-top:12px">Only invited emails can sign in</p>
+          </div>
+        </div></div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 1</span><span>登入頁：輸入 Email 後按 <b>Send login link</b>。系統會把一次性的登入連結寄到你的信箱。</span></div>
+    </div>
+
+    <div class="note warn"><div class="ic">!</div><div>
+      <p><b>沒收到信？</b>先看「垃圾郵件 / 促銷」資料夾。仍找不到，回到登入頁按 <span class="ui">Re-enter email</span> 重新輸入寄一次。連結若顯示已失效，代表過期或已被用過，重新寄一封新的即可。</p>
+    </div></div>
+  </section>
+
+  <!-- S3 -->
+  <section class="doc" id="s3">
+    <div class="sec-head"><div class="sec-num">3</div>
+      <div><h2>介面總覽</h2>
+      <div class="sub">登入後，所有功能都在最上方這一條導覽列</div></div></div>
+    <p class="body-copy">登入後，畫面最上方會固定顯示一條導覽列。左邊是品牌與頁面切換，右邊是三顆工具鈕。認得這一條，就掌握了整個 App 的動線。</p>
+
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">coach-roan-eta.vercel.app/app/home</span></div>
+        <div class="screen">
+          <div class="appbar">
+            <div class="nav">
+              <span class="logo">Ipsen Taiwan</span>
+              <span class="appnav active">PERMA Self-Reflection</span>
+              <span class="appnav">Community</span>
+            </div>
+            <div class="tools">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+              <span class="bell"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="rd"></span></span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </div>
+          </div>
+          <div class="stage" style="text-align:center;color:var(--muted);font-size:13px;padding:22px">〔頁面內容顯示在這條列的下方〕</div>
+        </div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 2</span><span>頂部導覽列。鈴鐺右上角出現<b>紅點</b>時，代表本週提醒已到、還沒書寫。</span></div>
+    </div>
+
+    <div class="deflist">
+      <div class="d"><div class="t">PERMA Self-Reflection<span class="en">每週書寫</span></div><div class="x">你的主頁。開始或繼續本週的 5 題書寫（詳見第 4 節）。</div></div>
+      <div class="d"><div class="t">Community<span class="en">社群</span></div><div class="x">大家的書寫動態牆，可按讚、留言、管理自己的貼文（詳見第 5 節）。</div></div>
+      <div class="d"><div class="t">重新整理<span class="en">Refresh</span></div><div class="x">最左邊的環形箭頭。重新載入頁面、抓取最新資料。</div></div>
+      <div class="d"><div class="t">通知鈴鐺<span class="en">Notifications</span></div><div class="x">查看每週回顧提醒與下次提醒時間（詳見第 6 節）。</div></div>
+      <div class="d"><div class="t">選單<span class="en">Menu</span></div><div class="x">最右邊三條線。編輯名字、切換語言、登出（詳見第 7 節）。</div></div>
+    </div>
+  </section>
+
+  <!-- S4 -->
+  <section class="doc" id="s4">
+    <div class="sec-head"><div class="sec-num">4</div>
+      <div><h2>每週書寫（PERMA Self-Reflection）</h2>
+      <div class="sub">一週一次、5 個問題、系統自動存草稿</div></div></div>
+    <p class="body-copy">這是平台的核心。點導覽列的 <span class="ui">PERMA Self-Reflection</span> 進入主頁，你會看到本週的兩種狀態之一：</p>
+    <h3>主頁的兩種狀態</h3>
+    <p class="body-copy">若本週<b>還沒書寫</b>，主頁會顯示本週主題與一段引導說明，按 <span class="ui">Start journaling（開始記錄）</span> 進入 5 題精靈。若本週<b>已完成</b>，會顯示「This week's reflection is complete」，你仍可隨時 <span class="ui">Start journaling</span> 再寫一篇，或去 <span class="ui">View community</span> 看看社群。右上角的 <span class="ui">Week N（第 N 週）</span> 標記你在旅程中的第幾週。</p>
+
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">coach-roan-eta.vercel.app/app/home</span></div>
+        <div class="screen"><div class="stage narrow">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;font-size:13px">
+            <span style="color:var(--ink-soft)">Hi, 怡明</span>
+            <span class="mini">Week 1</span>
+          </div>
+          <div class="card" style="text-align:center">
+            <div style="width:46px;height:46px;border-radius:50%;background:var(--navy-soft);margin:0 auto 12px;display:flex;align-items:center;justify-content:center;color:var(--navy)">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+            <h3 style="margin:0;font-size:19px">This week's reflection is complete</h3>
+            <p style="color:var(--ink-soft);font-size:14px;margin-top:8px">You've completed a PERMA Self-Reflection this week. You can add another anytime.</p>
+            <div style="display:flex;gap:10px;margin-top:16px">
+              <button class="btn ghost">View community</button>
+              <button class="btn">Start journaling</button>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 3</span><span>本週已完成的主頁。未完成時，這裡會改成主題說明與一顆 <b>Start journaling</b> 大按鈕。</span></div>
+    </div>
+
+    <h3>5 題書寫精靈</h3>
+    <p class="body-copy">按下開始後，系統一次問一題，共 5 題，對應 PERMA 五個面向。最上方的<b>進度條</b>與 <span class="ui">Question N of 5</span> 讓你知道進度。每題下方是一個文字框，寫完按 <span class="ui">Next（下一題）</span>；想修改前面的答案，按 <span class="ui">Back（上一題）</span>。<b>你打的每個字都會自動存成草稿</b>——即使中途關掉，下次回來會停在你上次沒寫完的那一題。</p>
+
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">coach-roan-eta.vercel.app/app/journal</span></div>
+        <div class="screen"><div class="stage narrow">
+          <div class="prog"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+          <p style="font-size:12px;font-weight:800;color:var(--muted)">Question 1 of 5</p>
+          <div style="font-size:12px;font-weight:800;color:var(--p);margin-top:12px">Positive Emotions</div>
+          <h3 style="margin:4px 0 0;font-size:20px">What gave you energy this week?</h3>
+          <div class="card" style="margin-top:14px;min-height:120px;color:var(--muted);font-size:14px">Write your thoughts</div>
+          <button class="btn" style="margin-top:14px">Next</button>
+          <p style="text-align:center;color:var(--muted);font-size:12px;margin-top:10px">Your draft is saved automatically</p>
+        </div></div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 4</span><span>書寫精靈的第 1 題。第 5 題的按鈕會變成 <b>Share to community（發布到社群）</b>。</span></div>
+    </div>
+
+    <p class="body-copy">寫到第 5 題時，按鈕會變成 <span class="ui">Share to community（發布到社群）</span>。<b>按下後，這一週的 5 題答案會一起發布成社群上的一則貼文，並自動帶你到 Community 頁面</b>。（發布前需 5 題都填寫，若有漏，系統會提醒你補齊。）</p>
+
+    <h3>PERMA 五個面向<span class="k"> · 這 5 題在問什麼</span></h3>
+    <div class="dims">
+      <div class="dimcard P"><div class="dk">P · Positive Emotions</div><div class="dq">這週有什麼讓你充滿能量的事？</div><div class="dz">P</div></div>
+      <div class="dimcard E"><div class="dk">E · Engagement</div><div class="dq">你這週最投入、最有狀態的時刻是什麼時候？</div><div class="dz">E</div></div>
+      <div class="dimcard R"><div class="dk">R · Relationships</div><div class="dq">這週誰幫助了你？或者你幫助了誰？</div><div class="dz">R</div></div>
+      <div class="dimcard M"><div class="dk">M · Meaning</div><div class="dq">這週的工作，為什麼對你來說是重要的？</div><div class="dz">M</div></div>
+      <div class="dimcard A"><div class="dk">A · Accomplishment</div><div class="dq">有什麼進展讓你感到驕傲？</div><div class="dz">A</div></div>
+    </div>
+    <div class="note tip"><div class="ic">✓</div><div><p><b>小建議：</b>固定每週同一天、同一時段書寫（例如每週五下午或週一早上），最容易養成習慣。系統會依你上次書寫的星期，在往後的週次陪你回顧 PERMA 進展。</p></div></div>
+  </section>
+
+  <!-- S5 -->
+  <section class="doc" id="s5">
+    <div class="sec-head"><div class="sec-num">5</div>
+      <div><h2>Community 社群</h2>
+      <div class="sub">看見同事的分享，也管理自己的每一則貼文</div></div></div>
+    <p class="body-copy">點 <span class="ui">Community</span> 進入社群動態牆，這裡匯集大家已發布的每週書寫。頂部右側的 <span class="ui">Sort（排序）</span> 可切 <span class="ui">Newest（最新）</span> / <span class="ui">Oldest（最早）</span>；下方兩個分頁可切 <span class="ui">Community posts（社群貼文，全部人）</span> 與 <span class="ui">My posts（我的貼文，只有你自己）</span>。</p>
+
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">coach-roan-eta.vercel.app/app/community</span></div>
+        <div class="screen"><div class="stage">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h3 style="margin:0;font-size:18px">Community feed</h3>
+            <span class="mini">Sort · Newest ▾</span>
+          </div>
+          <div class="post">
+            <div class="ph">
+              <div style="display:flex;gap:11px">
+                <div class="avatar">林</div>
+                <div><div class="who"><span class="nm">林思妤（測試）</span><span class="mini">Week 5 · #1</span></div>
+                <div class="when">Jun 29, 2026 · 9:12 PM</div></div>
+              </div>
+              <div style="position:relative">
+                <span class="mini streak">🔥 5-week streak</span>
+              </div>
+            </div>
+            <div class="perma P"><div class="k">Positive Emotions</div><div class="v">請了一天假去海邊，回來後整個人好很多。</div></div>
+            <div class="perma E"><div class="k">Engagement</div><div class="v">重排優先順序，做核心功能時又找回專注。</div></div>
+            <div class="perma R"><div class="k">Relationships</div><div class="v">和工程師好好聊過，把之前的誤會解開了。</div></div>
+            <div class="postfoot">
+              <span class="heart"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg> 4</span>
+              <span>Comment · 1</span>
+            </div>
+            <div style="margin-top:11px;background:var(--card-2);border-radius:9px;padding:8px 11px;font-size:13px"><b>怡明</b> <span style="color:var(--ink-soft)">為你這個決定開心，海邊那天真的很關鍵 🌊</span></div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <div class="field" style="flex:1;height:38px">Write a comment…</div>
+              <button class="btn sm">Send</button>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 5</span><span>一則社群貼文的完整結構：作者、標籤、五面向內容、按讚與留言。</span></div>
+    </div>
+
+    <h3>看懂一則貼文</h3>
+    <div class="deflist">
+      <div class="d"><div class="t">作者與頭像</div><div class="x">顯示發文者的名字與名字首字。若作者是教練，名字旁會有 <span class="mini coach">Coach</span> 標籤。</div></div>
+      <div class="d"><div class="t">Week N · #M</div><div class="x">這是作者的第幾週書寫，以及那一週的第幾篇（同一週可發多篇）。</div></div>
+      <div class="d"><div class="t">🔥 N-week streak</div><div class="x">連續書寫的週數。每週都有紀錄就會一直累加。</div></div>
+      <div class="d"><div class="t">五面向內容</div><div class="x">P/E/R/M/A 各以專屬顏色的色塊呈現當週答案。</div></div>
+    </div>
+
+    <h3>按讚與留言</h3>
+    <p class="body-copy">點貼文下方的<b>愛心</b>即可按讚，再點一次取消；旁邊的數字是總讚數。要留言，在 <span class="ui">Write a comment…</span> 輸入文字後按 <span class="ui">Send</span>（或按 Enter）。留言會即時出現在貼文下方。</p>
+
+    <h3>管理你自己的貼文<span class="k"> · 編輯與刪除</span></h3>
+    <p class="body-copy">在<b>你自己</b>發的貼文右上角，會有一顆「⋮」更多按鈕（別人的貼文沒有）。點開後有兩個選項：</p>
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">coach-roan-eta.vercel.app/app/community · My posts</span></div>
+        <div class="screen"><div class="stage">
+          <div class="post">
+            <div class="ph">
+              <div style="display:flex;gap:11px">
+                <div class="avatar">怡</div>
+                <div><div class="who"><span class="nm">怡明</span><span class="mini">Week 2 · #1</span></div>
+                <div class="when">Jul 22, 2026 · 8:40 PM</div></div>
+              </div>
+              <div style="position:relative">
+                <span class="dots" style="border:1px solid var(--border);border-radius:8px;padding:3px 8px">⋮</span>
+                <div class="menu-pop"><button>Edit　編輯</button><button class="danger">Delete　刪除</button></div>
+              </div>
+            </div>
+            <div class="perma M"><div class="k">Meaning</div><div class="v">帶新人上手，讓我想起自己剛進來時被幫助的感覺。</div></div>
+          </div>
+        </div></div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 6</span><span>只有自己的貼文才有「⋮」選單，可 <b>Edit（編輯）</b> 或 <b>Delete（刪除）</b>。</span></div>
+    </div>
+    <div class="deflist">
+      <div class="d"><div class="t">Edit<span class="en">編輯</span></div><div class="x">五個面向會展開成可編輯的文字框，改完按 <span class="ui">Save</span> 更新，或按 <span class="ui">Cancel</span> 放棄。</div></div>
+      <div class="d"><div class="t">Delete<span class="en">刪除</span></div><div class="x">會跳出確認視窗「確定要刪除這則貼文嗎？此動作無法復原。」——按確定後貼文永久移除。</div></div>
+    </div>
+    <div class="note warn"><div class="ic">!</div><div><p><b>刪除無法復原。</b>按下確認前請再確認一次；刪掉的貼文與其讚、留言都會一併消失，無法還原。</p></div></div>
+  </section>
+
+  <!-- S6 -->
+  <section class="doc" id="s6">
+    <div class="sec-head"><div class="sec-num">6</div>
+      <div><h2>Notification 通知</h2>
+      <div class="sub">每週在你固定的時間，提醒你回來記錄</div></div></div>
+    <p class="body-copy">點導覽列的<b>鈴鐺</b>會展開「每週回顧提醒」小視窗。系統會依你<b>上次書寫的星期幾、晚上 9:00</b>，每週寄 Email 邀請你回來完成本週的 PERMA Self-Reflection，並在這裡顯示<b>下次提醒</b>的時間。</p>
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">coach-roan-eta.vercel.app/app/home</span></div>
+        <div class="screen"><div class="stage" style="display:flex;justify-content:flex-end">
+          <div class="pop">
+            <h4>Weekly reflection reminder</h4>
+            <p>Each week we'll email you at your usual time, inviting you back to record this week's PERMA Self-Reflection.</p>
+            <div style="background:var(--navy-soft);border-radius:9px;padding:9px 11px;margin-top:11px">
+              <p style="color:var(--navy);font-weight:800;font-size:12.5px;margin:0">Time for this week's reflection!</p>
+              <span style="color:var(--navy);font-weight:800;font-size:12.5px;text-decoration:underline">Start journaling →</span>
+            </div>
+            <p style="margin-top:11px;color:var(--muted);font-size:12px">Next reminder: Friday, Jul 24, 09:00 PM</p>
+          </div>
+        </div></div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 7</span><span>通知視窗。當本週還沒書寫且提醒時間已到，鈴鐺會出現<b>紅點</b>，這裡也會浮現一鍵 <b>Start journaling</b>。</span></div>
+    </div>
+    <div class="note info"><div class="ic">i</div><div><p>鈴鐺右上角的<b>紅點</b>是「本週還沒寫、且提醒時間已到」的提示。完成本週書寫後，紅點就會消失。</p></div></div>
+  </section>
+
+  <!-- S7 -->
+  <section class="doc" id="s7">
+    <div class="sec-head"><div class="sec-num">7</div>
+      <div><h2>選單與個人設定</h2>
+      <div class="sub">改名字、切換語言、登出——都在右上角的「≡」</div></div></div>
+    <p class="body-copy">點導覽列最右的<b>選單（≡）</b>會展開一個小面板，裡面有你目前登入的名字，以及三項設定：</p>
+    <div class="fig">
+      <div class="frame">
+        <div class="bar"><i></i><i></i><i></i><span class="url">coach-roan-eta.vercel.app/app</span></div>
+        <div class="screen"><div class="stage" style="display:flex;justify-content:flex-end">
+          <div class="pop" style="max-width:250px;padding:8px">
+            <div style="padding:8px 11px;font-size:12px;color:var(--muted)">Signed in · <b style="color:var(--ink)">怡明</b></div>
+            <div class="row"><span>Edit name　編輯名字</span></div>
+            <div class="row"><span>Language　語言</span><span class="seg"><span>EN</span><span class="on">繁中</span></span></div>
+            <div class="row"><span style="color:#B0542C;font-weight:700">Log out　登出</span></div>
+          </div>
+        </div></div>
+      </div>
+      <div class="figcap"><span class="fnum">圖 8</span><span>選單面板：編輯名字、切換介面語言、登出。</span></div>
+    </div>
+    <div class="deflist">
+      <div class="d"><div class="t">Edit name<span class="en">編輯名字</span></div><div class="x">進入個人資料頁修改顯示名字。改完按 <span class="ui">Save</span>，社群貼文上的名字會同步更新。</div></div>
+      <div class="d"><div class="t">Language<span class="en">語言</span></div><div class="x">在 <span class="ui">EN</span> 與 <span class="ui">繁中</span> 之間切換整個介面的語言，隨時可切。</div></div>
+      <div class="d"><div class="t">Log out<span class="en">登出</span></div><div class="x">登出目前帳號。下次使用需再走一次 Email 登入連結流程。</div></div>
+    </div>
+  </section>
+
+  <!-- S8 -->
+  <section class="doc" id="s8">
+    <div class="sec-head"><div class="sec-num">8</div>
+      <div><h2>隱私與常見問題</h2>
+      <div class="sub">你的資料誰看得到，以及最常被問到的幾件事</div></div></div>
+    <div class="note info"><div class="ic">i</div><div>
+      <p><b>關於隱私：</b>這是一個<b>邀請制</b>的封閉平台，只有名單內的同事能登入，內容不對外公開。你發布的每週書寫，會呈現在社群供受邀的同事看見與鼓勵；同時，<b>你的教練（Tan Yee Ming）能看到你所有的書寫內容</b>，以便給你個別的回饋與陪伴。若某些內容你不希望被看到，可以選擇不發布或斟酌書寫。</p>
+    </div></div>
+    <div class="faq">
+      <details><summary>我一直沒收到登入信怎麼辦？</summary><div class="a">先檢查「垃圾郵件 / 促銷」資料夾。仍沒有的話，回登入頁按 <b>Re-enter email</b> 確認信箱拼字後重寄。若持續收不到，可能你的信箱不在邀請名單內，請聯繫教練確認。</div></details>
+      <details><summary>登入連結點了說已失效？</summary><div class="a">登入連結是<b>一次性</b>的、且會很快過期。請回登入頁重新輸入 Email 寄一封新的，並在收到後<b>直接點信中的連結</b>、不要放太久或重複點。</div></details>
+      <details><summary>可以換手機或電腦登入嗎？</summary><div class="a">可以。任何裝置的瀏覽器打開網址、用同一個 Email 走一次登入連結流程即可，你的書寫紀錄都在雲端、跟著帳號走。</div></details>
+      <details><summary>這週已經寫過了，還能再寫嗎？</summary><div class="a">可以。主頁隨時能再按 <b>Start journaling</b> 多寫一篇，同一週的多篇會分別以 #1、#2… 呈現在社群。</div></details>
+      <details><summary>寫到一半離開，內容會不見嗎？</summary><div class="a">不會。精靈會<b>自動保存草稿</b>，下次回來會停在你上次沒寫完的那一題。（草稿存在你這台裝置上，換裝置需重新書寫未發布的內容。）</div></details>
+      <details><summary>介面是英文，可以變中文嗎？</summary><div class="a">可以。右上角<b>選單（≡）→ Language</b> 切換到「繁中」即可，整個介面會變成繁體中文。</div></details>
+    </div>
+  </section>
+
+  <div class="contact">
+    <h2>需要協助？</h2>
+    <p>操作上有任何問題、或發現異常，歡迎隨時來信，我們會盡快回覆你。</p>
+    <a class="mail" href="mailto:psybypsy01@gmail.com">✉ psybypsy01@gmail.com</a>
+  </div>
+
+  <footer>
+    <div class="wm">Ipsen Taiwan</div>
+    <p style="margin-top:8px">Tan Yee Ming Coach · Workplace Well-being Journal　使用者介面說明書</p>
+  </footer>
+</div>
+
+</body>
+</html>
