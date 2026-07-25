@@ -22,4 +22,10 @@ export const community: Record<string, Translation> = {
   '編輯': { en: 'Edit' },
   '刪除': { en: 'Delete' },
   '確定要刪除這則貼文嗎？此動作無法復原。': { en: 'Delete this post? This cannot be undone.' },
+  '僅自己可見': { en: 'Only visible to you' },
+  '匿名': { en: 'Anonymous' },
+  '神秘旅人': { en: 'Mystery traveler' },
+  '隱私設定': { en: 'Privacy' },
+  '以能量代號匿名出現在社群動態': { en: 'Shown under an energy alias in the community feed' },
+  '刪除貼文': { en: 'Delete post' },
 }

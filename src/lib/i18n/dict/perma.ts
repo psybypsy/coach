@@ -15,7 +15,6 @@ export const perma: Record<string, Translation> = {
   '寫下你的想法': { en: 'Write your thoughts' },
   '發布到社群': { en: 'Share to community' },
   '只留給自己': { en: 'Keep private' },
-  '你的教練可以看到所有書寫內容': { en: 'Your coach can see everything you write' },
   '發布': { en: 'Post' },
   '發布中…': { en: 'Posting…' },
   '發布失敗，請再試一次。': { en: 'Something went wrong. Please try again.' },
@@ -44,8 +43,22 @@ export const perma: Record<string, Translation> = {
   '第 {n} 題，共 5 題': { en: 'Question {n} of 5' },
   '上一題': { en: 'Back' },
   '下一題': { en: 'Next' },
+  '下一步': { en: 'Next' },
   '系統會自動保存草稿': { en: 'Your draft is saved automatically' },
   '請先完成全部 5 題再發布。': { en: 'Please answer all 5 questions before posting.' },
+
+  // ── 發布方式選擇（journal 最後一步）──
+  '恭喜完成本次練習！': { en: 'Nice work — you’ve completed this session!' },
+  '選擇發布方式': { en: 'Choose how to share' },
+  '你的名字會顯示在社群貼文上': { en: 'Your name will appear on this post' },
+  '匿名發布到社群': { en: 'Post anonymously' },
+  '會用一個自然系代號顯示，其他成員看不到你的真實姓名': {
+    en: "Shown under a nature-inspired alias — other members won't see your real name",
+  },
+  '你的能量代號': { en: 'Your energy alias' },
+  '換一個': { en: 'Shuffle' },
+  '不會出現在社群動態，只有你自己看得到': { en: "Won't appear in the community feed — only you can see it" },
+  '結束今天練習': { en: 'Finish today’s practice' },
 
   // ── 歡迎設定名字（welcome）與個人設定（settings）──
   '歡迎！先設定你的名字': { en: 'Welcome! First, set your name' },
