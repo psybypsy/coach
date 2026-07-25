@@ -128,6 +128,7 @@ create table coach_analyses (
   client_date   date,
   coach_id      uuid references profiles(id),
   translations  jsonb   not null default '{}'::jsonb, -- 見遷移 003：{ "zh-TW": { blocks, sessions } } 英文分析的翻譯快取
+  baseline      jsonb,                                 -- 見遷移 005：T0 基準點五面向分數 {"P":n,...}（0–10），圖表起點
   updated_at    timestamptz not null default now()
 );
 

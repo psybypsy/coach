@@ -96,6 +96,23 @@ export const coach: Record<string, Translation> = {
   '情緒詞雲': { en: 'Emotion word cloud' },
   '下載 PDF': { en: 'Download PDF' },
   '下載 Word': { en: 'Download Word' },
+
+  // T0 基準點
+  'T0 基準點': { en: 'T0 baseline' },
+  'T0 基準點（起始幸福感）': { en: 'T0 baseline (starting wellbeing)' },
+  '填入成員一開始（T0）的五面向幸福感分數（0–10）。填好後，下面的 valence 圖表都會以 T0 為起點；整體分數由五項自動平均。': {
+    en: 'Enter the member’s starting (T0) wellbeing across the five dimensions (0–10). Once filled, the valence charts below start from T0; the overall score is the average of the five.',
+  },
+  '儲存 T0 基準點': { en: 'Save T0 baseline' },
+  '儲存中…': { en: 'Saving…' },
+  '請把 T0 的五個面向都填 0–10 的分數': { en: 'Fill all five T0 dimensions with a score of 0–10' },
+  '儲存失敗，請確認已在 Supabase 執行遷移 005（新增 baseline 欄）': {
+    en: 'Save failed. Make sure migration 005 (add baseline column) has been run in Supabase.',
+  },
+  '已儲存 T0 基準點': { en: 'T0 baseline saved' },
+  '整體（自動平均）：': { en: 'Overall (auto average): ' },
+  '五個面向都填 0–10 才會套用到圖表。': { en: 'Fill all five dimensions (0–10) to apply to the charts.' },
+  'T0 基準（虛線）': { en: 'T0 baseline (dashed)' },
   '直接編輯客戶版文字（Markdown：## 標題、** 粗體、- 條列），儲存後即更新交付文件。': {
     en: 'Edit the client version text directly (Markdown: ## headings, ** bold **, - bullets). Saving updates the deliverable.',
   },

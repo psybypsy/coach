@@ -59,6 +59,9 @@ interface Framework {
   note: string
 }
 
+// T0 基準點：教練手填的五面向幸福感分數（0–10），作為所有圖表的起點（見遷移 005）
+type BaselineScores = Record<DimKey, number>
+
 interface CoachAnalysis {
   member_id: string
   based_on: number
@@ -69,7 +72,24 @@ interface CoachAnalysis {
   client_date: string | null
   // 英文分析的翻譯快取（見遷移 003）：預設英文，教練點「中文」時即時翻譯並存這裡
   translations?: Record<string, { blocks: BriefBlock[]; sessions: SessionScore[] }>
+  baseline?: BaselineScores | null
   updated_at: string
+}
+
+// T0 分數尺度：0–10 → valence −100~+100（5=0 中性、10=+100、0=−100）
+function baselineToValence(score: number): number {
+  const s = Math.max(0, Math.min(10, score))
+  return Math.round((s - 5) * 20)
+}
+// 由五面向 0–10 分數組出一個「第 0 次」的 SessionScore（overall 取五項平均）
+function makeBaselineSession(b: BaselineScores | null | undefined): SessionScore | null {
+  if (!b || !KEYS.every((k) => typeof b[k] === 'number' && !Number.isNaN(b[k]))) return null
+  const dims = {} as SessionScore['dims']
+  KEYS.forEach((k) => {
+    dims[k] = { v: baselineToValence(b[k]), reason: '' }
+  })
+  const overall = Math.round(KEYS.reduce((sum, k) => sum + dims[k].v, 0) / KEYS.length)
+  return { overall, overallReason: '', dims, emotions: [] }
 }
 
 // #2 情報簡報區塊標題一律用「固定的 canonical 標題」（依區塊順序）並走 t()，
@@ -257,6 +277,21 @@ function MemberDetailPage() {
   const [message, setMessage] = useState<string | null>(null)
   // 左側章節導覽：目前捲動到哪個章節
   const [activeNav, setActiveNav] = useState('')
+  // T0 基準點：五面向 0–10 輸入（字串以容許暫時空白），存進 coach_analyses.baseline
+  const emptyBaselineDraft: Record<DimKey, string> = { P: '', E: '', R: '', M: '', A: '' }
+  const [baselineDraft, setBaselineDraft] = useState<Record<DimKey, string>>(emptyBaselineDraft)
+  const [savingBaseline, setSavingBaseline] = useState(false)
+  // 五項都是 0–10 的有效數字才成立；否則視為未設定（圖表不套 T0）
+  const baseline = useMemo<BaselineScores | null>(() => {
+    const nums = {} as BaselineScores
+    for (const k of KEYS) {
+      const raw = baselineDraft[k].trim()
+      const n = Number(raw)
+      if (raw === '' || Number.isNaN(n) || n < 0 || n > 10) return null
+      nums[k] = n
+    }
+    return nums
+  }, [baselineDraft])
 
   useEffect(() => {
     void guardAndLoad()
@@ -264,7 +299,10 @@ function MemberDetailPage() {
 
   const hasDeepAnalysis = !!analysis && analysis.sessions.length > 0
   const navItems = useMemo(() => {
-    const items: NavItem[] = [{ id: 'sec-deep', label: t('教練深度分析') }]
+    const items: NavItem[] = [
+      { id: 'sec-baseline', label: t('T0 基準點') },
+      { id: 'sec-deep', label: t('教練深度分析') },
+    ]
     if (hasDeepAnalysis) {
       items.push({ id: 'sec-charts', label: t('圖表'), indent: true })
       items.push({ id: 'sec-blocks', label: t('教練情報簡報'), indent: true })
@@ -326,8 +364,33 @@ function MemberDetailPage() {
     setName(profile?.display_name ?? '')
     setEntries((entryRows as unknown as EntryRow[]) ?? [])
     setPosts((postRows as unknown as JournalPost[]) ?? [])
-    setAnalysis((analysisRow as unknown as CoachAnalysis) ?? null)
+    const row = (analysisRow as unknown as CoachAnalysis) ?? null
+    setAnalysis(row)
+    const b = row?.baseline
+    setBaselineDraft(
+      b ? (Object.fromEntries(KEYS.map((k) => [k, String(b[k] ?? '')])) as Record<DimKey, string>) : emptyBaselineDraft,
+    )
     setLoading(false)
+  }
+
+  // 儲存 T0 基準點：upsert coach_analyses（教練 RLS 允許 insert/update；分析未生成也可先存）
+  async function saveBaseline() {
+    if (!baseline) {
+      setMessage(t('請把 T0 的五個面向都填 0–10 的分數'))
+      return
+    }
+    setSavingBaseline(true)
+    setMessage(null)
+    const { error } = await supabase
+      .from('coach_analyses')
+      .upsert({ member_id: id, baseline }, { onConflict: 'member_id' })
+    if (error) {
+      setMessage(t('儲存失敗，請確認已在 Supabase 執行遷移 005（新增 baseline 欄）'))
+    } else {
+      setAnalysis((prev) => (prev ? { ...prev, baseline } : prev))
+      setMessage(t('已儲存 T0 基準點'))
+    }
+    setSavingBaseline(false)
   }
 
   async function authFetch(path: string, body?: Record<string, unknown>) {
@@ -545,7 +608,9 @@ function MemberDetailPage() {
         margin: [12, 12, 14, 12],
         filename: 'Personal-Well-being-Review.pdf', // 純 ASCII，避免檔名特殊字元讓下載失效
         image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: false },
+        // foreignObjectRendering:true 讓內嵌 SVG（雷達圖）交給瀏覽器原生渲染，
+        // 而不是 html2canvas 自己那套不完整的 SVG 解析器——後者對這個雷達圖會裁切掉一半內容。
+        html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: false, foreignObjectRendering: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
         // 圖表區另起一頁；圖表間依序流動排版，只有 avoid 擋住整塊圖（含雷達 A/P/M/R/E 清單）被從中間切開
         pagebreak: {
@@ -624,7 +689,13 @@ function MemberDetailPage() {
         const maxW = 600 // A4 內文寬度上限（px）
         const maxH = 780 // A4 內文高度上限（px），確保一張圖不溢出到下一頁
         for (const el of chartEls) {
-          const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false })
+          const canvas = await html2canvas(el, {
+            scale: 2,
+            backgroundColor: '#ffffff',
+            useCORS: true,
+            logging: false,
+            foreignObjectRendering: true,
+          })
           const buf = await (await fetch(canvas.toDataURL('image/png'))).arrayBuffer()
           let w = Math.min(maxW, canvas.width / 2)
           let h = (canvas.height / canvas.width) * w
@@ -700,8 +771,13 @@ function MemberDetailPage() {
 
   function renderChart(key: string) {
     if (!analysis) return null
-    const s = analysis.sessions
-    const cd = chartData(s)
+    // T0 基準點：若五面向都填了，就把它當「第 0 次」接在最前面，讓趨勢／五面向／雷達／摘要都以 T0 為起點。
+    // 情緒相關圖（正負平衡、詞雲）與逐次列表不含 T0（T0 沒有情緒詞與理由）。
+    const base = makeBaselineSession(baseline)
+    const cs = base ? [base, ...analysis.sessions] : analysis.sessions
+    const s = cs
+    const cd = chartData(cs)
+    const xLabels = base ? ['T0', ...analysis.sessions.map((_, i) => String(i + 1))] : undefined
     switch (key) {
       case 'summary':
         return (
@@ -745,7 +821,7 @@ function MemberDetailPage() {
           <div
             className="cv-chart-wrap"
             dangerouslySetInnerHTML={{
-              __html: valLine([{ values: cd.ov, color: DIMCOLOR.M, width: 3, label: true }], s.length),
+              __html: valLine([{ values: cd.ov, color: DIMCOLOR.M, width: 3, label: true }], s.length, xLabels),
             }}
           />
         )
@@ -766,6 +842,7 @@ function MemberDetailPage() {
                 __html: valLine(
                   KEYS.map((k) => ({ values: s.map((x) => x.dims[k]?.v || 0), color: DIMCOLOR[k], width: 2 })),
                   s.length,
+                  xLabels,
                 ),
               }}
             />
@@ -775,14 +852,13 @@ function MemberDetailPage() {
         return (
           <>
             <div
-              className="cv-chart-wrap"
-              style={{ display: 'flex', justifyContent: 'center' }}
+              className="cv-chart-wrap cv-radar-wrap"
               dangerouslySetInnerHTML={{ __html: valRadar(cd.firstDim, cd.lastDim) }}
             />
             <div className="cv-legend" style={{ justifyContent: 'center' }}>
               <span>
                 <i style={{ background: '#8993A1' }} />
-                {t('第一次（虛線）')}
+                {base ? t('T0 基準（虛線）') : t('第一次（虛線）')}
               </span>
               <span>
                 <i style={{ background: '#1F3A5C' }} />
@@ -806,11 +882,11 @@ function MemberDetailPage() {
                 {t('負向（往下）')}
               </span>
             </div>
-            <div className="cv-chart-wrap" dangerouslySetInnerHTML={{ __html: affectBalance(s) }} />
+            <div className="cv-chart-wrap" dangerouslySetInnerHTML={{ __html: affectBalance(analysis.sessions) }} />
           </>
         )
       case 'cloud':
-        return <div dangerouslySetInnerHTML={{ __html: emotionWordCloud(s) }} />
+        return <div dangerouslySetInnerHTML={{ __html: emotionWordCloud(analysis.sessions) }} />
     }
     return null
   }
@@ -842,6 +918,46 @@ function MemberDetailPage() {
               {message}
             </p>
           )}
+
+          {/* ── T0 基準點（起始幸福感）：填在最前面，作為所有圖表的起點 ── */}
+          <section className="mb-8" id="sec-baseline">
+            <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('T0 基準點（起始幸福感）')}</h2>
+            <p className="mb-3 text-xs text-muted-foreground">
+              {t('填入成員一開始（T0）的五面向幸福感分數（0–10）。填好後，下面的 valence 圖表都會以 T0 為起點；整體分數由五項自動平均。')}
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              {KEYS.map((k) => (
+                <label key={k} className="flex flex-col gap-1">
+                  <span className="text-[11px] font-semibold" style={{ color: DIMCOLOR[k] }}>
+                    {k} · {DIM[k]}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={10}
+                    step={1}
+                    inputMode="numeric"
+                    value={baselineDraft[k]}
+                    onChange={(e) => setBaselineDraft((p) => ({ ...p, [k]: e.target.value }))}
+                    placeholder="0–10"
+                    className="w-20 rounded-md border border-border bg-card px-2 py-1 text-sm text-foreground"
+                  />
+                </label>
+              ))}
+              <button
+                onClick={saveBaseline}
+                disabled={savingBaseline || !baseline}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+              >
+                {savingBaseline ? t('儲存中…') : t('儲存 T0 基準點')}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {baseline
+                ? `${t('整體（自動平均）：')}${makeBaselineSession(baseline)!.overall > 0 ? '+' : ''}${makeBaselineSession(baseline)!.overall}`
+                : t('五個面向都填 0–10 才會套用到圖表。')}
+            </p>
+          </section>
 
           {/* ── 教練深度分析 ── */}
           <section className="mb-8" id="sec-deep">
@@ -1378,6 +1494,10 @@ const COACH_VIZ_CSS = `
 .cv-inc input{width:14px;height:14px;accent-color:#1F3A5C;cursor:pointer;margin:0}
 .cv-chart-wrap{overflow-x:auto;padding:4px 0}
 .cv-chart-wrap svg{max-width:none;height:auto}
+/* 雷達圖置中：Tailwind preflight 把所有 svg 設成 display:block（非預設的 inline），
+   所以父層的 text-align:center 完全沒有作用——這才是一直沒置中的真正原因。
+   block 元素本來就該用 margin:auto 置中，不需要 flex 或其他花招。 */
+.cv-radar-wrap svg{margin:0 auto}
 .cv-legend{display:flex;flex-wrap:wrap;gap:14px;margin:8px 0 2px;font-size:11.5px;font-weight:700}
 .cv-legend span{display:inline-flex;align-items:center;gap:6px;color:#54606E}
 .cv-legend i{width:12px;height:12px;border-radius:2px;display:inline-block}
@@ -1390,7 +1510,7 @@ const COACH_VIZ_CSS = `
 .cv-rdelta{border:1.5px solid #E2E5EA;border-radius:10px;margin-top:8px;overflow:hidden}
 .cv-rdelta-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #E2E5EA;font-size:12.5px}
 .cv-rdelta-row:last-child{border-bottom:none}
-.cv-rdelta-key{width:20px;height:20px;border-radius:5px;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.cv-rdelta-key{width:20px;height:20px;border-radius:5px;color:#fff;font-size:11px;font-weight:800;display:inline-block;line-height:20px;text-align:center;flex-shrink:0;font-family:-apple-system,'PingFang TC','Noto Sans TC',sans-serif}
 .cv-rdelta-name{font-weight:700;flex:1}
 .cv-rdelta-val{font-variant-numeric:tabular-nums;color:#54606E;font-weight:600;white-space:nowrap}
 .cv-rdelta-tag{font-size:11px;font-weight:800;padding:3px 11px;border-radius:20px;white-space:nowrap;min-width:82px;text-align:center}
@@ -1408,7 +1528,7 @@ const COACH_VIZ_CSS = `
 .cv-vreason{font-size:12.5px;line-height:1.75;color:#2B3440;margin-bottom:12px;padding:10px 13px;background:#EEF0F3;border-radius:7px;border-left:3px solid #1F3A5C}
 .cv-vdim{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #E2E5EA}
 .cv-vdim:last-child{border-bottom:none}
-.cv-vdim-key{width:20px;height:20px;border-radius:5px;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.cv-vdim-key{width:20px;height:20px;border-radius:5px;color:#fff;font-size:11px;font-weight:800;display:inline-block;line-height:20px;text-align:center;flex-shrink:0;font-family:-apple-system,'PingFang TC','Noto Sans TC',sans-serif}
 .cv-vdim-name{font-size:12px;font-weight:700;width:150px;flex-shrink:0}
 .cv-vdim-v{font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;width:42px;flex-shrink:0}
 .cv-vdim-reason{font-size:11.5px;color:#54606E;line-height:1.5;flex:1}
@@ -1450,6 +1570,9 @@ const COACH_VIZ_CSS = `
    SVG 有 viewBox，設 max-width:100%+height:auto 即等比縮放至容器寬；窄圖（雷達）維持原寸。 */
 .cv-doc-charts .cv-chart-wrap{overflow:visible;text-align:center}
 .cv-doc-charts .cv-chart-wrap svg{max-width:100% !important;height:auto !important}
+/* 雷達圖固定尺寸，PDF/Word 匯出時不要被上面那條縮放規則影響——懷疑 html2canvas 對
+   「縮到 100% 寬度」這個縮放算不準，導致內容被裁切而非等比縮小，先讓它維持原寸排除這個變因。 */
+.cv-doc-charts .cv-radar-wrap svg{max-width:none !important;width:280px !important;height:294px !important}
 /* 圖表區塊整體另起一頁，但各圖依序流動排版（不再每張各佔一整頁）；
    單一圖表本身不可從中間被切（避免雷達的 A/P/M/R/E 清單被切成兩頁）。 */
 .cv-doc-charts{page-break-before:always;break-before:page}
