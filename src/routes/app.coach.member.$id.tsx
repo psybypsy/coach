@@ -14,9 +14,11 @@ import {
   valRadar,
   radarDelta,
   affectBalance,
+  topicShareStacked,
   emotionWordCloud,
   type SessionScore,
   type DimKey,
+  type TopicKey,
 } from '../lib/coachViz'
 
 export const Route = createFileRoute('/app/coach/member/$id')({
@@ -101,17 +103,37 @@ const BLOCK_TITLES = [
   '優勢與內在資源',
   '自我決定論動機',
   '語言指紋',
-  '橫向主題與模式',
-  '未言之事',
-  '教練假設',
-  '值得關注',
-  '會談準備',
+  '未來四週行動',
 ]
+
+// 已從產品移除的舊情報模組。舊資料庫列可能仍保留這些 block，
+// 因此前端需同步過濾，避免它們再次出現在畫面或 Client Version。
+const REMOVED_BLOCK_TITLES = new Set([
+  'cross-cutting themes & patterns',
+  '橫向主題與模式',
+  'the unsaid',
+  '未言之事',
+  'coaching hypotheses',
+  '教練假設',
+  'worth watching',
+  '值得關注',
+  'session preparation',
+  '會談準備',
+])
+
+function isRemovedBlock(block: BriefBlock): boolean {
+  return REMOVED_BLOCK_TITLES.has(String(block.title || '').trim().toLowerCase())
+}
+
+function isLinguisticFingerprint(block: BriefBlock): boolean {
+  return ['linguistic fingerprint', '語言指紋'].includes(String(block.title || '').trim().toLowerCase())
+}
 
 const CHART_DEFS: { key: string; title: string }[] = [
   { key: 'summary', title: '情緒 valence 摘要' },
   { key: 'trend', title: '整體情緒 valence 趨勢' },
   { key: 'dims', title: '五面向 valence 趨勢' },
+  { key: 'topics', title: '每週主題占比' },
   { key: 'radar', title: '五面向 valence 剖面' },
   { key: 'affect', title: '正負情緒平衡' },
   { key: 'cloud', title: '情緒詞雲' },
@@ -265,6 +287,7 @@ function MemberDetailPage() {
   // 子項目預設全收起（外層三大區塊維持展開）：記的是「明確展開」的項目，空陣列＝全部收起
   const [openRows, setOpenRows] = useState<number[]>([])
   const [openBlocks, setOpenBlocks] = useState<number[]>([])
+  const [openActionPreview, setOpenActionPreview] = useState(false)
   // 圖表模塊預設收起；展開的 key 記在這裡（#6：所有模塊都可展開／收合）
   const [openCharts, setOpenCharts] = useState<string[]>([])
   // #6 最外層三個大 section 也可展開／收合，預設全展開
@@ -560,17 +583,6 @@ function MemberDetailPage() {
     if (!window.confirm(t('確定要刪除這個區塊嗎？此動作無法復原。'))) return
     const blocks = analysis.blocks.filter((_, j) => j !== i)
     void persist({ blocks })
-  }
-
-  // 一次刪除所有「僅教練」（未納入客戶版）的區塊，直接寫回分析資料
-  function deleteCoachOnlyBlocks() {
-    if (!analysis) return
-    const remaining = analysis.blocks.filter((b) => b.include)
-    const removedCount = analysis.blocks.length - remaining.length
-    if (removedCount === 0) return
-    if (!window.confirm(t('確定要刪除全部 {n} 個「僅教練」區塊嗎？此動作無法復原。').replace('{n}', String(removedCount))))
-      return
-    void persist({ blocks: remaining })
   }
 
   // 更新 coach_analyses（教練 RLS 允許）並同步本地狀態
@@ -1002,6 +1014,64 @@ function MemberDetailPage() {
             />
           </>
         )
+      case 'topics': {
+        const topicLabels: Record<TopicKey, string> = {
+          work: t('工作／學業'),
+          relationships: t('關係'),
+          health: t('健康'),
+          rest: t('休息與恢復'),
+          growth: t('自我成長'),
+          other: t('其他'),
+        }
+        const hasTopicData = analysis.sessions.some((session) =>
+          Object.values(session.topics ?? {}).some((value) => Number(value) > 0),
+        )
+        // 舊分析沒有 topics；本機開發模式提供清楚標示的版面預覽，方便在分析 API
+        // 暫時不可用時仍能驗收圖表。正式 build 不會顯示或匯出這些模擬數值。
+        const topicSessions =
+          !hasTopicData && import.meta.env.DEV
+            ? analysis.sessions.map((session, index, all) => {
+                const progress = all.length <= 1 ? 0 : index / (all.length - 1)
+                const work = Math.round(38 - progress * 18)
+                const relationships = Math.round(18 + progress * 10)
+                const health = 14
+                const rest = Math.round(12 + progress * 8)
+                const growth = Math.round(12 + progress * 2)
+                return {
+                  ...session,
+                  topics: {
+                    work,
+                    relationships,
+                    health,
+                    rest,
+                    growth,
+                    other: 100 - work - relationships - health - rest - growth,
+                  },
+                }
+              })
+            : analysis.sessions
+        return (
+          <>
+            <div
+              className="cv-chart-wrap cv-topic-wrap"
+              dangerouslySetInnerHTML={{
+                __html: topicShareStacked(
+                  topicSessions,
+                  topicLabels,
+                  (index) => (language === 'en' ? `W${index + 1}` : `第 ${index + 1} 週`),
+                  t('重新生成分析後，即可查看每週主題占比。'),
+                ),
+              }}
+            />
+            {!hasTopicData && import.meta.env.DEV && (
+              <div className="cv-preview-note">{t('本機版面預覽資料；重新生成分析後會換成日記分析結果。')}</div>
+            )}
+            <div className="cv-note">
+              {t('每週合計為 100%，呈現日記內容的關注占比，不代表實際投入時間。')}
+            </div>
+          </>
+        )
+      }
       case 'radar':
         return (
           <>
@@ -1035,7 +1105,17 @@ function MemberDetailPage() {
 
   if (checking) return null
 
-  const includedBlocks = analysis?.blocks.filter((b) => b.include) ?? []
+  const visibleBlocks =
+    analysis?.blocks
+      .map((block, index) => ({ block, index }))
+      .filter(({ block }) => !isRemovedBlock(block)) ?? []
+  const includedBlocks = visibleBlocks
+    .filter(({ block }) => block.include || isLinguisticFingerprint(block))
+    .map(({ block }) => block)
+  const hasFutureActionsBlock =
+    analysis?.blocks.some((block) =>
+      ['actions for the next four weeks', '未來四週行動'].includes(String(block.title || '').trim().toLowerCase()),
+    ) ?? false
   // 內文顯示語言：中文且有快取則用翻譯版，否則用原生英文（依 index 對齊 canonical）
   const briefTr = briefLang === 'zh-TW' ? analysis?.translations?.['zh-TW'] : undefined
   const viewBlocks = briefTr?.blocks ?? analysis?.blocks ?? []
@@ -1112,7 +1192,7 @@ function MemberDetailPage() {
             {openSections.deep && (
             <>
             <p className="mb-3 text-xs text-muted-foreground">
-              {t('對每週回饋做情緒 valence 分析與情報簡報，僅教練可見。')}
+              {t('對每週回饋做情緒 valence 分析與情報簡報。')}
             </p>
             <div className="mb-4 flex flex-wrap items-center gap-3">
               <button
@@ -1265,21 +1345,12 @@ function MemberDetailPage() {
                 {/* 情報簡報區塊 */}
                 <div className="cv-slbl" style={{ marginTop: 22 }} id="sec-blocks">
                   <span>{t('教練情報簡報')}</span>
-                  {analysis.blocks.some((b) => !b.include) && (
-                    <span
-                      className="cv-block-del"
-                      style={{ textTransform: 'none', letterSpacing: 'normal' }}
-                      onClick={deleteCoachOnlyBlocks}
-                    >
-                      {t('移除所有僅教練區塊')}
-                    </span>
-                  )}
                 </div>
-                {analysis.blocks.map((b, i) => {
+                {visibleBlocks.map(({ block: b, index: i }) => {
                   const open = openBlocks.includes(i) || editBlock === i
                   const view = viewBlocks[i] ?? b // 顯示語言版（標題/內文）；納入狀態仍用 canonical
                   return (
-                  <div key={i} className={`cv-block ${b.include ? '' : 'coachonly'}`}>
+                  <div key={i} className="cv-block">
                     <div
                       className="cv-block-hd"
                       style={{ cursor: 'pointer' }}
@@ -1290,9 +1361,9 @@ function MemberDetailPage() {
                       </span>
                       <span className="cv-block-title">{t(BLOCK_TITLES[i] ?? view.title)}</span>
                       {b.custom && <span className="cv-block-tag ai">{t('AI 框架')}</span>}
-                      <span className={`cv-block-tag ${b.include ? 'inc' : 'only'}`}>
-                        {b.include ? t('納入客戶版') : t('僅教練')}
-                      </span>
+                      {(b.include || isLinguisticFingerprint(b)) && (
+                        <span className="cv-block-tag inc">{t('納入客戶版')}</span>
+                      )}
                     </div>
                     {open && (
                     <div className="cv-block-body">
@@ -1325,8 +1396,9 @@ function MemberDetailPage() {
                             <label className="cv-inc">
                               <input
                                 type="checkbox"
-                                checked={b.include}
+                                checked={b.include || isLinguisticFingerprint(b)}
                                 onChange={(e) => toggleBlock(i, e.target.checked)}
+                                disabled={isLinguisticFingerprint(b)}
                               />
                               {t('納入客戶交付版')}
                             </label>
@@ -1354,6 +1426,60 @@ function MemberDetailPage() {
                   </div>
                   )
                 })}
+                {import.meta.env.DEV && !hasFutureActionsBlock && (
+                  <div className="cv-block cv-action-preview">
+                    <div
+                      className="cv-block-hd"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setOpenActionPreview((open) => !open)}
+                    >
+                      <span
+                        className="cv-caret"
+                        style={{ transform: openActionPreview ? 'rotate(90deg)' : 'none' }}
+                      >
+                        ▶
+                      </span>
+                      <span className="cv-block-title">{t('未來四週行動')}</span>
+                      <span className="cv-block-tags">
+                        <span className="cv-block-tag preview">{t('本機預覽')}</span>
+                        <span className="cv-block-tag inc">{t('納入客戶版')}</span>
+                      </span>
+                    </div>
+                    {openActionPreview && <div className="cv-block-body">
+                      <div className="cv-preview-note">
+                        {t('以下僅供版面預覽；重新生成分析後會依日記證據產生個人化行動。')}
+                      </div>
+                      <div className="cv-md">
+                        <ul>
+                          <li>
+                            <strong>{t('每週恢復檢視')}</strong>
+                            <ul>
+                              <li><strong>{t('為何適合')}</strong> — {t('幫助你辨認哪些情境消耗能量，以及哪些方法確實能讓自己恢復。')}</li>
+                              <li><strong>{t('執行頻率')}</strong> — {t('每週安排 20 分鐘。')}</li>
+                              <li><strong>{t('成功訊號')}</strong> — {t('四週內至少完成三次，並找出一項可重複使用的恢復方式。')}</li>
+                            </ul>
+                          </li>
+                          <li>
+                            <strong>{t('一個價值導向行動')}</strong>
+                            <ul>
+                              <li><strong>{t('為何適合')}</strong> — {t('將你在意的價值轉成小而具體的行動，降低只停留在思考中的壓力。')}</li>
+                              <li><strong>{t('執行頻率')}</strong> — {t('每週完成一項 30 分鐘內可完成的小行動。')}</li>
+                              <li><strong>{t('成功訊號')}</strong> — {t('完成後能清楚說出這項行動和哪個重要價值相連。')}</li>
+                            </ul>
+                          </li>
+                          <li>
+                            <strong>{t('一次支持性連結')}</strong>
+                            <ul>
+                              <li><strong>{t('為何適合')}</strong> — {t('把支持性關係當作可主動運用的資源，而不是等到壓力累積後才求助。')}</li>
+                              <li><strong>{t('執行頻率')}</strong> — {t('每週主動與一位可信任的人對話一次。')}</li>
+                              <li><strong>{t('成功訊號')}</strong> — {t('對話後能更清楚說出自己的需要或下一步。')}</li>
+                            </ul>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>}
+                  </div>
+                )}
 
                 {/* ── 自訂分析框架：教練描述 → AI 依文獻生成框架 → 產生新的簡報區塊 ── */}
                 <div className="cv-slbl" style={{ marginTop: 26 }} id="sec-framework">
@@ -1487,7 +1613,7 @@ function MemberDetailPage() {
                   {' '}
                   {includedBlocks.length}
                 </strong>{' '}
-                / {analysis.blocks.length}
+                / {visibleBlocks.length}
               </div>
               <div className="mb-4 flex flex-wrap items-center gap-3">
                 <button
@@ -1636,6 +1762,7 @@ const COACH_VIZ_CSS = `
 .cv-inc input{width:14px;height:14px;accent-color:#1F3A5C;cursor:pointer;margin:0}
 .cv-chart-wrap{overflow-x:auto;padding:4px 0}
 .cv-chart-wrap svg{max-width:none;height:auto}
+.cv-topic-wrap svg{display:block;max-width:100%;height:auto}
 /* 雷達圖置中：Tailwind preflight 把所有 svg 設成 display:block（非預設的 inline），
    所以父層的 text-align:center 完全沒有作用——這才是一直沒置中的真正原因。
    block 元素本來就該用 margin:auto 置中，不需要 flex 或其他花招。 */
@@ -1679,13 +1806,14 @@ const COACH_VIZ_CSS = `
 .cv-emo.negative{background:#F0E0D6;border-color:#E1C3B1;color:#B0542C}
 .cv-emo.neutral{background:#EAECF0;border-color:#CBD1DA;color:#54606E}
 .cv-block{border:1.5px solid #E2E5EA;border-radius:10px;margin-bottom:12px;overflow:hidden;background:#fff}
-.cv-block.coachonly{border-color:#E4CF9E}
 .cv-block-hd{display:flex;align-items:center;gap:10px;padding:12px 15px;background:#EEF0F3;border-bottom:1.5px solid #E2E5EA}
 .cv-block-title{font-size:13.5px;font-weight:800;color:#1C2530;flex:1}
 .cv-block-tag{font-size:10px;font-weight:800;letter-spacing:.04em;padding:3px 9px;border-radius:5px;text-transform:uppercase}
 .cv-block-tag.inc{background:#D9E7E0;color:#2E7057;border:1.5px solid #BCD3C8}
-.cv-block-tag.only{background:#F6EEDC;color:#8A6A26;border:1.5px solid #E4CF9E}
+.cv-block-tag.preview{background:#E7ECF5;color:#1F3A5C;border:1.5px solid #B9C6DE}
+.cv-block-tags{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end}
 .cv-block-body{padding:14px 16px}
+.cv-preview-note{font-size:11.5px;color:#54606E;line-height:1.6;padding:9px 12px;background:#EEF0F3;border-left:3px solid #8993A1;margin:8px 0 10px}
 .cv-md{font-size:13px;line-height:1.8;color:#2B3440}
 .cv-md p{margin:0 0 9px}
 .cv-md h2,.cv-md h3{font-size:14px;font-weight:800;margin:13px 0 6px;color:#1C2530}

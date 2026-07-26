@@ -15,8 +15,8 @@ export const coach: Record<string, Translation> = {
 
   // 教練深度分析
   '教練深度分析': { en: 'Coach Deep Analysis' },
-  '對每週回饋做情緒 valence 分析與情報簡報，僅教練可見。': {
-    en: 'Emotional valence analysis and an intelligence brief per weekly entry — coach-only.',
+  '對每週回饋做情緒 valence 分析與情報簡報。': {
+    en: 'Emotional valence analysis and an intelligence brief per weekly entry.',
   },
   '生成情緒分析與情報簡報': { en: 'Generate valence analysis & brief' },
   '重新生成分析': { en: 'Regenerate analysis' },
@@ -34,12 +34,7 @@ export const coach: Record<string, Translation> = {
   '整體': { en: 'Overall' },
   '整體評分理由。': { en: 'Overall rationale. ' },
   '教練情報簡報': { en: 'Coach intelligence brief' },
-  '僅教練': { en: 'Coach only' },
   '確定要刪除這個區塊嗎？此動作無法復原。': { en: 'Delete this block? This cannot be undone.' },
-  '移除所有僅教練區塊': { en: 'Remove all coach-only blocks' },
-  '確定要刪除全部 {n} 個「僅教練」區塊嗎？此動作無法復原。': {
-    en: 'Delete all {n} coach-only blocks? This cannot be undone.',
-  },
   '納入客戶交付版': { en: 'Include in client deliverable' },
   '編輯': { en: 'Edit' },
   '儲存': { en: 'Save' },
@@ -81,19 +76,75 @@ export const coach: Record<string, Translation> = {
   '優勢與內在資源': { en: 'Strengths & Inner Resources' },
   '自我決定論動機': { en: 'Self-Determination Motivation' },
   '語言指紋': { en: 'Linguistic Fingerprint' },
-  '橫向主題與模式': { en: 'Cross-cutting Themes & Patterns' },
-  '未言之事': { en: 'The Unsaid' },
-  '教練假設': { en: 'Coaching Hypotheses' },
-  '值得關注': { en: 'Worth Watching' },
-  '會談準備': { en: 'Session Preparation' },
+  '未來四週行動': { en: 'Actions for the Next Four Weeks' },
 
   // 圖表標題（deep analysis / 客戶版共用）
   '情緒 valence 摘要': { en: 'Valence summary' },
   '整體情緒 valence 趨勢': { en: 'Overall valence trend' },
   '五面向 valence 趨勢': { en: 'Five-dimension valence trends' },
+  '每週主題占比': { en: 'Weekly topic share' },
   '五面向 valence 剖面': { en: 'Five-dimension valence profile' },
   '正負情緒平衡': { en: 'Positive–negative affect balance' },
   '情緒詞雲': { en: 'Emotion word cloud' },
+  '工作／學業': { en: 'Work / study' },
+  '關係': { en: 'Relationships' },
+  '健康': { en: 'Health' },
+  '休息與恢復': { en: 'Rest & recovery' },
+  '自我成長': { en: 'Personal growth' },
+  '其他': { en: 'Other' },
+  '重新生成分析後，即可查看每週主題占比。': {
+    en: 'Regenerate the analysis to view weekly topic shares.',
+  },
+  '每週合計為 100%，呈現日記內容的關注占比，不代表實際投入時間。': {
+    en: 'Each week totals 100%. This reflects attention in the journal, not actual time spent.',
+  },
+  '本機版面預覽資料；重新生成分析後會換成日記分析結果。': {
+    en: 'Local layout preview data; regenerating the analysis will replace it with journal-based results.',
+  },
+  '本機預覽': { en: 'Local preview' },
+  '以下僅供版面預覽；重新生成分析後會依日記證據產生個人化行動。': {
+    en: 'Layout preview only. Regenerating the analysis will create personalised actions grounded in journal evidence.',
+  },
+  '每週恢復檢視': { en: 'Weekly recovery check-in' },
+  '每週安排 20 分鐘，記下最消耗與最能恢復能量的事件；四週完成至少三次。': {
+    en: 'Set aside 20 minutes each week to note what depleted and restored your energy; complete at least three of four weeks.',
+  },
+  '一個價值導向行動': { en: 'One values-led action' },
+  '每週選一項真正重要、能在 30 分鐘內完成的小行動，並記錄完成後的感受。': {
+    en: 'Choose one meaningful action each week that can be completed in 30 minutes, then note how it felt.',
+  },
+  '一次支持性連結': { en: 'One supportive connection' },
+  '每週主動與一位可信任的人對話；成功訊號是能更清楚說出自己的需要。': {
+    en: 'Initiate one conversation each week with someone you trust; success means expressing your needs more clearly.',
+  },
+  '為何適合': { en: 'Why this fits' },
+  '執行頻率': { en: 'Cadence' },
+  '成功訊號': { en: 'Success signal' },
+  '幫助你辨認哪些情境消耗能量，以及哪些方法確實能讓自己恢復。': {
+    en: 'It helps you identify which situations deplete your energy and which responses genuinely restore it.',
+  },
+  '每週安排 20 分鐘。': { en: 'Set aside 20 minutes each week.' },
+  '四週內至少完成三次，並找出一項可重複使用的恢復方式。': {
+    en: 'Complete it at least three times in four weeks and identify one recovery practice you can reuse.',
+  },
+  '將你在意的價值轉成小而具體的行動，降低只停留在思考中的壓力。': {
+    en: 'It turns what matters to you into a small, concrete step instead of leaving it only as a thought.',
+  },
+  '每週完成一項 30 分鐘內可完成的小行動。': {
+    en: 'Complete one small action each week that takes no more than 30 minutes.',
+  },
+  '完成後能清楚說出這項行動和哪個重要價值相連。': {
+    en: 'Afterward, you can clearly name the important value the action supported.',
+  },
+  '把支持性關係當作可主動運用的資源，而不是等到壓力累積後才求助。': {
+    en: 'It makes supportive relationships a resource you can use proactively, before pressure accumulates.',
+  },
+  '每週主動與一位可信任的人對話一次。': {
+    en: 'Initiate one conversation each week with someone you trust.',
+  },
+  '對話後能更清楚說出自己的需要或下一步。': {
+    en: 'After the conversation, you can express your needs or next step more clearly.',
+  },
   '下載 PDF': { en: 'Download PDF' },
   '下載 Word': { en: 'Download Word' },
 

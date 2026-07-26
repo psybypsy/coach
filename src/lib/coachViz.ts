@@ -3,15 +3,18 @@
 // P/E/R/M/A 對應 DIMENSION_CONFIGS 的色系。無 DOM 依賴，方便測試與 SSR。
 
 export type DimKey = 'P' | 'E' | 'R' | 'M' | 'A'
+export type TopicKey = 'work' | 'relationships' | 'health' | 'rest' | 'growth' | 'other'
 
 export interface SessionScore {
   overall: number
   overallReason: string
   dims: Record<DimKey, { v: number; reason: string }>
   emotions: { word: string; valence: string; intensity: number }[]
+  topics?: Partial<Record<TopicKey, number>>
 }
 
 export const KEYS: DimKey[] = ['P', 'E', 'R', 'M', 'A']
+export const TOPIC_KEYS: TopicKey[] = ['work', 'relationships', 'health', 'rest', 'growth', 'other']
 export const DIM: Record<DimKey, string> = {
   P: 'Positive Emotions',
   E: 'Engagement',
@@ -227,6 +230,78 @@ export function affectBalance(sessions: SessionScore[]): string {
       svg += `<rect x="${(cx(i) - bw / 2).toFixed(1)}" y="${cy.toFixed(1)}" width="${bw.toFixed(1)}" height="${hh.toFixed(1)}" fill="${HEX.neg}" rx="2"/>`
     }
     svg += `<text x="${cx(i).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="9" fill="${HEX.text3}">${i + 1}</text>`
+  })
+  return svg + '</svg>'
+}
+
+// 每週主題占比：固定六類、每週正規化成 100%，以橫向堆疊圖呈現關注重心的移動。
+// 使用單一 SVG，讓瀏覽器畫面、PDF 與 Word 光柵化時維持相同的文字基線與比例。
+export function topicShareStacked(
+  sessions: SessionScore[],
+  labels: Record<TopicKey, string>,
+  weekLabel: (index: number) => string,
+  emptyMessage: string,
+): string {
+  const usable = sessions.filter((s) => s.topics && TOPIC_KEYS.some((k) => Number(s.topics?.[k]) > 0))
+  if (!usable.length) return `<div class="cv-note">${esc(emptyMessage)}</div>`
+
+  const colors: Record<TopicKey, string> = {
+    work: HEX.primary,
+    relationships: HEX.R,
+    health: HEX.E,
+    rest: HEX.P,
+    growth: HEX.A,
+    other: HEX.neu,
+  }
+  const W = 640
+  const padL = 48
+  const padR = 10
+  const barW = W - padL - padR
+  const rowH = 29
+  const barH = 20
+  const top = 12
+  const axisY = top + sessions.length * rowH + 4
+  const legendTop = axisY + 30
+  const legendRows = 2
+  const H = legendTop + legendRows * 23 + 6
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="每週日記主題占比堆疊圖">`
+
+  sessions.forEach((session, index) => {
+    const raw = session.topics ?? {}
+    const total = TOPIC_KEYS.reduce((sum, k) => sum + Math.max(0, Number(raw[k]) || 0), 0)
+    const values = TOPIC_KEYS.map((k) => (total > 0 ? (Math.max(0, Number(raw[k]) || 0) / total) * 100 : 0))
+    const y = top + index * rowH
+    svg += `<text x="${padL - 8}" y="${y + 14}" text-anchor="end" font-family="Arial,'PingFang TC','Noto Sans TC',sans-serif" font-size="10" font-weight="700" fill="${HEX.text3}">${esc(weekLabel(index))}</text>`
+    let x = padL
+    values.forEach((value, topicIndex) => {
+      const k = TOPIC_KEYS[topicIndex]
+      const width = (value / 100) * barW
+      if (width <= 0) return
+      svg += `<rect x="${x.toFixed(1)}" y="${y}" width="${width.toFixed(1)}" height="${barH}" fill="${colors[k]}"/>`
+      // 六個固定主題中，右側的小占比通常只有 5–12%；仍要顯示數值。
+      // 小區段縮小字級，而不是直接省略，避免使用者誤以為資料缺失。
+      if (value >= 4) {
+        const fontSize = value < 10 ? 8 : 9.5
+        svg += `<text x="${(x + width / 2).toFixed(1)}" y="${y + 14}" text-anchor="middle" font-family="Arial,'PingFang TC','Noto Sans TC',sans-serif" font-size="${fontSize}" font-weight="700" fill="#FFFFFF">${Math.round(value)}%</text>`
+      }
+      x += width
+    })
+    svg += `<rect x="${padL}" y="${y}" width="${barW}" height="${barH}" fill="none" stroke="${HEX.border2}" stroke-width="1"/>`
+  })
+
+  ;[0, 25, 50, 75, 100].forEach((tick) => {
+    const x = padL + (tick / 100) * barW
+    svg += `<line x1="${x}" y1="${top}" x2="${x}" y2="${axisY - 7}" stroke="${HEX.surface}" stroke-opacity=".55" stroke-width="1"/>`
+    svg += `<text x="${x}" y="${axisY + 10}" text-anchor="${tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'}" font-family="Arial,sans-serif" font-size="9" fill="${HEX.text3}">${tick}%</text>`
+  })
+
+  TOPIC_KEYS.forEach((k, index) => {
+    const col = index % 3
+    const row = Math.floor(index / 3)
+    const x = padL + col * 194
+    const y = legendTop + row * 23
+    svg += `<rect x="${x}" y="${y}" width="12" height="12" rx="2" fill="${colors[k]}"/>`
+    svg += `<text x="${x + 18}" y="${y + 10.5}" font-family="Arial,'PingFang TC','Noto Sans TC',sans-serif" font-size="10.5" font-weight="700" fill="${HEX.text2}">${esc(labels[k])}</text>`
   })
   return svg + '</svg>'
 }
