@@ -160,16 +160,32 @@ export function valRadar(a: Record<DimKey, number> | null, b: Record<DimKey, num
 export function radarDelta(a: Record<DimKey, number>, b: Record<DimKey, number>): string {
   const rows = KEYS.map((k) => ({ k, a: a[k], b: b[k], d: b[k] - a[k] })).sort((x, y) => y.d - x.d)
   const fmt = (v: number) => (v > 0 ? '+' : '') + v
+  // 字母直接畫進 SVG，不依賴 html2canvas 的 CSS line-height／字型基線計算。
+  // y=14 是 11px Arial 在 20px 方塊中的視覺置中基線，PDF 與 Word 匯出都不會裁掉字母底部。
+  const keyIcon = (k: DimKey) =>
+    `<svg xmlns="http://www.w3.org/2000/svg" class="cv-rdelta-key" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">` +
+    `<rect x="0" y="0" width="20" height="20" rx="5" fill="${DIMCOLOR[k]}"/>` +
+    `<text x="10" y="14" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" font-weight="700" fill="#fff">${k}</text>` +
+    `</svg>`
+  const statusBadge = (delta: number, word: string, bg: string, color: string) => {
+    const label = `${fmt(delta)}  ${word}`
+    return (
+      `<svg xmlns="http://www.w3.org/2000/svg" class="cv-rdelta-tag-svg" viewBox="0 0 82 26" width="82" height="26" aria-label="${label}">` +
+      `<rect x="0" y="0" width="82" height="26" rx="13" fill="${bg}"/>` +
+      `<text x="41" y="17" text-anchor="middle" font-family="Arial,'PingFang TC','Noto Sans TC',sans-serif" font-size="11" font-weight="700" fill="${color}">${label}</text>` +
+      `</svg>`
+    )
+  }
   return `<div class="cv-rdelta">${rows
     .map((r) => {
       const col = r.d > 0 ? HEX.pos : r.d < 0 ? HEX.neg : HEX.text3
       const bg = r.d > 0 ? HEX.posSoft : r.d < 0 ? HEX.negSoft : HEX.neuSoft
       const word = r.d > 0 ? '進步' : r.d < 0 ? '退步' : '持平'
       return `<div class="cv-rdelta-row">
-        <span class="cv-rdelta-key" style="background:${DIMCOLOR[r.k]}">${r.k}</span>
+        ${keyIcon(r.k)}
         <span class="cv-rdelta-name">${DIM[r.k]}</span>
         <span class="cv-rdelta-val">${fmt(r.a)} → ${fmt(r.b)}</span>
-        <span class="cv-rdelta-tag" style="background:${bg};color:${col}">${fmt(r.d)}　${word}</span>
+        ${statusBadge(r.d, word, bg, col)}
       </div>`
     })
     .join('')}</div>`
