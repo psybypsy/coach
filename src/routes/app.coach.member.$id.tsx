@@ -14,9 +14,11 @@ import {
   valRadar,
   radarDelta,
   affectBalance,
+  topicShareStacked,
   emotionWordCloud,
   type SessionScore,
   type DimKey,
+  type TopicKey,
 } from '../lib/coachViz'
 
 export const Route = createFileRoute('/app/coach/member/$id')({
@@ -101,17 +103,37 @@ const BLOCK_TITLES = [
   '優勢與內在資源',
   '自我決定論動機',
   '語言指紋',
-  '橫向主題與模式',
-  '未言之事',
-  '教練假設',
-  '值得關注',
-  '會談準備',
+  '未來四週行動',
 ]
+
+// 已從產品移除的舊情報模組。舊資料庫列可能仍保留這些 block，
+// 因此前端需同步過濾，避免它們再次出現在畫面或 Client Version。
+const REMOVED_BLOCK_TITLES = new Set([
+  'cross-cutting themes & patterns',
+  '橫向主題與模式',
+  'the unsaid',
+  '未言之事',
+  'coaching hypotheses',
+  '教練假設',
+  'worth watching',
+  '值得關注',
+  'session preparation',
+  '會談準備',
+])
+
+function isRemovedBlock(block: BriefBlock): boolean {
+  return REMOVED_BLOCK_TITLES.has(String(block.title || '').trim().toLowerCase())
+}
+
+function isLinguisticFingerprint(block: BriefBlock): boolean {
+  return ['linguistic fingerprint', '語言指紋'].includes(String(block.title || '').trim().toLowerCase())
+}
 
 const CHART_DEFS: { key: string; title: string }[] = [
   { key: 'summary', title: '情緒 valence 摘要' },
   { key: 'trend', title: '整體情緒 valence 趨勢' },
   { key: 'dims', title: '五面向 valence 趨勢' },
+  { key: 'topics', title: '每週主題占比' },
   { key: 'radar', title: '五面向 valence 剖面' },
   { key: 'affect', title: '正負情緒平衡' },
   { key: 'cloud', title: '情緒詞雲' },
@@ -265,6 +287,7 @@ function MemberDetailPage() {
   // 子項目預設全收起（外層三大區塊維持展開）：記的是「明確展開」的項目，空陣列＝全部收起
   const [openRows, setOpenRows] = useState<number[]>([])
   const [openBlocks, setOpenBlocks] = useState<number[]>([])
+  const [openActionPreview, setOpenActionPreview] = useState(false)
   // 圖表模塊預設收起；展開的 key 記在這裡（#6：所有模塊都可展開／收合）
   const [openCharts, setOpenCharts] = useState<string[]>([])
   // #6 最外層三個大 section 也可展開／收合，預設全展開
@@ -562,17 +585,6 @@ function MemberDetailPage() {
     void persist({ blocks })
   }
 
-  // 一次刪除所有「僅教練」（未納入客戶版）的區塊，直接寫回分析資料
-  function deleteCoachOnlyBlocks() {
-    if (!analysis) return
-    const remaining = analysis.blocks.filter((b) => b.include)
-    const removedCount = analysis.blocks.length - remaining.length
-    if (removedCount === 0) return
-    if (!window.confirm(t('確定要刪除全部 {n} 個「僅教練」區塊嗎？此動作無法復原。').replace('{n}', String(removedCount))))
-      return
-    void persist({ blocks: remaining })
-  }
-
   // 更新 coach_analyses（教練 RLS 允許）並同步本地狀態
   async function persist(patch: Partial<CoachAnalysis>) {
     if (!analysis) return
@@ -592,36 +604,112 @@ function MemberDetailPage() {
     void persist({ client_charts: { ...analysis.client_charts, [key]: val } })
   }
 
-  // #3 下載 PDF：直接把「客戶報告」那份文件轉成 PDF 下載（不經列印對話框）。
-  // 整份等比縮進 A4 寬度，所以不會有文字被裁切的問題。
-  function downloadClientPdf() {
-    const el = document.getElementById('cv-print-area')
-    if (!el) return
-    // 固定 720px 寬輸出：確保每張圖（尤其雷達＋A/P/M/R/E 清單）在任何視窗寬度下都各自容進一頁 A4
-    const prevWidth = el.style.width
-    el.style.width = '720px'
-    const restore = () => {
-      el.style.width = prevWidth
+  // html2canvas 對 SVG 與網頁字型的載入時機較敏感。匯出前把 SVG 固定成同尺寸 PNG，
+  // 避免同一份報告在不同瀏覽器／視窗寬度下發生裁切或比例漂移。
+  async function rasterizeExportSvgs(root: HTMLElement) {
+    const svgs = [...root.querySelectorAll('svg')] as SVGSVGElement[]
+    await Promise.all(
+      svgs.map(
+        (svg) =>
+          new Promise<void>((resolve) => {
+            const rect = svg.getBoundingClientRect()
+            if (rect.width <= 0 || rect.height <= 0) {
+              resolve()
+              return
+            }
+            const source = new XMLSerializer().serializeToString(svg)
+            const url = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml;charset=utf-8' }))
+            const image = new Image()
+            image.onload = () => {
+              const scale = 2
+              const canvas = document.createElement('canvas')
+              canvas.width = Math.ceil(rect.width * scale)
+              canvas.height = Math.ceil(rect.height * scale)
+              const ctx = canvas.getContext('2d')
+              if (ctx) {
+                ctx.scale(scale, scale)
+                ctx.drawImage(image, 0, 0, rect.width, rect.height)
+                const replacement = document.createElement('img')
+                replacement.src = canvas.toDataURL('image/png')
+                replacement.alt = ''
+                replacement.style.display = 'block'
+                replacement.style.width = `${rect.width}px`
+                replacement.style.height = `${rect.height}px`
+                replacement.style.maxWidth = '100%'
+                replacement.style.margin = getComputedStyle(svg).margin
+                svg.replaceWith(replacement)
+              }
+              URL.revokeObjectURL(url)
+              resolve()
+            }
+            image.onerror = () => {
+              URL.revokeObjectURL(url)
+              resolve() // 保留原 SVG，讓 html2canvas 作為後備處理
+            }
+            image.src = url
+          }),
+      ),
+    )
+  }
+
+  // #3 下載 PDF：用固定桌面版寬度的離屏副本輸出，不改動使用者正在看的報告。
+  async function downloadClientPdf() {
+    const source = document.getElementById('cv-print-area')
+    if (!source) return
+
+    const exportRoot = source.cloneNode(true) as HTMLElement
+    exportRoot.removeAttribute('id')
+    exportRoot.classList.add('cv-pdf-export')
+    // 定位放在外層 host，而不是 exportRoot 本身；html2pdf 再複製 exportRoot 時才不會
+    // 把 left:-100000px 一起複製進 PDF 畫布。
+    const exportHost = document.createElement('div')
+    exportHost.style.cssText = 'position:fixed;left:-100000px;top:0;width:720px;z-index:-1'
+    exportHost.appendChild(exportRoot)
+    document.body.appendChild(exportHost)
+
+    try {
+      // 等字型完成後再量尺寸，避免中文字型替換造成換行點在匯出途中改變。
+      await document.fonts?.ready
+      await rasterizeExportSvgs(exportRoot)
+
+      await html2pdf()
+        .set({
+          margin: [12, 12, 14, 12],
+          filename: 'Personal-Well-being-Review.pdf', // 純 ASCII，避免檔名特殊字元讓下載失效
+          image: { type: 'png', quality: 1 },
+          // width/windowWidth 同時固定 html2pdf 容器與 media query 的計算，手機與桌面輸出一致。
+          width: 720,
+          windowWidth: 720,
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff',
+            logging: false,
+            foreignObjectRendering: false,
+            windowWidth: 720,
+          },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
+          pagebreak: {
+            mode: ['css', 'legacy'],
+            avoid: [
+              '.cv-doc-head',
+              '.cv-doc h2',
+              '.cv-doc h3',
+              '.cv-doc p',
+              '.cv-doc li',
+              '.cv-doc-sign',
+              '.cv-doc-chart',
+              '.cv-rdelta',
+              '.cv-stats',
+              '.cv-wcloud',
+            ],
+          },
+        })
+        .from(exportRoot)
+        .save()
+    } finally {
+      exportHost.remove()
     }
-    void html2pdf()
-      .set({
-        margin: [12, 12, 14, 12],
-        filename: 'Personal-Well-being-Review.pdf', // 純 ASCII，避免檔名特殊字元讓下載失效
-        image: { type: 'jpeg', quality: 0.95 },
-        // foreignObjectRendering:true 讓內嵌 SVG（雷達圖）交給瀏覽器原生渲染，
-        // 而不是 html2canvas 自己那套不完整的 SVG 解析器——後者對這個雷達圖會裁切掉一半內容。
-        html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: false, foreignObjectRendering: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
-        // 圖表區另起一頁；圖表間依序流動排版，只有 avoid 擋住整塊圖（含雷達 A/P/M/R/E 清單）被從中間切開
-        pagebreak: {
-          mode: ['css', 'legacy'],
-          before: ['.cv-doc-charts'],
-          avoid: ['.cv-doc-chart', '.cv-rdelta', '.cv-stats', '.cv-wcloud'],
-        },
-      })
-      .from(el)
-      .save()
-      .then(restore, restore)
   }
 
   // 客戶版行內編輯：進入編輯 → 改文字 → 存回 client_text
@@ -680,23 +768,65 @@ function MemberDetailPage() {
       })
 
     // 每張圖各自截一張圖片、各自一頁嵌入 Word（含其標題與雷達的 A/P/M/R/E 清單）。
-    // 需 coachViz 的 SVG 帶 xmlns 才能被 html2canvas 光柵化（見 coachViz.ts）。
+    // 不能直接截畫面上的 SVG：部分瀏覽器會產生「尺寸正確但內容全白」的 canvas。
+    // 因此先在固定寬度的離屏副本中把 SVG 光柵化，再截整個圖表。
     const chartParagraphs: InstanceType<typeof Paragraph>[] = []
     const chartEls = [...document.querySelectorAll('#cv-print-area .cv-doc-chart')] as HTMLElement[]
     if (chartEls.length) {
+      const wordHost = document.createElement('div')
+      // html2canvas 直接截這個副本，不能像 PDF host 一樣放到負十萬像素外，
+      // 否則部分瀏覽器會回傳尺寸正確但全白的 canvas。放在畫面座標內、置於最底層即可。
+      wordHost.style.cssText =
+        'position:fixed;left:0;top:0;width:644px;background:#fff;z-index:-2147483647;pointer-events:none'
+      document.body.appendChild(wordHost)
       try {
         const html2canvas = (await import('html2canvas')).default
         const maxW = 600 // A4 內文寬度上限（px）
         const maxH = 780 // A4 內文高度上限（px），確保一張圖不溢出到下一頁
+        await document.fonts?.ready
         for (const el of chartEls) {
-          const canvas = await html2canvas(el, {
-            scale: 2,
-            backgroundColor: '#ffffff',
-            useCORS: true,
-            logging: false,
-            foreignObjectRendering: true,
-          })
-          const buf = await (await fetch(canvas.toDataURL('image/png'))).arrayBuffer()
+          const chartClone = el.cloneNode(true) as HTMLElement
+          chartClone.classList.add('cv-word-export')
+          wordHost.appendChild(chartClone)
+          await rasterizeExportSvgs(chartClone)
+
+          const capture = () =>
+            html2canvas(chartClone, {
+              scale: 2,
+              backgroundColor: '#ffffff',
+              useCORS: true,
+              logging: false,
+              foreignObjectRendering: false,
+              windowWidth: 720,
+            })
+          const hasVisibleInk = (canvas: HTMLCanvasElement) => {
+            const ctx = canvas.getContext('2d', { willReadFrequently: true })
+            if (!ctx) return false
+            const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+            let ink = 0
+            // 每 8px 取樣；文字、框線或圖形任一存在都會遠超過 20 個非白點。
+            for (let y = 0; y < canvas.height && ink <= 20; y += 8) {
+              for (let x = 0; x < canvas.width && ink <= 20; x += 8) {
+                const i = (y * canvas.width + x) * 4
+                if (pixels[i + 3] > 20 && (pixels[i] < 245 || pixels[i + 1] < 245 || pixels[i + 2] < 245)) ink++
+              }
+            }
+            return ink > 20
+          }
+
+          let canvas = await capture()
+          if (!hasVisibleInk(canvas)) {
+            // 少數瀏覽器不繪製負 z-index 的目標；只在偵測到空白時短暫提到最上層重截。
+            wordHost.style.zIndex = '2147483647'
+            canvas = await capture()
+            wordHost.style.zIndex = '-2147483647'
+          }
+          if (!hasVisibleInk(canvas)) throw new Error('Chart capture was blank')
+
+          const blob = await new Promise<Blob>((resolve, reject) =>
+            canvas.toBlob((value) => (value ? resolve(value) : reject(new Error('Unable to encode chart PNG'))), 'image/png'),
+          )
+          const buf = await blob.arrayBuffer()
           let w = Math.min(maxW, canvas.width / 2)
           let h = (canvas.height / canvas.width) * w
           if (h > maxH) {
@@ -705,13 +835,20 @@ function MemberDetailPage() {
           }
           chartParagraphs.push(
             new Paragraph({
-              pageBreakBefore: true, // 每張圖各自一頁
+              // 圖表區只在第一張前換頁；後續圖片依序流動，同頁放得下就接續排版。
+              // Word 圖片本身不會被切成兩半，空間不足時會自動整張移到下一頁。
+              pageBreakBefore: chartParagraphs.length === 0,
+              spacing: { after: 180 },
               children: [new ImageRun({ type: 'png', data: buf, transformation: { width: Math.round(w), height: Math.round(h) } })],
             }),
           )
+          chartClone.remove()
         }
-      } catch {
+      } catch (error) {
+        console.error('Word chart export failed', error)
         // 截圖失敗就略過圖表，仍輸出文字版
+      } finally {
+        wordHost.remove()
       }
     }
 
@@ -744,8 +881,13 @@ function MemberDetailPage() {
     const a = document.createElement('a')
     a.href = url
     a.download = 'Personal-Well-being-Review.docx'
+    document.body.appendChild(a)
     a.click()
-    URL.revokeObjectURL(url)
+    // 部分瀏覽器若立即 revoke，會建立出大小正常但內容未完整寫入的檔案。
+    window.setTimeout(() => {
+      a.remove()
+      URL.revokeObjectURL(url)
+    }, 1000)
   }
 
   function toggleBlockOpen(i: number) {
@@ -778,6 +920,35 @@ function MemberDetailPage() {
     const s = cs
     const cd = chartData(cs)
     const xLabels = base ? ['T0', ...analysis.sessions.map((_, i) => String(i + 1))] : undefined
+    const legendItem = (color: string, label: string, key?: string) => {
+      // 色塊與文字必須在同一張 SVG 內；若拆成兩個 flex item，html2canvas 仍會用錯誤的
+      // 文字基線把兩者上下拉開。寬度依 ASCII／CJK 字元估算，保留足夠但不浪費的空間。
+      const textWidth = [...label].reduce((sum, ch) => sum + (ch.charCodeAt(0) > 255 ? 12 : ch === ' ' ? 4 : 7), 0)
+      const width = Math.ceil(20 + textWidth)
+      return (
+        <svg
+          key={key}
+          className="cv-legend-item-svg"
+          viewBox={`0 0 ${width} 18`}
+          width={width}
+          height="18"
+          role="img"
+          aria-label={label}
+        >
+          <rect x="0" y="3" width="12" height="12" rx="2" fill={color} />
+          <text
+            x="19"
+            y="14"
+            fontFamily="Arial, 'PingFang TC', 'Noto Sans TC', sans-serif"
+            fontSize="11.5"
+            fontWeight="700"
+            fill="#54606E"
+          >
+            {label}
+          </text>
+        </svg>
+      )
+    }
     switch (key) {
       case 'summary':
         return (
@@ -829,12 +1000,7 @@ function MemberDetailPage() {
         return (
           <>
             <div className="cv-legend">
-              {KEYS.map((k) => (
-                <span key={k}>
-                  <i style={{ background: DIMCOLOR[k] }} />
-                  {k} · {DIM[k]}
-                </span>
-              ))}
+              {KEYS.map((k) => legendItem(DIMCOLOR[k], `${k} · ${DIM[k]}`, k))}
             </div>
             <div
               className="cv-chart-wrap"
@@ -848,6 +1014,64 @@ function MemberDetailPage() {
             />
           </>
         )
+      case 'topics': {
+        const topicLabels: Record<TopicKey, string> = {
+          work: t('工作／學業'),
+          relationships: t('關係'),
+          health: t('健康'),
+          rest: t('休息與恢復'),
+          growth: t('自我成長'),
+          other: t('其他'),
+        }
+        const hasTopicData = analysis.sessions.some((session) =>
+          Object.values(session.topics ?? {}).some((value) => Number(value) > 0),
+        )
+        // 舊分析沒有 topics；本機開發模式提供清楚標示的版面預覽，方便在分析 API
+        // 暫時不可用時仍能驗收圖表。正式 build 不會顯示或匯出這些模擬數值。
+        const topicSessions =
+          !hasTopicData && import.meta.env.DEV
+            ? analysis.sessions.map((session, index, all) => {
+                const progress = all.length <= 1 ? 0 : index / (all.length - 1)
+                const work = Math.round(38 - progress * 18)
+                const relationships = Math.round(18 + progress * 10)
+                const health = 14
+                const rest = Math.round(12 + progress * 8)
+                const growth = Math.round(12 + progress * 2)
+                return {
+                  ...session,
+                  topics: {
+                    work,
+                    relationships,
+                    health,
+                    rest,
+                    growth,
+                    other: 100 - work - relationships - health - rest - growth,
+                  },
+                }
+              })
+            : analysis.sessions
+        return (
+          <>
+            <div
+              className="cv-chart-wrap cv-topic-wrap"
+              dangerouslySetInnerHTML={{
+                __html: topicShareStacked(
+                  topicSessions,
+                  topicLabels,
+                  (index) => (language === 'en' ? `W${index + 1}` : `第 ${index + 1} 週`),
+                  t('重新生成分析後，即可查看每週主題占比。'),
+                ),
+              }}
+            />
+            {!hasTopicData && import.meta.env.DEV && (
+              <div className="cv-preview-note">{t('本機版面預覽資料；重新生成分析後會換成日記分析結果。')}</div>
+            )}
+            <div className="cv-note">
+              {t('每週合計為 100%，呈現日記內容的關注占比，不代表實際投入時間。')}
+            </div>
+          </>
+        )
+      }
       case 'radar':
         return (
           <>
@@ -856,14 +1080,8 @@ function MemberDetailPage() {
               dangerouslySetInnerHTML={{ __html: valRadar(cd.firstDim, cd.lastDim) }}
             />
             <div className="cv-legend" style={{ justifyContent: 'center' }}>
-              <span>
-                <i style={{ background: '#8993A1' }} />
-                {base ? t('T0 基準（虛線）') : t('第一次（虛線）')}
-              </span>
-              <span>
-                <i style={{ background: '#1F3A5C' }} />
-                {t('最新一次')}
-              </span>
+              {legendItem('#8993A1', base ? t('T0 基準（虛線）') : t('第一次（虛線）'))}
+              {legendItem('#1F3A5C', t('最新一次'))}
             </div>
             <div className="cv-note">{t('內圈為 −100、中圈為 0（中性）、外圈為 +100。')}</div>
             <div dangerouslySetInnerHTML={{ __html: radarDelta(cd.firstDim, cd.lastDim) }} />
@@ -873,14 +1091,8 @@ function MemberDetailPage() {
         return (
           <>
             <div className="cv-legend" style={{ justifyContent: 'center' }}>
-              <span>
-                <i style={{ background: '#2E7057' }} />
-                {t('正向（往上）')}
-              </span>
-              <span>
-                <i style={{ background: '#B0542C' }} />
-                {t('負向（往下）')}
-              </span>
+              {legendItem('#2E7057', t('正向（往上）'))}
+              {legendItem('#B0542C', t('負向（往下）'))}
             </div>
             <div className="cv-chart-wrap" dangerouslySetInnerHTML={{ __html: affectBalance(analysis.sessions) }} />
           </>
@@ -893,7 +1105,17 @@ function MemberDetailPage() {
 
   if (checking) return null
 
-  const includedBlocks = analysis?.blocks.filter((b) => b.include) ?? []
+  const visibleBlocks =
+    analysis?.blocks
+      .map((block, index) => ({ block, index }))
+      .filter(({ block }) => !isRemovedBlock(block)) ?? []
+  const includedBlocks = visibleBlocks
+    .filter(({ block }) => block.include || isLinguisticFingerprint(block))
+    .map(({ block }) => block)
+  const hasFutureActionsBlock =
+    analysis?.blocks.some((block) =>
+      ['actions for the next four weeks', '未來四週行動'].includes(String(block.title || '').trim().toLowerCase()),
+    ) ?? false
   // 內文顯示語言：中文且有快取則用翻譯版，否則用原生英文（依 index 對齊 canonical）
   const briefTr = briefLang === 'zh-TW' ? analysis?.translations?.['zh-TW'] : undefined
   const viewBlocks = briefTr?.blocks ?? analysis?.blocks ?? []
@@ -970,7 +1192,7 @@ function MemberDetailPage() {
             {openSections.deep && (
             <>
             <p className="mb-3 text-xs text-muted-foreground">
-              {t('對每週回饋做情緒 valence 分析與情報簡報，僅教練可見。')}
+              {t('對每週回饋做情緒 valence 分析與情報簡報。')}
             </p>
             <div className="mb-4 flex flex-wrap items-center gap-3">
               <button
@@ -1123,21 +1345,12 @@ function MemberDetailPage() {
                 {/* 情報簡報區塊 */}
                 <div className="cv-slbl" style={{ marginTop: 22 }} id="sec-blocks">
                   <span>{t('教練情報簡報')}</span>
-                  {analysis.blocks.some((b) => !b.include) && (
-                    <span
-                      className="cv-block-del"
-                      style={{ textTransform: 'none', letterSpacing: 'normal' }}
-                      onClick={deleteCoachOnlyBlocks}
-                    >
-                      {t('移除所有僅教練區塊')}
-                    </span>
-                  )}
                 </div>
-                {analysis.blocks.map((b, i) => {
+                {visibleBlocks.map(({ block: b, index: i }) => {
                   const open = openBlocks.includes(i) || editBlock === i
                   const view = viewBlocks[i] ?? b // 顯示語言版（標題/內文）；納入狀態仍用 canonical
                   return (
-                  <div key={i} className={`cv-block ${b.include ? '' : 'coachonly'}`}>
+                  <div key={i} className="cv-block">
                     <div
                       className="cv-block-hd"
                       style={{ cursor: 'pointer' }}
@@ -1148,9 +1361,9 @@ function MemberDetailPage() {
                       </span>
                       <span className="cv-block-title">{t(BLOCK_TITLES[i] ?? view.title)}</span>
                       {b.custom && <span className="cv-block-tag ai">{t('AI 框架')}</span>}
-                      <span className={`cv-block-tag ${b.include ? 'inc' : 'only'}`}>
-                        {b.include ? t('納入客戶版') : t('僅教練')}
-                      </span>
+                      {(b.include || isLinguisticFingerprint(b)) && (
+                        <span className="cv-block-tag inc">{t('納入客戶版')}</span>
+                      )}
                     </div>
                     {open && (
                     <div className="cv-block-body">
@@ -1183,8 +1396,9 @@ function MemberDetailPage() {
                             <label className="cv-inc">
                               <input
                                 type="checkbox"
-                                checked={b.include}
+                                checked={b.include || isLinguisticFingerprint(b)}
                                 onChange={(e) => toggleBlock(i, e.target.checked)}
+                                disabled={isLinguisticFingerprint(b)}
                               />
                               {t('納入客戶交付版')}
                             </label>
@@ -1212,6 +1426,60 @@ function MemberDetailPage() {
                   </div>
                   )
                 })}
+                {import.meta.env.DEV && !hasFutureActionsBlock && (
+                  <div className="cv-block cv-action-preview">
+                    <div
+                      className="cv-block-hd"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setOpenActionPreview((open) => !open)}
+                    >
+                      <span
+                        className="cv-caret"
+                        style={{ transform: openActionPreview ? 'rotate(90deg)' : 'none' }}
+                      >
+                        ▶
+                      </span>
+                      <span className="cv-block-title">{t('未來四週行動')}</span>
+                      <span className="cv-block-tags">
+                        <span className="cv-block-tag preview">{t('本機預覽')}</span>
+                        <span className="cv-block-tag inc">{t('納入客戶版')}</span>
+                      </span>
+                    </div>
+                    {openActionPreview && <div className="cv-block-body">
+                      <div className="cv-preview-note">
+                        {t('以下僅供版面預覽；重新生成分析後會依日記證據產生個人化行動。')}
+                      </div>
+                      <div className="cv-md">
+                        <ul>
+                          <li>
+                            <strong>{t('每週恢復檢視')}</strong>
+                            <ul>
+                              <li><strong>{t('為何適合')}</strong> — {t('幫助你辨認哪些情境消耗能量，以及哪些方法確實能讓自己恢復。')}</li>
+                              <li><strong>{t('執行頻率')}</strong> — {t('每週安排 20 分鐘。')}</li>
+                              <li><strong>{t('成功訊號')}</strong> — {t('四週內至少完成三次，並找出一項可重複使用的恢復方式。')}</li>
+                            </ul>
+                          </li>
+                          <li>
+                            <strong>{t('一個價值導向行動')}</strong>
+                            <ul>
+                              <li><strong>{t('為何適合')}</strong> — {t('將你在意的價值轉成小而具體的行動，降低只停留在思考中的壓力。')}</li>
+                              <li><strong>{t('執行頻率')}</strong> — {t('每週完成一項 30 分鐘內可完成的小行動。')}</li>
+                              <li><strong>{t('成功訊號')}</strong> — {t('完成後能清楚說出這項行動和哪個重要價值相連。')}</li>
+                            </ul>
+                          </li>
+                          <li>
+                            <strong>{t('一次支持性連結')}</strong>
+                            <ul>
+                              <li><strong>{t('為何適合')}</strong> — {t('把支持性關係當作可主動運用的資源，而不是等到壓力累積後才求助。')}</li>
+                              <li><strong>{t('執行頻率')}</strong> — {t('每週主動與一位可信任的人對話一次。')}</li>
+                              <li><strong>{t('成功訊號')}</strong> — {t('對話後能更清楚說出自己的需要或下一步。')}</li>
+                            </ul>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>}
+                  </div>
+                )}
 
                 {/* ── 自訂分析框架：教練描述 → AI 依文獻生成框架 → 產生新的簡報區塊 ── */}
                 <div className="cv-slbl" style={{ marginTop: 26 }} id="sec-framework">
@@ -1345,7 +1613,7 @@ function MemberDetailPage() {
                   {' '}
                   {includedBlocks.length}
                 </strong>{' '}
-                / {analysis.blocks.length}
+                / {visibleBlocks.length}
               </div>
               <div className="mb-4 flex flex-wrap items-center gap-3">
                 <button
@@ -1494,13 +1762,13 @@ const COACH_VIZ_CSS = `
 .cv-inc input{width:14px;height:14px;accent-color:#1F3A5C;cursor:pointer;margin:0}
 .cv-chart-wrap{overflow-x:auto;padding:4px 0}
 .cv-chart-wrap svg{max-width:none;height:auto}
+.cv-topic-wrap svg{display:block;max-width:100%;height:auto}
 /* 雷達圖置中：Tailwind preflight 把所有 svg 設成 display:block（非預設的 inline），
    所以父層的 text-align:center 完全沒有作用——這才是一直沒置中的真正原因。
    block 元素本來就該用 margin:auto 置中，不需要 flex 或其他花招。 */
 .cv-radar-wrap svg{margin:0 auto}
-.cv-legend{display:flex;flex-wrap:wrap;gap:14px;margin:8px 0 2px;font-size:11.5px;font-weight:700}
-.cv-legend span{display:inline-flex;align-items:center;gap:6px;color:#54606E}
-.cv-legend i{width:12px;height:12px;border-radius:2px;display:inline-block}
+.cv-legend{display:flex;flex-wrap:wrap;gap:14px;margin:8px 0 2px;font-size:11.5px;font-weight:700;line-height:1.35}
+.cv-legend-item-svg{display:block;flex:none;height:18px;overflow:visible}
 .cv-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:6px 0}
 @media(max-width:620px){.cv-stats{grid-template-columns:repeat(2,1fr)}}
 .cv-stat{background:#fff;border:1.5px solid #E2E5EA;border-radius:9px;padding:14px 12px}
@@ -1510,10 +1778,10 @@ const COACH_VIZ_CSS = `
 .cv-rdelta{border:1.5px solid #E2E5EA;border-radius:10px;margin-top:8px;overflow:hidden}
 .cv-rdelta-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #E2E5EA;font-size:12.5px}
 .cv-rdelta-row:last-child{border-bottom:none}
-.cv-rdelta-key{width:20px;height:20px;border-radius:5px;color:#fff;font-size:11px;font-weight:800;display:inline-block;line-height:20px;text-align:center;flex-shrink:0;font-family:-apple-system,'PingFang TC','Noto Sans TC',sans-serif}
+.cv-rdelta-key{width:20px;height:20px;border-radius:5px;color:#fff;font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;line-height:1;text-align:center;flex-shrink:0;font-family:Arial,-apple-system,'PingFang TC','Noto Sans TC',sans-serif}
 .cv-rdelta-name{font-weight:700;flex:1}
 .cv-rdelta-val{font-variant-numeric:tabular-nums;color:#54606E;font-weight:600;white-space:nowrap}
-.cv-rdelta-tag{font-size:11px;font-weight:800;padding:3px 11px;border-radius:20px;white-space:nowrap;min-width:82px;text-align:center}
+.cv-rdelta-tag-svg{width:82px;height:26px;display:block;flex:0 0 82px;overflow:visible}
 .cv-wcloud{display:flex;flex-wrap:wrap;justify-content:center;align-items:baseline;gap:5px 18px;padding:28px 22px;line-height:1.35;background:#EEF0F3;border:1.5px solid #E2E5EA;border-radius:12px}
 .cv-wcloud span{white-space:nowrap}
 .cv-note{font-size:11.5px;color:#54606E;line-height:1.7;padding:12px 15px;background:#EEF0F3;border-radius:8px;margin-top:10px}
@@ -1538,13 +1806,14 @@ const COACH_VIZ_CSS = `
 .cv-emo.negative{background:#F0E0D6;border-color:#E1C3B1;color:#B0542C}
 .cv-emo.neutral{background:#EAECF0;border-color:#CBD1DA;color:#54606E}
 .cv-block{border:1.5px solid #E2E5EA;border-radius:10px;margin-bottom:12px;overflow:hidden;background:#fff}
-.cv-block.coachonly{border-color:#E4CF9E}
 .cv-block-hd{display:flex;align-items:center;gap:10px;padding:12px 15px;background:#EEF0F3;border-bottom:1.5px solid #E2E5EA}
 .cv-block-title{font-size:13.5px;font-weight:800;color:#1C2530;flex:1}
 .cv-block-tag{font-size:10px;font-weight:800;letter-spacing:.04em;padding:3px 9px;border-radius:5px;text-transform:uppercase}
 .cv-block-tag.inc{background:#D9E7E0;color:#2E7057;border:1.5px solid #BCD3C8}
-.cv-block-tag.only{background:#F6EEDC;color:#8A6A26;border:1.5px solid #E4CF9E}
+.cv-block-tag.preview{background:#E7ECF5;color:#1F3A5C;border:1.5px solid #B9C6DE}
+.cv-block-tags{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end}
 .cv-block-body{padding:14px 16px}
+.cv-preview-note{font-size:11.5px;color:#54606E;line-height:1.6;padding:9px 12px;background:#EEF0F3;border-left:3px solid #8993A1;margin:8px 0 10px}
 .cv-md{font-size:13px;line-height:1.8;color:#2B3440}
 .cv-md p{margin:0 0 9px}
 .cv-md h2,.cv-md h3{font-size:14px;font-weight:800;margin:13px 0 6px;color:#1C2530}
@@ -1556,6 +1825,9 @@ const COACH_VIZ_CSS = `
 .cv-textarea{width:100%;min-height:140px;border:1.5px solid #CBD1DA;border-radius:7px;padding:11px 13px;font-size:13px;font-family:inherit;line-height:1.7;color:#2B3440;resize:vertical}
 .cv-doc{background:#fff;border:1.5px solid #E2E5EA;border-radius:10px;padding:34px 38px;line-height:1.95;color:#1C2530;font-family:'Songti TC','Noto Serif TC',Georgia,serif}
 @media(max-width:560px){.cv-doc{padding:24px 22px}}
+/* PDF 一律用同一個可量測的桌面版面；不可用 visibility:hidden/display:none，否則 SVG 尺寸會變成 0。 */
+.cv-pdf-export{position:relative!important;width:720px!important;box-sizing:border-box!important;margin:0!important;border:0!important;border-radius:0!important;padding:34px 38px!important;background:#fff!important}
+.cv-pdf-export .cv-stats{grid-template-columns:repeat(4,1fr)!important}
 .cv-doc-head{text-align:center;padding-bottom:20px;margin-bottom:22px;border-bottom:2px solid #1C2530}
 .cv-doc-title{font-size:22px;font-weight:800;margin:0 0 4px;letter-spacing:.02em}
 .cv-doc-meta{font-size:12px;color:#54606E}
@@ -1573,12 +1845,20 @@ const COACH_VIZ_CSS = `
 /* 雷達圖固定尺寸，PDF/Word 匯出時不要被上面那條縮放規則影響——懷疑 html2canvas 對
    「縮到 100% 寬度」這個縮放算不準，導致內容被裁切而非等比縮小，先讓它維持原寸排除這個變因。 */
 .cv-doc-charts .cv-radar-wrap svg{max-width:none !important;width:280px !important;height:294px !important}
-/* 圖表區塊整體另起一頁，但各圖依序流動排版（不再每張各佔一整頁）；
-   單一圖表本身不可從中間被切（避免雷達的 A/P/M/R/E 清單被切成兩頁）。 */
-.cv-doc-charts{page-break-before:always;break-before:page}
+/* 圖表接續正文流動排版；單一圖表本身不可從中間被切
+   （避免雷達與 A/P/M/R/E 清單分到不同頁），也避免正文很短時留下大面積空白頁。 */
 .cv-doc-chart{break-inside:avoid;page-break-inside:avoid;margin-bottom:30px}
 .cv-doc-chart-h{margin-top:0 !important}
 .cv-rdelta,.cv-stats,.cv-wcloud,.cv-rdelta-row{break-inside:avoid;page-break-inside:avoid}
+.cv-pdf-export h2,.cv-pdf-export h3{break-after:avoid;page-break-after:avoid}
+.cv-pdf-export p,.cv-pdf-export li,.cv-pdf-export .cv-doc-head,.cv-pdf-export .cv-doc-sign{break-inside:avoid;page-break-inside:avoid}
+/* PDF 中的雷達明細採緊湊行高；避免 PDF viewer 放大後每列看起來像獨佔一個大區塊。 */
+.cv-pdf-export .cv-rdelta-row{padding:7px 12px;font-size:11.5px;gap:8px}
+.cv-pdf-export .cv-rdelta-key{width:18px;height:18px;box-sizing:border-box}
+.cv-pdf-export .cv-rdelta-tag-svg{width:82px;height:26px;flex-basis:82px}
+.cv-word-export{position:relative!important;width:644px!important;box-sizing:border-box!important;margin:0!important;padding:0 2px 10px!important;background:#fff!important}
+.cv-word-export .cv-chart-wrap{overflow:visible!important}
+.cv-word-export .cv-chart-wrap svg{max-width:100%!important;height:auto!important}
 .cv-md{font-size:13.5px;line-height:1.85}
 .cv-md h2,.cv-md h3{margin:16px 0 7px}
 /* 真正的列點：實心圓點／數字，而非單純換行 —— cv-md（教練簡報）與 cv-doc（客戶文件）共用 */

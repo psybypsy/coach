@@ -345,12 +345,18 @@ _PERMA_DIM = {
     "P": "Positive Emotions", "E": "Engagement", "R": "Relationships",
     "M": "Meaning", "A": "Accomplishment",
 }
-# 標題含這些關鍵字的情報簡報區塊，預設「僅教練可見」（不納入客戶版）。
-_COACH_ONLY_KW = ["假設", "未言", "值得關注", "會談準備", "語言指紋", "風險", "理論"]
+_TOPIC_KEYS = ["work", "relationships", "health", "rest", "growth", "other"]
+_REMOVED_BLOCK_TITLES = {
+    "cross-cutting themes & patterns", "橫向主題與模式",
+    "the unsaid", "未言之事",
+    "coaching hypotheses", "教練假設",
+    "worth watching", "值得關注",
+    "session preparation", "會談準備",
+}
 # 客戶交付版預設納入的圖表（教練可在前端調整）。
 _CLIENT_CHART_DEFAULTS = {
     "summary": True, "trend": True, "dims": True,
-    "radar": True, "affect": False, "cloud": False,
+    "topics": True, "radar": True, "affect": False, "cloud": False,
 }
 
 
@@ -377,6 +383,7 @@ Output in exactly this format; both markers must appear:
  {{"overall":integer -100..100,
   "overallReason":"why this week's overall tone got that score, quoting the person's own words",
   "dims":{{"P":{{"v":-100..100,"reason":"basis"}},"E":{{"v":0,"reason":""}},"R":{{"v":0,"reason":""}},"M":{{"v":0,"reason":""}},"A":{{"v":0,"reason":""}}}},
+  "topics":{{"work":0..100,"relationships":0..100,"health":0..100,"rest":0..100,"growth":0..100,"other":0..100}},
   "emotions":[{{"word":"an emotion word from the text","valence":"positive|negative|neutral","intensity":1..5}}]}}
 ]}}
 <<<BRIEF>>>
@@ -389,8 +396,9 @@ Scoring rules:
 - sessions length must be exactly {week_count}, in order from week 1 to week {week_count}.
 - valence is emotional tone: -100 extremely negative, 0 neutral, +100 extremely positive. Judge only from the text; every score needs a concrete reason quoting the person's words; give near 0 when blank or vague.
 - extract 6 to 12 emotion words per week.
+- topics are that week's share of attention across exactly six stable categories: work (work/study), relationships, health, rest (rest/recovery), growth (personal growth), and other. Return non-negative integers that sum to exactly 100 for every week. Classify by semantic units, not raw word count; down-weight repetitive passages and put genuinely uncategorisable material in other.
 
-Intelligence-brief rules (coach-only; may contain candid hypotheses; quote the person's words and cite which week). Separate blocks with [[BLOCK]]; the first line of each block is its title, the rest is the body (Markdown: ## headings, ** bold **, * italics *, - bullets).
+Intelligence-brief rules: stay evidence-based, quote the person's words and cite which week. Do not add hypothesis, risk, diagnostic, "unsaid", watch-list, or session-preparation sections. Separate blocks with [[BLOCK]]; the first line of each block is its title, the rest is the body (Markdown: ## headings, ** bold **, * italics *, - bullets).
 
 FORMATTING — keep every block skimmable: write in short paragraphs and - bullet points, prefer bullets over dense prose, and keep sentences short.
 
@@ -400,11 +408,7 @@ Include these blocks in exactly this order:
 [[BLOCK]] Strengths & Inner Resources
 [[BLOCK]] Self-Determination Motivation
 [[BLOCK]] Linguistic Fingerprint
-[[BLOCK]] Cross-cutting Themes & Patterns
-[[BLOCK]] The Unsaid
-[[BLOCK]] Coaching Hypotheses
-[[BLOCK]] Worth Watching
-[[BLOCK]] Session Preparation
+[[BLOCK]] Actions for the Next Four Weeks
 
 The three theory columns — "PERMA Five-Dimension Profile", "Strengths & Inner Resources", "Self-Determination Motivation" — must each: (a) stay tied to this person's specific quotes with week citations; (b) end with a "**References**" sub-heading listing 2-3 APA-format references (journal or book titles in * italics *) relevant only to that column.
 
@@ -413,9 +417,7 @@ Per-block requirements:
 - Strengths & Inner Resources: identify character strengths and reusable inner resources, each tied to quotes. References may draw from: Peterson, C., & Seligman, M. E. P. (2004). *Character strengths and virtues: A handbook and classification*. Oxford University Press.; Linley, P. A., Nielsen, K. M., Gillett, R., & Biswas-Diener, R. (2010). Using signature strengths in pursuit of goals. *International Coaching Psychology Review, 5*(1), 6-15.; Niemiec, R. M. (2013). VIA character strengths: Research and practice. In *Well-being and cultures* (pp. 11-29). Springer.
 - Self-Determination Motivation: assess the three basic psychological needs — autonomy, competence, relatedness — as satisfied or frustrated, and read the resulting motivation quality (toward intrinsic vs controlled). References may draw from: Deci, E. L., & Ryan, R. M. (2000). The 'what' and 'why' of goal pursuits. *Psychological Inquiry, 11*(4), 227-268.; Ryan, R. M., & Deci, E. L. (2017). *Self-determination theory: Basic psychological needs in motivation, development, and wellness*. Guilford Press.; Gagné, M., & Deci, E. L. (2005). Self-determination theory and work motivation. *Journal of Organizational Behavior, 26*(4), 331-362.
 - Linguistic Fingerprint: agency (active vs passive voice), connectedness (I / we / they balance), time orientation, energy vs depletion words, certainty vs hesitation.
-- The Unsaid: which dimension stays persistently thin or absent, avoided topics.
-- Coaching Hypotheses: label each explicitly as a hypothesis, with an evidence quote and one question to explore.
-- Session Preparation: an opening suggestion, points to probe, and three powerful questions tailored to this person.
+- Actions for the Next Four Weeks: propose 2-3 small, client-safe experiments grounded in this person's evidence. For each action include **Action**, **Why this fits**, **Cadence**, and **Success signal**. Keep the actions observable and achievable; do not diagnose, prescribe treatment, or claim causality.
 
 Language: English. No emoji anywhere. Tone: professional, precise, theoretically grounded — like a senior coach's clinical notes."""
 
@@ -431,6 +433,7 @@ def _coach_analysis_system(week_count: int, language: str = "en") -> str:
  {{"overall":-100至100的整數,
   "overallReason":"該次整體情緒基調的評分依據，引用回答原話",
   "dims":{{"P":{{"v":-100至100,"reason":"依據"}},"E":{{"v":0,"reason":""}},"R":{{"v":0,"reason":""}},"M":{{"v":0,"reason":""}},"A":{{"v":0,"reason":""}}}},
+  "topics":{{"work":0至100,"relationships":0至100,"health":0至100,"rest":0至100,"growth":0至100,"other":0至100}},
   "emotions":[{{"word":"回答原文中的情緒詞","valence":"positive|negative|neutral","intensity":1至5}}]}}
 ]}}
 <<<BRIEF>>>
@@ -443,8 +446,9 @@ def _coach_analysis_system(week_count: int, language: str = "en") -> str:
 - sessions 長度必須剛好 {week_count}，依第 1 到第 {week_count} 次順序。
 - valence 為情緒效價：−100 為極度負面、0 為中性、+100 為極度正面。只依文字內容判定，每個分數都要有具體理由並引用當事人原話；未填或空泛給接近 0。
 - 每次抽 6 至 12 個情緒詞。
+- topics 是每週日記在六個固定主題中的關注占比：work（工作／學業）、relationships（關係）、health（健康）、rest（休息與恢復）、growth（自我成長）、other（其他）。每週都回傳非負整數且總和必須剛好為 100。以語意單位判斷，不以原始字數直接計算；重複內容降低權重，真正無法歸類的內容放入 other。
 
-情報簡報規則（僅教練可見、可含坦率假設、每個判斷都引用原話並註明第幾次）：以 [[BLOCK]] 分隔，每塊第一行為標題、其後為內文（可用 Markdown 的 ## 標題、** 粗體、* 斜體 *、- 條列）。
+情報簡報規則：保持以證據為本，每個判斷都引用原話並註明第幾次；不得另外產生假設、風險、未言之事、關注清單或會談準備區塊。以 [[BLOCK]] 分隔，每塊第一行為標題、其後為內文（可用 Markdown 的 ## 標題、** 粗體、* 斜體 *、- 條列）。
 
 排版（教練要能快速掃讀）：內文用簡短段落與 - 條列呈現，多用條列、少用長段落、句子精簡。逐一分析多個項目（例如 P/E/R/M/A 五面向、SDT 三需求）時，每個項目先用一行「- **項目名稱**」當作該項目的粗體標籤，再用縮排兩格的子條列「  - 證據 / 引文」列出其下的具體證據，形成有層級的巢狀條列，不要把標籤與證據全部擠在同一層。
 
@@ -454,11 +458,7 @@ def _coach_analysis_system(week_count: int, language: str = "en") -> str:
 [[BLOCK]] 優勢與內在資源
 [[BLOCK]] 自我決定論動機
 [[BLOCK]] 語言指紋
-[[BLOCK]] 橫向主題與模式
-[[BLOCK]] 未言之事
-[[BLOCK]] 教練假設
-[[BLOCK]] 值得關注
-[[BLOCK]] 會談準備
+[[BLOCK]] 未來四週行動
 
 其中「PERMA 五面向剖析」「優勢與內在資源」「自我決定論動機」是三個各自獨立的理論專欄，每一欄都必須：(a) 全程扣合此人的具體引文並註明第幾次；(b) 在該欄內文最後另起一行、以「**參考文獻**」為小標，再用 - 條列 2 至 3 筆 APA 格式文獻（期刊名或書名以 * 斜體 * 標示），且只列與該欄主題直接相關者，不得跨欄混用。
 
@@ -467,9 +467,7 @@ def _coach_analysis_system(week_count: int, language: str = "en") -> str:
 - 優勢與內在資源：辨識此人的性格優勢與可再運用的內在資源，逐一扣合引文。參考文獻可從下列擇要引用：Peterson, C., & Seligman, M. E. P. (2004). *Character strengths and virtues: A handbook and classification*. Oxford University Press.；Linley, P. A., Nielsen, K. M., Gillett, R., & Biswas-Diener, R. (2010). Using signature strengths in pursuit of goals. *International Coaching Psychology Review, 5*(1), 6–15.；Niemiec, R. M. (2013). VIA character strengths: Research and practice. In *Well-being and cultures* (pp. 11–29). Springer.
 - 自我決定論動機：以自我決定論的三項基本心理需求——自主（Autonomy）、勝任（Competence）、關聯（Relatedness）——分別評估其滿足或受挫，並據此判讀其動機品質（趨近內在動機或受控動機）。參考文獻可從下列擇要引用：Deci, E. L., & Ryan, R. M. (2000). The 'what' and 'why' of goal pursuits: Human needs and the self-determination of behavior. *Psychological Inquiry, 11*(4), 227–268.；Ryan, R. M., & Deci, E. L. (2017). *Self-determination theory: Basic psychological needs in motivation, development, and wellness*. Guilford Press.；Gagné, M., & Deci, E. L. (2005). Self-determination theory and work motivation. *Journal of Organizational Behavior, 26*(4), 331–362.
 - 語言指紋：能動性（主動 vs 被動語態）、連結性（我／我們／他們的比重）、時間定向、能量詞 vs 耗竭詞、確定 vs 遲疑。
-- 未言之事：哪個面向始終稀薄或缺席、被迴避的主題。
-- 教練假設：每條明確標為「假設」，附證據引文與一個可探詢的問題。
-- 會談準備：開場建議、要探詢的點、三個為此人量身的有力提問。
+- 未來四週行動：提出 2 至 3 個根據此人文字證據、適合交付給客戶的小型行動實驗。每項包含 **行動**、**為何適合**、**執行頻率**、**成功訊號**；必須具體可觀察且容易執行，不得診斷、提供治療處方或宣稱因果。
 
 語言：繁體中文（台灣）。全篇不得使用任何 emoji。語氣專業、精確，兼具實證理論素養，如資深教練結合學理的臨床筆記。"""
 
@@ -562,7 +560,8 @@ Requirements:
 - Preserve and lightly quote the client's own words.
 - Use Markdown, with ## sections; keep paragraphs short and clear, and use - bullets (not numbered lists) where they aid readability — prefer bullets over long paragraphs.
 - Bold (**...**) the key insight or takeaway phrase in each paragraph — 1 short bolded phrase per paragraph, not whole sentences — so a reader skimming just the bold text gets the gist.
-- End with 1 to 2 warm, forward-looking invitations.
+- Include a final client-facing section named "Actions for the Next Four Weeks" with 2-3 small experiments. Address the client directly. Each action must state the action, why it fits this client based on the supplied evidence, cadence, and an observable success signal; keep it empowering and avoid diagnostic or treatment language.
+- End with 1 to 2 warm, forward-looking invitations after the action section.
 - Entirely in English. No emoji.
 - Do not repeat the title page or signature (the system adds them)."""
 
@@ -574,7 +573,8 @@ _CLIENT_REPORT_SYSTEM_ZH = """你是教練 陳郁敏 的寫作助理。以下是
 - 保留並適度引用客戶自己的語言。
 - 用 Markdown，以 ## 分節，段落清晰、專業；多用 - 條列（不要用數字條列），少用長段落。
 - 每段用 **粗體** 標出這段的重點短語（一段一個重點、標短語即可，不要整句加粗），讓人快速掃過粗體就能抓到重點。
-- 結尾給 1 至 2 個溫暖的前瞻邀請。
+- 加入最後一節「未來四週行動」，以直接對客戶說話的方式提出 2 至 3 個小型行動實驗；每項都要包含行動、根據提供證據說明為何適合這位客戶、執行頻率與可觀察的成功訊號。語氣應溫暖賦能，不得使用診斷或治療語言。
+- 在行動區塊之後，以 1 至 2 個溫暖的前瞻邀請作結。
 - 全篇繁體中文（台灣），不得使用任何 emoji。
 - 不要重複標題頁與署名（系統會自動加上）。"""
 
@@ -608,6 +608,25 @@ def _msg_text(msg) -> str:
     return "".join(b.text for b in (msg.content or []) if getattr(b, "type", None) == "text")
 
 
+def _normalise_topic_shares(raw: object) -> dict[str, int]:
+    """把模型回傳的六類主題權重清理並正規化成總和恰好 100 的整數占比。"""
+    source = raw if isinstance(raw, dict) else {}
+    values: dict[str, float] = {}
+    for key in _TOPIC_KEYS:
+        try:
+            values[key] = max(0.0, float(source.get(key) or 0))
+        except (TypeError, ValueError):
+            values[key] = 0.0
+    total = sum(values.values())
+    if total <= 0:
+        return {**{key: 0 for key in _TOPIC_KEYS}, "other": 100}
+    scaled = {key: int(round(value * 100 / total)) for key, value in values.items()}
+    # 四捨五入後可能是 99/101；把誤差補到原始權重最大的主題。
+    largest = max(_TOPIC_KEYS, key=lambda key: values[key])
+    scaled[largest] += 100 - sum(scaled.values())
+    return scaled
+
+
 def _parse_analysis(out: str) -> tuple[list, list]:
     """把 <<<SCORES>>> JSON 與 <<<BRIEF>>> [[BLOCK]] 拆成 sessions 與 blocks。"""
     bi = out.find("<<<BRIEF>>>")
@@ -639,18 +658,20 @@ def _parse_analysis(out: str) -> tuple[list, list]:
             "overall": _clamp_v(s.get("overall")),
             "overallReason": str(s.get("overallReason") or ""),
             "dims": dims,
+            "topics": _normalise_topic_shares(s.get("topics")),
             "emotions": emotions,
         })
 
-    # 前 4 塊（軌跡／PERMA／優勢／SDT）預設納入客戶版；其餘（語言指紋、假設、風險、
-    # 會談準備等）僅教練。用順序判斷而非標題關鍵字，才能同時支援中英文標題。
+    # 前 4 塊（軌跡／PERMA／優勢／SDT）與最後的未來行動預設納入客戶版；
+    # 語言指紋保留在教練分析。用順序判斷才能同時支援中英文標題。
     parts = [p.strip() for p in brief_part.split("[[BLOCK]]") if p.strip()]
     blocks = []
     for idx, part in enumerate(parts):
         nl = part.find("\n")
         title = (part[:nl] if nl >= 0 else part).strip()
         body = (part[nl + 1:] if nl >= 0 else "").strip()
-        blocks.append({"title": title, "body": body, "include": idx < 4})
+        # 目前保留的六個標準區塊全部預設納入客戶版。
+        blocks.append({"title": title, "body": body, "include": idx < 6})
 
     return sessions, blocks
 
@@ -889,7 +910,14 @@ async def coach_client_report(req: CoachMemberRequest, authorization: str = Head
         raise HTTPException(status_code=409, detail="請先生成教練分析")
     analysis = rows[0]
 
-    included = [b for b in (analysis.get("blocks") or []) if b.get("include")]
+    included = [
+        b for b in (analysis.get("blocks") or [])
+        if (
+            b.get("include")
+            or str(b.get("title") or "").strip().lower() in {"linguistic fingerprint", "語言指紋"}
+        )
+        and str(b.get("title") or "").strip().lower() not in _REMOVED_BLOCK_TITLES
+    ]
     if not included:
         raise HTTPException(status_code=409, detail="請先在教練分析勾選要納入客戶版的區塊")
 
