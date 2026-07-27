@@ -42,10 +42,23 @@ function AppShell() {
         .single()
       if (cancelled) return
       setDisplayName(data?.display_name ?? '')
-      setIsCoach(data?.role === 'coach')
+      const coach = data?.role === 'coach'
+      setIsCoach(coach)
       // 首次登入尚未設定名字 → 導去歡迎頁設定；設定過就不再出現。
       if (data && !data.has_set_name && !pathname.startsWith('/app/welcome')) {
         void navigate({ to: '/app/welcome' })
+        return
+      }
+      // 名字設定完之後的第二道 onboarding：還沒填起始分數 → 先填完才能開始打卡。
+      // 教練不擋（會把她從教練後台踢出來），她要填可以自己走 /app/baseline。
+      if (data?.has_set_name && !coach && !pathname.startsWith('/app/baseline')) {
+        const { data: baseline } = await supabase
+          .from('baseline_scores')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle()
+        if (cancelled) return
+        if (!baseline) void navigate({ to: '/app/baseline' })
       }
       // 註：coach 不自動跳轉到教練後台（避免無法查看成員介面）。
       // 改由導覽列的「教練後台」按鈕一鍵進入，root/成員頁對 coach 一樣可正常瀏覽。

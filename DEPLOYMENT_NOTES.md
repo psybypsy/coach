@@ -25,6 +25,17 @@ alter table journal_posts
 
 ---
 
+### Migration 007 - 學員自填起始分數（T0）
+
+新增 `baseline_scores` 表：學員首次登入時回想 2026/07/17（五）在台東當天的
+五面向分數（0–10），填完才能開始第一次打卡。寫入後會由 trigger 自動同步到
+`coach_analyses.baseline`，教練後台的 T0 欄位就會自動有值。
+
+**必須在 Supabase 執行 `supabase/migrations/007_member_baseline.sql`**，
+否則學員會卡在起始分數頁面無法送出。
+
+---
+
 ## 其他更新
 
 ### 登入流程改進

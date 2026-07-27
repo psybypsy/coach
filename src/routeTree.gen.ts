@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AppBaselineRouteImport } from './routes/app.baseline'
 import { Route as AppCoachRouteImport } from './routes/app.coach'
 import { Route as AppCommunityRouteImport } from './routes/app.community'
 import { Route as AppHomeRouteImport } from './routes/app.home'
@@ -42,6 +43,11 @@ const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppBaselineRoute = AppBaselineRouteImport.update({
+  id: '/baseline',
+  path: '/baseline',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppCoachRoute = AppCoachRouteImport.update({
   id: '/coach',
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/app/baseline': typeof AppBaselineRoute
   '/app/coach': typeof AppCoachRouteWithChildren
   '/app/community': typeof AppCommunityRoute
   '/app/home': typeof AppHomeRoute
@@ -109,6 +116,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/app/baseline': typeof AppBaselineRoute
   '/app/community': typeof AppCommunityRoute
   '/app/home': typeof AppHomeRoute
   '/app/journal': typeof AppJournalRoute
@@ -124,6 +132,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/app/baseline': typeof AppBaselineRoute
   '/app/coach': typeof AppCoachRouteWithChildren
   '/app/community': typeof AppCommunityRoute
   '/app/home': typeof AppHomeRoute
@@ -141,6 +150,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/login'
+    | '/app/baseline'
     | '/app/coach'
     | '/app/community'
     | '/app/home'
@@ -156,6 +166,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/login'
+    | '/app/baseline'
     | '/app/community'
     | '/app/home'
     | '/app/journal'
@@ -170,6 +181,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/login'
+    | '/app/baseline'
     | '/app/coach'
     | '/app/community'
     | '/app/home'
@@ -217,6 +229,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/app/baseline': {
+      id: '/app/baseline'
+      path: '/baseline'
+      fullPath: '/app/baseline'
+      preLoaderRoute: typeof AppBaselineRouteImport
+      parentRoute: typeof AppRoute
     }
     '/app/coach': {
       id: '/app/coach'
@@ -299,6 +318,7 @@ const AppCoachRouteWithChildren = AppCoachRoute._addFileChildren(
 )
 
 interface AppRouteChildren {
+  AppBaselineRoute: typeof AppBaselineRoute
   AppCoachRoute: typeof AppCoachRouteWithChildren
   AppCommunityRoute: typeof AppCommunityRoute
   AppHomeRoute: typeof AppHomeRoute
@@ -309,6 +329,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppBaselineRoute: AppBaselineRoute,
   AppCoachRoute: AppCoachRouteWithChildren,
   AppCommunityRoute: AppCommunityRoute,
   AppHomeRoute: AppHomeRoute,
