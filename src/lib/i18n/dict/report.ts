@@ -9,6 +9,13 @@ export const report: Record<string, Translation> = {
   '完成本週的 PERMA 記錄後，這裡就會出現你的個人報告。': {
     en: 'Finish this week’s PERMA entry and your personal report will appear here.',
   },
+  '你第 {n} 週的記錄還沒產生報告。': { en: 'Your week {n} entry does not have a report yet.' },
+  '產生我的報告': { en: 'Generate my report' },
+  '產生中，大約需要一分鐘…': { en: 'Generating — this takes about a minute…' },
+  '請先不要關閉這個頁面。': { en: 'Please keep this page open.' },
+  '產生報告時發生問題，請稍後再試一次。': {
+    en: 'Something went wrong generating the report. Please try again in a moment.',
+  },
 
   '本週個人幸福報告': { en: "This Week's Well-being Report" },
   '這週還沒有足夠的書寫': { en: "Not enough entries yet this week" },
