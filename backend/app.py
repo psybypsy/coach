@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import logging
 import os
 import re
+import smtplib
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
+from email.utils import formataddr
 
 import anthropic
 import httpx
@@ -14,6 +18,7 @@ import openai
 from dotenv import load_dotenv
 
 import usage_metering
+from report_email import build_report_email
 from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -32,6 +37,18 @@ SUPABASE_SERVICE_ROLE_KEY: str = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 ANTHROPIC_API_KEY: str = os.environ["ANTHROPIC_API_KEY"]
 PORT: int = int(os.environ.get("PORT", 8000))
 ALLOWED_ORIGINS: list[str] = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",")]
+
+# ── 學員報告 Email（Resend）──
+# 用 Gmail 自己的 SMTP 寄信：不需要自有網域、不必設定 DNS。
+# GMAIL_APP_PASSWORD 是 Google 帳號的「應用程式密碼」（需先開啟兩步驟驗證），
+# 不是 Gmail 的登入密碼。沒設定時就完全不寄信，其餘功能照常運作。
+GMAIL_ADDRESS: str | None = os.environ.get("GMAIL_ADDRESS")
+GMAIL_APP_PASSWORD: str | None = os.environ.get("GMAIL_APP_PASSWORD")
+# 收件人看到的寄件者顯示名稱。品牌決定：一律 Ipsen Taiwan，不出現 PSYbyPSY。
+REPORT_FROM_NAME: str = os.environ.get("REPORT_FROM_NAME", "Ipsen Taiwan")
+APP_BASE_URL: str = os.environ.get("APP_BASE_URL", "https://coach-roan-eta.vercel.app")
+_GMAIL_SMTP_HOST = "smtp.gmail.com"
+_GMAIL_SMTP_PORT = 465  # SSL
 
 SUPABASE_REST = f"{SUPABASE_URL}/rest/v1"
 SUPABASE_HEADERS = {
@@ -1048,6 +1065,115 @@ async def coach_translate(req: CoachTranslateRequest, authorization: str = Heade
     return {**analysis, "translations": translations}
 
 
+async def _get_user_email(user_id: str) -> str | None:
+    """用 service_role 讀 auth.users 拿 email（profiles 沒有存 email）。"""
+    resp = await db().get(
+        f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+        headers={
+            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        },
+    )
+    if resp.status_code != 200:
+        logger.warning("fetch user email failed: %s", resp.status_code)
+        return None
+    return resp.json().get("email")
+
+
+def _send_via_gmail(to_email: str, subject: str, html_body: str) -> None:
+    """透過 Gmail SMTP 寄出一封 HTML 信。阻塞式，呼叫端請用 to_thread 包起來。
+
+    用標準函式庫的 smtplib，不額外增加相依套件。
+    """
+    message = EmailMessage()
+    message["Subject"] = subject
+    # formataddr 會在顯示名稱含非 ASCII 字元時自動做 RFC 2047 編碼。
+    # 註：不要用 email.header.Header——這個檔案後面 import 了 fastapi.Header，名稱會被蓋掉。
+    message["From"] = formataddr((REPORT_FROM_NAME, GMAIL_ADDRESS or ""), charset="utf-8")
+    message["To"] = to_email
+    # 純文字備援：不支援 HTML 的信件軟體至少看得到提示與連結。
+    message.set_content("這封信包含你的 PERMA 個人回顧，請用支援 HTML 的信件軟體開啟。")
+    message.add_alternative(html_body, subtype="html")
+
+    with smtplib.SMTP_SSL(_GMAIL_SMTP_HOST, _GMAIL_SMTP_PORT, timeout=20) as smtp:
+        smtp.login(GMAIL_ADDRESS or "", GMAIL_APP_PASSWORD or "")
+        smtp.send_message(message)
+
+
+async def _email_report(report: dict) -> bool:
+    """把已發布的報告寄給學員。回傳是否真的寄出。
+
+    刻意設計成「失敗不影響主流程」：沒設定 Gmail 認證、拿不到 email、
+    或 SMTP 出錯，都只記 log 就算了——報告本身在網站上還是看得到。
+    已寄過（emailed_at 有值）就不重複寄。
+    """
+    if not (GMAIL_ADDRESS and GMAIL_APP_PASSWORD):
+        logger.info("GMAIL_ADDRESS / GMAIL_APP_PASSWORD 未設定，略過寄送報告 email")
+        return False
+    if report.get("emailed_at"):
+        return False
+
+    user_id = report["user_id"]
+    to_email = await _get_user_email(user_id)
+    if not to_email:
+        return False
+
+    profile_resp = await db().get(
+        f"{SUPABASE_REST}/profiles",
+        headers=SUPABASE_HEADERS,
+        params=[("id", f"eq.{user_id}"), ("select", "display_name"), ("limit", "1")],
+    )
+    profile_rows = profile_resp.json() if profile_resp.status_code == 200 else []
+    display_name = profile_rows[0].get("display_name", "") if profile_rows else ""
+
+    subject, html_body = build_report_email(
+        display_name=display_name,
+        week_number=report["week_number"],
+        body_md=report.get("body_md") or "",
+        report_url=f"{APP_BASE_URL}/app/report",
+    )
+
+    try:
+        # smtplib 是阻塞式的，丟到執行緒避免卡住 event loop。
+        await asyncio.to_thread(_send_via_gmail, to_email, subject, html_body)
+    except Exception as exc:
+        logger.warning("Gmail SMTP 寄送失敗 [%s]: %s", type(exc).__name__, exc)
+        return False
+
+    await db().patch(
+        f"{SUPABASE_REST}/member_reports",
+        headers=SUPABASE_HEADERS,
+        params=[("id", f"eq.{report['id']}")],
+        json={"emailed_at": datetime.now(TW_TZ).isoformat()},
+    )
+    return True
+
+
+class CoachPublishReportRequest(BaseModel):
+    report_id: str
+
+
+@app.post("/api/coach/publish-report")
+async def coach_publish_report(req: CoachPublishReportRequest, authorization: str = Header(...)):
+    """教練確認第 4／8 週的草稿後發布給學員，並寄出報告 email。"""
+    token = authorization.removeprefix("Bearer ").strip()
+    await require_coach(token)
+
+    update_resp = await db().patch(
+        f"{SUPABASE_REST}/member_reports",
+        headers={**SUPABASE_HEADERS, "Prefer": "return=representation"},
+        params=[("id", f"eq.{req.report_id}")],
+        json={"status": "published", "published_at": datetime.now(TW_TZ).isoformat()},
+    )
+    rows = update_resp.json() if update_resp.status_code in (200, 201) else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="找不到這份報告")
+
+    report = rows[0]
+    emailed = await _email_report(report)
+    return {**report, "emailed": emailed}
+
+
 class MemberReportRequest(BaseModel):
     week_start: str  # 該週的週一（YYYY-MM-DD）
 
@@ -1126,7 +1252,11 @@ async def member_report(
     if insert_resp.status_code in (200, 201):
         rows = insert_resp.json()
         if rows:
-            return rows[0]
+            saved = rows[0]
+            # 自動發布的週次才寄信；第 4／8 週等教練按「發布給學員」時才寄。
+            if saved.get("status") == "published":
+                await _email_report(saved)
+            return saved
     logger.warning("member_reports insert failed: %s", insert_resp.text)
     return row
 
