@@ -455,6 +455,45 @@ def _coach_analysis_system(week_count: int, language: str = "en") -> str:
 語言：繁體中文（台灣）。全篇不得使用任何 emoji。語氣專業、精確，兼具實證理論素養，如資深教練結合學理的臨床筆記。"""
 
 
+def _weekly_client_analysis_system() -> str:
+    """每週報告專用：內容會原文放進寄給客戶的 PDF，所以直接用「對客戶說話」的第二人稱書寫。
+    量化欄位（valence／topics／emotions）規則與教練版完全一致，圖表才不會因版本不同而失準。"""
+    return """你是教練 陳郁敏 的寫作助理。你會收到一位成員「這一週」的 PERMA 反思原始回答（P=正向情緒、E=投入、R=人際關係、M=意義、A=成就）。請產出兩部分：這一週的情緒 valence 量化分析，與一份「直接寫給這位成員本人閱讀」的 PERMA 五面向回顧。
+
+嚴格照此格式輸出，兩個標記都要出現：
+<<<SCORES>>>
+{"sessions":[
+ {"overall":-100至100的整數,
+  "overallReason":"這一週整體情緒基調的評分依據，引用回答原話",
+  "dims":{"P":{"v":-100至100,"reason":"依據"},"E":{"v":0,"reason":""},"R":{"v":0,"reason":""},"M":{"v":0,"reason":""},"A":{"v":0,"reason":""}},
+  "topics":{"work":0至100,"relationships":0至100,"health":0至100,"rest":0至100,"growth":0至100,"other":0至100},
+  "emotions":[{"word":"回答原文中的情緒詞","valence":"positive|negative|neutral","intensity":1至5}]}
+]}
+<<<BRIEF>>>
+[[BLOCK]] PERMA 五面向回顧
+區塊內文
+
+分數規則：
+- sessions 長度必須剛好 1。
+- valence 為情緒效價：−100 為極度負面、0 為中性、+100 為極度正面。只依文字內容判定，每個分數都要有具體理由並引用原話；未填或空泛給接近 0。
+- 抽 6 至 12 個情緒詞。
+- topics 是這週書寫在六個固定主題的關注占比：work（工作／學業）、relationships（關係）、health（健康）、rest（休息與恢復）、growth（自我成長）、other（其他）。回傳非負整數且總和必須剛好為 100。以語意單位判斷，不以原始字數直接計算。
+
+【最重要】書寫視角：這份內容會原封不動放進寄給這位成員本人的報告裡，所以整篇都要「直接對他說話」。
+- 一律使用第二人稱「你」。嚴禁出現「此人」「這位成員」「該員」「個案」等第三人稱指稱。
+- 語氣溫暖、具體、賦能，像教練當面回顧，而不是臨床筆記或評鑑報告。
+- 引用他自己的原話當證據（例如：你提到「完全忘記時間」）。
+- 描述現象與可能性，不下診斷、不評好壞、不使用風險或病理語言。
+
+區塊內文格式：
+- 逐一走過 P/E/R/M/A 五面向。每個面向先一行「- **P（正向情緒）：飽滿度**」（飽滿度用：充沛／穩定／正在萌芽／這週較少著墨），再用縮排兩格的子條列「  - …」寫 1 至 2 點具體觀察，每點都扣合你引用的原話。
+- 五面向之後，另起一行「- **這週的整體樣貌**」，用縮排子條列寫給客戶的總結：先點出這週最突出的能量來源，再指出一個溫和的觀察或邀請。
+- 總結的最後，另起一行單獨寫一句**金句**，格式為「> 一句話的金句」（以 > 開頭）。這句要短、有畫面、能帶來希望感，並且是從他這週自己的文字裡長出來的，不是空泛勵志語。
+- 最後另起一行，以「**參考文獻**」為小標，用 - 條列 2 至 3 筆 APA 格式文獻（期刊名或書名以 * 斜體 * 標示）。可從下列擇要引用：Seligman, M. E. P. (2011). *Flourish: A visionary new understanding of happiness and well-being*. Free Press.；Fredrickson, B. L. (2001). The role of positive emotions in positive psychology: The broaden-and-build theory of positive emotions. *American Psychologist, 56*(3), 218–226.；Csikszentmihalyi, M. (1990). *Flow: The psychology of optimal experience*. Harper & Row.
+
+語言：繁體中文（台灣）。全篇不得使用任何 emoji。"""
+
+
 def _framework_gen_system(language: str = "en") -> str:
     """教練用自然語言描述想分析什麼 → AI 上網找對應的實證理論 → 生成可套用的結構化框架。"""
     if language == "zh-TW":
@@ -584,7 +623,7 @@ def _build_report_pdf(member_name: str, analysis: dict, client_text: str) -> byt
     from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     font_name = "NotoSansTC"
-    font_path = os.path.join(os.path.dirname(__file__), "assets", "fonts", "NotoSansTC-Variable.ttf")
+    font_path = os.path.join(os.path.dirname(__file__), "assets", "fonts", "NotoSansTC-Regular.ttf")
     try:
         pdfmetrics.getFont(font_name)
     except KeyError:
@@ -922,6 +961,20 @@ async def _analyze_completed_posts(posts: list[dict], coach_id: str) -> tuple[li
     return _parse_analysis(_msg_text(msg))
 
 
+async def _analyze_week_for_client(post: dict, coach_id: str) -> tuple[list, list]:
+    """單週分析，但內文以第二人稱寫給客戶本人（會原文放進寄出的 PDF）。
+    量化欄位規則與教練版一致，因此圖表資料可互通。"""
+    msg = await claude().messages.create(
+        model=_COACH_ANALYSIS_MODEL,
+        max_tokens=4000,
+        thinking={"type": "disabled"},
+        system=_weekly_client_analysis_system(),
+        messages=[{"role": "user", "content": f"成員這一週的書寫：\n\n{_posts_dump([post])}"}],
+    )
+    meter_claude("coach-weekly-client-analysis", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)
+    return _parse_analysis(_msg_text(msg))
+
+
 async def _client_text_from_blocks(blocks: list[dict], coach_id: str) -> str:
     included = [
         block for block in blocks
@@ -950,6 +1003,197 @@ def _baseline_valence(value: object) -> int:
     return round((score - 5) * 20)
 
 
+_PERMA_CHART_COLORS = {
+    "P": "#B5843A", "E": "#487A64", "R": "#95586A", "M": "#3D6390", "A": "#6F5E97",
+}
+_TOPIC_CHART_COLORS = ["#3D6390", "#95586A", "#487A64", "#B5843A", "#6F5E97", "#8A94A2"]
+
+
+def _weekly_radar_drawing(baseline: dict, dims: dict, week_number: int, font_name: str):
+    """T0 vs 本週的五面向雷達圖。刻意與網頁版 coachViz.valRadar 用同一套幾何與配色，
+    讓客戶收到的 PDF 跟教練在後台預覽的長得一樣。"""
+    import math
+
+    from reportlab.graphics.charts.legends import Legend
+    from reportlab.graphics.shapes import Circle, Drawing, Line, Polygon, String
+    from reportlab.lib import colors
+
+    width, height = 460, 258
+    cx, cy = width / 2, height / 2 - 6
+    radius = 95
+    drawing = Drawing(width, height)
+
+    def angle(index: int) -> float:
+        return math.radians(-90 + index * 72)
+
+    def point(index: int, factor: float) -> tuple[float, float]:
+        # ReportLab 的 y 軸向上、SVG 向下，因此 sin 取負號才能與網頁版同方向
+        return (cx + math.cos(angle(index)) * radius * factor,
+                cy - math.sin(angle(index)) * radius * factor)
+
+    def to_factor(value: int) -> float:
+        return (max(-100, min(100, int(value))) + 100) / 200
+
+    for factor in (0.25, 0.5, 0.75, 1.0):
+        coords: list[float] = []
+        for index in range(5):
+            coords.extend(point(index, factor))
+        drawing.add(Polygon(
+            coords, fillColor=None,
+            strokeColor=colors.HexColor("#CBD1DA" if factor == 0.5 else "#E2E5EA"),
+            strokeWidth=1.5 if factor == 0.5 else 1,
+        ))
+
+    for index, key in enumerate(_PERMA_KEYS):
+        x, y = point(index, 1.0)
+        drawing.add(Line(cx, cy, x, y, strokeColor=colors.HexColor("#E2E5EA"), strokeWidth=1))
+        lx, ly = point(index, 1.17)
+        drawing.add(String(
+            lx, ly - 4, key, fontName=font_name, fontSize=12,
+            fillColor=colors.HexColor(_PERMA_CHART_COLORS[key]), textAnchor="middle",
+        ))
+
+    def polygon(values: list[int], stroke: str, fill, stroke_width: float, dashed: bool):
+        coords: list[float] = []
+        for index, value in enumerate(values):
+            coords.extend(point(index, to_factor(value)))
+        shape = Polygon(coords, fillColor=fill, strokeColor=colors.HexColor(stroke),
+                        strokeWidth=stroke_width, strokeLineJoin=1)
+        if dashed:
+            shape.strokeDashArray = [5, 4]
+        return shape
+
+    t0_values = [_baseline_valence(baseline.get(key)) for key in _PERMA_KEYS]
+    week_values = [int((dims.get(key) or {}).get("v", 0)) for key in _PERMA_KEYS]
+    drawing.add(polygon(t0_values, "#8993A1", colors.Color(0.537, 0.576, 0.635, 0.12), 1.5, True))
+    drawing.add(polygon(week_values, "#1F3A5C", colors.Color(0.122, 0.227, 0.361, 0.14), 2, False))
+    for index, value in enumerate(week_values):
+        x, y = point(index, to_factor(value))
+        drawing.add(Circle(x, y, 3, fillColor=colors.HexColor("#1F3A5C"), strokeColor=None))
+
+    legend = Legend()
+    legend.x, legend.y = 150, 14
+    legend.fontName = font_name
+    legend.fontSize = 9
+    legend.alignment = "right"
+    legend.columnMaximum = 1
+    legend.deltax = 104
+    legend.dxTextSpace = 5
+    legend.colorNamePairs = [
+        (colors.HexColor("#8993A1"), "T0 基準（虛線）"),
+        (colors.HexColor("#1F3A5C"), f"第 {week_number} 週"),
+    ]
+    drawing.add(legend)
+    return drawing
+
+
+def _weekly_wordcloud_drawing(emotions: list, font_name: str):
+    """本週情緒詞雲：字級隨強度、顏色隨效價，與網頁版 emotionWordCloud 的視覺邏輯一致。
+    沒有情緒詞時回傳 None。"""
+    from reportlab.graphics.shapes import Drawing, Rect, String
+    from reportlab.lib import colors
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    palette = {"positive": "#2E7057", "negative": "#B0542C", "neutral": "#8A94A2"}
+    items = []
+    for item in emotions or []:
+        word = str((item or {}).get("word") or "").strip()
+        if not word:
+            continue
+        try:
+            intensity = max(1, min(5, int((item or {}).get("intensity") or 3)))
+        except (TypeError, ValueError):
+            intensity = 3
+        valence = str((item or {}).get("valence") or "neutral")
+        items.append((word, intensity, palette.get(valence, palette["neutral"])))
+    if not items:
+        return None
+
+    # 強度高的排中間（與網頁版一樣由中央向外擴散），視覺重心才會落在最強烈的情緒
+    items.sort(key=lambda entry: -entry[1])
+    ordered: list = []
+    for index, entry in enumerate(items):
+        ordered.append(entry) if index % 2 else ordered.insert(0, entry)
+
+    width = 460
+    pad_x, gap_x, line_gap = 16, 16, 10
+    rows: list[list[tuple[str, float, str, float]]] = [[]]
+    row_width = 0.0
+    for word, intensity, color in ordered:
+        size = 12 + intensity * 3.2  # 強度 1→15.2、5→28
+        text_width = stringWidth(word, font_name, size)
+        if row_width and row_width + gap_x + text_width > width - pad_x * 2:
+            rows.append([])
+            row_width = 0.0
+        rows[-1].append((word, size, color, text_width))
+        row_width += (gap_x if row_width else 0) + text_width
+
+    row_heights = [max(entry[1] for entry in row) for row in rows]
+    height = sum(row_heights) + line_gap * (len(rows) - 1) + 30
+    drawing = Drawing(width, height)
+    drawing.add(Rect(0, 0, width, height, fillColor=colors.HexColor("#EEF0F3"),
+                     strokeColor=colors.HexColor("#E2E5EA"), strokeWidth=1))
+
+    y = height - 15
+    for row, row_height in zip(rows, row_heights):
+        y -= row_height
+        total = sum(entry[3] for entry in row) + gap_x * (len(row) - 1)
+        x = (width - total) / 2
+        for word, size, color, text_width in row:
+            drawing.add(String(x, y, word, fontName=font_name, fontSize=size,
+                               fillColor=colors.HexColor(color)))
+            x += text_width + gap_x
+        y -= line_gap
+    return drawing
+
+
+def _weekly_topic_pie_drawing(topics: dict, font_name: str):
+    """本週主題占比圓餅圖；沒有資料時回傳 None。"""
+    from reportlab.graphics.charts.legends import Legend
+    from reportlab.graphics.charts.piecharts import Pie
+    from reportlab.graphics.shapes import Drawing
+    from reportlab.lib import colors
+
+    labels = {
+        "work": "工作／學業", "relationships": "關係", "health": "健康",
+        "rest": "休息與恢復", "growth": "自我成長", "other": "其他",
+    }
+    pairs = [(labels[key], int(topics.get(key) or 0)) for key in labels]
+    pairs = [(name, value) for name, value in pairs if value > 0]
+    if not pairs:
+        return None
+
+    drawing = Drawing(460, 176)
+    pie = Pie()
+    pie.x, pie.y = 40, 20
+    pie.width = pie.height = 136
+    pie.data = [value for _, value in pairs]
+    pie.labels = [f"{value}%" for _, value in pairs]
+    pie.slices.fontName = font_name
+    pie.slices.fontSize = 8
+    pie.slices.strokeColor = colors.white
+    pie.slices.strokeWidth = 1
+    pie.sideLabels = 0
+    for index in range(len(pairs)):
+        pie.slices[index].fillColor = colors.HexColor(_TOPIC_CHART_COLORS[index % len(_TOPIC_CHART_COLORS)])
+    drawing.add(pie)
+
+    legend = Legend()
+    legend.x, legend.y = 210, 140
+    legend.fontName = font_name
+    legend.fontSize = 9
+    legend.alignment = "right"
+    legend.columnMaximum = 6
+    legend.dxTextSpace = 5
+    legend.deltay = 15
+    legend.colorNamePairs = [
+        (colors.HexColor(_TOPIC_CHART_COLORS[index % len(_TOPIC_CHART_COLORS)]), f"{name}　{value}%")
+        for index, (name, value) in enumerate(pairs)
+    ]
+    drawing.add(legend)
+    return drawing
+
+
 def _build_weekly_report_pdf(
     member_name: str,
     week_number: int,
@@ -969,7 +1213,7 @@ def _build_weekly_report_pdf(
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     font_name = "NotoSansTC"
-    font_path = os.path.join(os.path.dirname(__file__), "assets", "fonts", "NotoSansTC-Variable.ttf")
+    font_path = os.path.join(os.path.dirname(__file__), "assets", "fonts", "NotoSansTC-Regular.ttf")
     try:
         pdfmetrics.getFont(font_name)
     except KeyError:
@@ -1017,30 +1261,88 @@ def _build_weekly_report_pdf(
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
 
+    quote_style = ParagraphStyle(
+        "WeeklyQuoteZH", parent=body, fontSize=12, leading=20, alignment=TA_CENTER,
+        textColor=colors.HexColor("#1F3A5C"), spaceBefore=8, spaceAfter=8,
+        leftIndent=10 * mm, rightIndent=10 * mm, borderPadding=6,
+        backColor=colors.HexColor("#F1F4F8"),
+    )
+    sub_style = ParagraphStyle(
+        "WeeklySubZH", parent=body, leftIndent=7 * mm, fontSize=9.5, leading=15,
+        spaceAfter=3, textColor=colors.HexColor("#3D4A5A"),
+    )
+    dim_style = ParagraphStyle(
+        "WeeklyDimZH", parent=body, fontSize=10.5, leading=16, spaceBefore=5, spaceAfter=2,
+        textColor=colors.HexColor("#1C2530"),
+    )
+
     story = [
         Paragraph(f"第 {week_number} 週 PERMA 幸福感回顧", title_style),
         Paragraph(f"{html.escape(member_name)}　｜　週起始日 {html.escape(week_start)}", ParagraphStyle(
             "WeeklyMetaZH", parent=body, alignment=TA_CENTER, textColor=colors.HexColor("#6A7685"),
         )),
-        Spacer(1, 7 * mm),
-        Paragraph("本週與 T0 比較", heading),
-        comparison,
         Spacer(1, 6 * mm),
-        Paragraph("本週 PERMA 五面向分析", heading),
-    ]
-    for raw_line in _plain_markdown(str(block.get("body") or "")).split("\n"):
-        line = raw_line.strip()
-        if line:
-            story.append(Paragraph(html.escape(line), body))
-    story.extend([
+        Paragraph("五面向 valence 剖面", heading),
+        _weekly_radar_drawing(baseline, dims, week_number, font_name),
+        Paragraph("內圈為 −100、中圈為 0（中性）、外圈為 +100。",
+                  ParagraphStyle("WeeklyRadarNoteZH", parent=body, fontSize=8.5, leading=13,
+                                 alignment=TA_CENTER, textColor=colors.HexColor("#6A7685"))),
+        Spacer(1, 2 * mm),
+        comparison,
         Spacer(1, 5 * mm),
+    ]
+
+    topic_pie = _weekly_topic_pie_drawing(session.get("topics") or {}, font_name)
+    if topic_pie is not None:
+        story.extend([Paragraph("本週主題占比", heading), topic_pie, Spacer(1, 3 * mm)])
+
+    wordcloud = _weekly_wordcloud_drawing(session.get("emotions") or [], font_name)
+    if wordcloud is not None:
+        story.extend([Paragraph("本週情緒詞雲", heading), wordcloud, Spacer(1, 4 * mm)])
+
+    story.append(Paragraph("本週 PERMA 五面向回顧", heading))
+    for raw_line in _plain_markdown(str(block.get("body") or "")).split("\n"):
+        line = raw_line.rstrip()
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip())
+        text = line.strip()
+        if text.startswith(">"):  # 金句：置中、淺底色框，作為整份報告的收束
+            story.append(Paragraph(html.escape(text.lstrip("> ").strip()), quote_style))
+        elif text.startswith("- ") and indent >= 2:  # 縮排子條列＝該面向的具體觀察
+            story.append(Paragraph("・" + html.escape(text[2:].strip()), sub_style))
+        elif text.startswith("- "):  # 面向標籤
+            story.append(Paragraph(html.escape(text[2:].strip()), dim_style))
+        else:
+            story.append(Paragraph(html.escape(text), body))
+
+    story.extend([
+        Spacer(1, 4 * mm),
         Paragraph(
             "這份報告只根據本週書寫與 T0 起始狀態整理，不使用其他週內容；它不是診斷或好壞評分。",
-            body,
+            ParagraphStyle("WeeklyFootZH", parent=body, fontSize=8.5, leading=13,
+                           textColor=colors.HexColor("#6A7685")),
         ),
     ])
     doc.build(story)
     return out.getvalue()
+
+
+def _weekly_email_subject(week_number: int) -> str:
+    return f"你的第 {week_number} 週 PERMA 幸福感回顧"
+
+
+def _weekly_email_html(member_name: str) -> str:
+    """每週報告的信件內文（教練提供的固定模板）。
+    預覽與實際寄送共用這個函式，確保教練看到的就是客戶收到的。"""
+    return f"""
+    <p>{html.escape(member_name)}，你好：</p>
+    <p>謝謝你完成本週的 PERMA 書寫，這是很扎實的開始。</p>
+    <p>我們花了些時間讀完你這一週留下的紀錄，也從中看到了一些日常裡幸福感起伏的痕跡。</p>
+    <p>我們也整理了這週幸福感的變化趨勢（見附件），供你參考。建議你自己重新翻閱時，可以帶著兩個問題去看：這一週最讓你有感的收穫是什麼？如果重來一次，有沒有哪個部分想試著調整？</p>
+    <p>也提醒你，下週記得同步填寫 PERMA 的覺察練習，讓紀錄能更完整。</p>
+    <p>一切安好，<br>陳郁敏 教練</p>
+    """
 
 
 async def _send_weekly_report(
@@ -1059,18 +1361,11 @@ async def _send_weekly_report(
         return {"status": "missing_email", "detail": "找不到會員 email"}
 
     pdf_bytes = _build_weekly_report_pdf(name, week_number, week_start, baseline, session, block)
-    email_html = f"""
-    <p>{html.escape(name)}，你好：</p>
-    <p>謝謝你完成第 {week_number} 週的 PERMA 書寫。</p>
-    <p>附件是本週幸福感回顧，只根據你這一週留下的內容進行分析，並與開始計畫時的 T0 狀態比較。報告中的變化不是好壞評分，而是幫助你看見這一週哪些面向有所移動。</p>
-    <p>閱讀時可以留意：哪一個變化最符合你的實際感受？哪一段文字是你接下來想繼續探索的？</p>
-    <p>若希望在教練會談中一起討論，歡迎直接回覆這封信。</p>
-    <p>祝福你，<br>陳郁敏 教練</p>
-    """
+    email_html = _weekly_email_html(name)
     payload: dict = {
         "from": REPORT_EMAIL_FROM,
         "to": [email],
-        "subject": f"你的第 {week_number} 週 PERMA 幸福感回顧",
+        "subject": _weekly_email_subject(week_number),
         "html": email_html,
         "attachments": [{
             "filename": f"第{week_number}週-PERMA幸福感回顧.pdf",
@@ -1125,7 +1420,7 @@ async def _generate_and_send_weekly_report(
     if existing.get("report_emailed_at") and existing.get("report_email_content_hash") == content_hash:
         return {"status": "already_sent", "week_number": week_number}
 
-    sessions, blocks = await _analyze_completed_posts([post], coach_id)
+    sessions, blocks = await _analyze_week_for_client(post, coach_id)
     if not sessions or not blocks:
         raise RuntimeError("單週 PERMA 分析沒有回傳完整內容")
     session, block = sessions[0], blocks[0]
@@ -1336,6 +1631,101 @@ async def coach_report_completed_webhook(
         "recipient": delivery.get("email"),
         "weekly": weekly_delivery,
         "eight_week_summary": "sent",
+    }
+
+
+@app.post("/api/coach/weekly-reports/generate")
+async def coach_weekly_reports_generate(req: CoachMemberRequest, authorization: str = Header(...)):
+    """教練手動生成成員的每週 PERMA 報告（單週分析＋T0 比較），存進 perma_weekly_reports。
+    每份只依該週內容分析、與 T0 比較；並依現有流程寄 PDF 給成員（未設 Resend 則只存不寄）。
+    內容或 T0 未變者不重複寄送（沿用 _generate_and_send_weekly_report 的去重）。"""
+    token = authorization.removeprefix("Bearer ").strip()
+    coach_id = await require_coach(token)
+    member_id = req.member_id
+
+    posts = await _fetch_member_posts(member_id)
+    # 只處理「五面向都填寫」的完整週；同一週多次提交取最後一筆完整內容。
+    completed_all = [
+        post for post in posts
+        if all(str(post.get(f"{key.lower()}_content") or "").strip() for key in _PERMA_KEYS)
+    ]
+    by_week: dict[str, dict] = {}
+    for post in completed_all:
+        by_week[str(post.get("week_start") or "")] = post
+    completed = [by_week[key] for key in sorted(by_week)]
+    if not completed:
+        raise HTTPException(status_code=409, detail="這位成員還沒有『五面向都填寫』的完整週")
+
+    resp = await db().get(
+        f"{SUPABASE_REST}/coach_analyses",
+        headers=SUPABASE_HEADERS,
+        params=[("member_id", f"eq.{member_id}"), ("select", "*"), ("limit", "1")],
+    )
+    rows = resp.json() if resp.status_code == 200 else []
+    existing = rows[0] if rows else {}
+    baseline = existing.get("baseline") if isinstance(existing.get("baseline"), dict) else None
+    if not baseline or not all(key in baseline for key in _PERMA_KEYS):
+        raise HTTPException(status_code=409, detail="請先在成員頁最上方填寫完整 T0 基準點（五面向），才能與 T0 比較")
+
+    results = []
+    for index, post in enumerate(completed):
+        week_number = index + 1
+        try:
+            delivery = await _generate_and_send_weekly_report(member_id, post, week_number, baseline, coach_id)
+        except Exception as exc:  # 單週失敗不影響其他週
+            logger.exception("coach weekly report failed member=%s week=%s", member_id, week_number)
+            delivery = {"status": "error", "detail": str(exc)[:180]}
+        results.append({"week_number": week_number, "week_start": str(post.get("week_start") or ""), **delivery})
+    return {"generated": len(results), "reports": results}
+
+
+class CoachWeeklyPreviewRequest(BaseModel):
+    member_id: str
+    week_start: str
+
+
+@app.post("/api/coach/weekly-reports/preview")
+async def coach_weekly_report_preview(req: CoachWeeklyPreviewRequest, authorization: str = Header(...)):
+    """預覽某一週「客戶實際會收到」的信件內文與 PDF 附件。
+
+    直接讀取 perma_weekly_reports 已存的分析內容重建，不重跑 AI、不寄信、不寫入資料；
+    信件內文與 PDF 都走與寄送相同的函式，所以教練看到的就是客戶收到的。"""
+    token = authorization.removeprefix("Bearer ").strip()
+    await require_coach(token)
+
+    resp = await db().get(
+        f"{SUPABASE_REST}/perma_weekly_reports",
+        headers=SUPABASE_HEADERS,
+        params=[
+            ("member_id", f"eq.{req.member_id}"),
+            ("week_start", f"eq.{req.week_start}"),
+            ("select", "*"),
+            ("limit", "1"),
+        ],
+    )
+    rows = resp.json() if resp.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="找不到這一週的報告，請先生成每週報告")
+    row = rows[0]
+    content = row.get("content") if isinstance(row.get("content"), dict) else {}
+    session, block = content.get("session"), content.get("block")
+    baseline = content.get("baseline")
+    if not session or not block or not baseline:
+        raise HTTPException(status_code=409, detail="這一週的報告內容不完整，請重新生成每週報告")
+
+    week_number = int(row.get("week_number") or 0)
+    name, email = await _member_identity(req.member_id)
+    pdf_bytes = _build_weekly_report_pdf(name, week_number, req.week_start, baseline, session, block)
+    return {
+        "week_number": week_number,
+        "week_start": req.week_start,
+        "recipient_name": name,
+        "recipient_email": email,
+        "subject": _weekly_email_subject(week_number),
+        "email_html": _weekly_email_html(name),
+        "pdf_filename": f"第{week_number}週-PERMA幸福感回顧.pdf",
+        "pdf_base64": base64.b64encode(pdf_bytes).decode("ascii"),
+        "emailed_at": row.get("report_emailed_at"),
     }
 
 
