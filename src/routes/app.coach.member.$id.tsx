@@ -10,16 +10,16 @@ import {
   DIMCOLOR,
   vColor,
   vLabel,
-  valLine,
-  valRadar,
-  radarDelta,
-  affectBalance,
-  topicShareStacked,
-  emotionWordCloud,
   type SessionScore,
   type DimKey,
-  type TopicKey,
 } from '../lib/coachViz'
+import { mdToHtml } from '../lib/mdToHtml'
+import {
+  CHART_DEFS,
+  ReportChart,
+  makeBaselineSession,
+  type BaselineScores,
+} from '../components/ReportChart'
 
 export const Route = createFileRoute('/app/coach/member/$id')({
   component: MemberDetailPage,
@@ -61,8 +61,8 @@ interface Framework {
   note: string
 }
 
-// T0 基準點：教練手填的五面向幸福感分數（0–10），作為所有圖表的起點（見遷移 005）
-type BaselineScores = Record<DimKey, number>
+// T0 基準點（BaselineScores）與圖表繪製都放在 components/ReportChart，
+// 與學員版報告共用同一份程式碼（見遷移 005 / 007）。
 
 interface CoachAnalysis {
   member_id: string
@@ -76,22 +76,6 @@ interface CoachAnalysis {
   translations?: Record<string, { blocks: BriefBlock[]; sessions: SessionScore[] }>
   baseline?: BaselineScores | null
   updated_at: string
-}
-
-// T0 分數尺度：0–10 → valence −100~+100（5=0 中性、10=+100、0=−100）
-function baselineToValence(score: number): number {
-  const s = Math.max(0, Math.min(10, score))
-  return Math.round((s - 5) * 20)
-}
-// 由五面向 0–10 分數組出一個「第 0 次」的 SessionScore（overall 取五項平均）
-function makeBaselineSession(b: BaselineScores | null | undefined): SessionScore | null {
-  if (!b || !KEYS.every((k) => typeof b[k] === 'number' && !Number.isNaN(b[k]))) return null
-  const dims = {} as SessionScore['dims']
-  KEYS.forEach((k) => {
-    dims[k] = { v: baselineToValence(b[k]), reason: '' }
-  })
-  const overall = Math.round(KEYS.reduce((sum, k) => sum + dims[k].v, 0) / KEYS.length)
-  return { overall, overallReason: '', dims, emotions: [] }
 }
 
 // #2 情報簡報區塊標題一律用「固定的 canonical 標題」（依區塊順序）並走 t()，
@@ -129,73 +113,6 @@ function isLinguisticFingerprint(block: BriefBlock): boolean {
   return ['linguistic fingerprint', '語言指紋'].includes(String(block.title || '').trim().toLowerCase())
 }
 
-const CHART_DEFS: { key: string; title: string }[] = [
-  { key: 'summary', title: '情緒 valence 摘要' },
-  { key: 'trend', title: '整體情緒 valence 趨勢' },
-  { key: 'dims', title: '五面向 valence 趨勢' },
-  { key: 'topics', title: '每週主題占比' },
-  { key: 'radar', title: '五面向 valence 剖面' },
-  { key: 'affect', title: '正負情緒平衡' },
-  { key: 'cloud', title: '情緒詞雲' },
-]
-
-// ── 極簡 Markdown → HTML（** 粗體、* 斜體、## 標題、- / • 條列、1. 數字條列、縮排巢狀條列）──
-function mdToHtml(md: string): string {
-  const esc = (s: string) =>
-    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const inline = (s: string) =>
-    esc(s)
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/(?<!\*)\*(?!\*)(.+?)\*(?!\*)/g, '<em>$1</em>')
-  const rawLines = String(md || '').split('\n')
-  let h = ''
-  // 依縮排深度堆疊巢狀 <ul>/<ol>：同層同類型接續為 <li> 手足，縮排加深則在目前 <li> 內開新子清單
-  const stack: { type: 'ul' | 'ol'; indent: number }[] = []
-  const closeAllLists = () => {
-    while (stack.length) {
-      h += '</li>'
-      const f = stack.pop()!
-      h += f.type === 'ul' ? '</ul>' : '</ol>'
-    }
-  }
-  for (const raw of rawLines) {
-    const l = raw.trim()
-    const indent = (/^\s*/.exec(raw)?.[0] ?? '').replace(/\t/g, '  ').length
-    const bullet = /^[-*•‣]\s+(.*)$/.exec(l)
-    const numbered = /^\d+[.)]\s+(.*)$/.exec(l)
-    if (bullet || numbered) {
-      const type: 'ul' | 'ol' = bullet ? 'ul' : 'ol'
-      const content = inline((bullet ?? numbered)![1])
-      while (
-        stack.length &&
-        (stack[stack.length - 1].indent > indent ||
-          (stack[stack.length - 1].indent === indent && stack[stack.length - 1].type !== type))
-      ) {
-        h += '</li>'
-        const f = stack.pop()!
-        h += f.type === 'ul' ? '</ul>' : '</ol>'
-      }
-      if (stack.length && stack[stack.length - 1].indent === indent) {
-        h += '</li><li>' + content
-      } else {
-        h += type === 'ul' ? '<ul>' : '<ol>'
-        stack.push({ type, indent })
-        h += '<li>' + content
-      }
-      continue
-    }
-    closeAllLists()
-    const hm = l.match(/^#{1,3} /)
-    if (hm) {
-      const lvl = hm[0].trim().length
-      h += `<h${lvl}>` + inline(l.replace(/^#+ /, '')) + `</h${lvl}>`
-    } else if (l) {
-      h += '<p>' + inline(l) + '</p>'
-    }
-  }
-  closeAllLists()
-  return h
-}
 
 interface NavItem {
   id: string
@@ -248,25 +165,6 @@ function SectionHeading({
   )
 }
 
-function chartData(sessions: SessionScore[]) {
-  const ov = sessions.map((s) => s.overall)
-  const avg = Math.round(ov.reduce((x, v) => x + v, 0) / ov.length)
-  const hi = Math.max(...ov)
-  const lo = Math.min(...ov)
-  const delta = ov[ov.length - 1] - ov[0]
-  const avgDim = {} as Record<DimKey, number>
-  KEYS.forEach((k) => {
-    avgDim[k] = Math.round(sessions.reduce((x, s) => x + (s.dims[k]?.v || 0), 0) / sessions.length)
-  })
-  const strong = KEYS.slice().sort((x, y) => avgDim[y] - avgDim[x])[0]
-  const firstDim = {} as Record<DimKey, number>
-  const lastDim = {} as Record<DimKey, number>
-  KEYS.forEach((k) => {
-    firstDim[k] = sessions[0].dims[k]?.v || 0
-    lastDim[k] = sessions[sessions.length - 1].dims[k]?.v || 0
-  })
-  return { ov, avg, hi, lo, delta, strong, firstDim, lastDim }
-}
 
 function MemberDetailPage() {
   const { t, language } = useLanguage()
@@ -911,197 +809,6 @@ function MemberDetailPage() {
     setEditBlock(null)
   }
 
-  function renderChart(key: string) {
-    if (!analysis) return null
-    // T0 基準點：若五面向都填了，就把它當「第 0 次」接在最前面，讓趨勢／五面向／雷達／摘要都以 T0 為起點。
-    // 情緒相關圖（正負平衡、詞雲）與逐次列表不含 T0（T0 沒有情緒詞與理由）。
-    const base = makeBaselineSession(baseline)
-    const cs = base ? [base, ...analysis.sessions] : analysis.sessions
-    const s = cs
-    const cd = chartData(cs)
-    const xLabels = base ? ['T0', ...analysis.sessions.map((_, i) => String(i + 1))] : undefined
-    const legendItem = (color: string, label: string, key?: string) => {
-      // 色塊與文字必須在同一張 SVG 內；若拆成兩個 flex item，html2canvas 仍會用錯誤的
-      // 文字基線把兩者上下拉開。寬度依 ASCII／CJK 字元估算，保留足夠但不浪費的空間。
-      const textWidth = [...label].reduce((sum, ch) => sum + (ch.charCodeAt(0) > 255 ? 12 : ch === ' ' ? 4 : 7), 0)
-      const width = Math.ceil(20 + textWidth)
-      return (
-        <svg
-          key={key}
-          className="cv-legend-item-svg"
-          viewBox={`0 0 ${width} 18`}
-          width={width}
-          height="18"
-          role="img"
-          aria-label={label}
-        >
-          <rect x="0" y="3" width="12" height="12" rx="2" fill={color} />
-          <text
-            x="19"
-            y="14"
-            fontFamily="Arial, 'PingFang TC', 'Noto Sans TC', sans-serif"
-            fontSize="11.5"
-            fontWeight="700"
-            fill="#54606E"
-          >
-            {label}
-          </text>
-        </svg>
-      )
-    }
-    switch (key) {
-      case 'summary':
-        return (
-          <div className="cv-stats">
-            <div className="cv-stat">
-              <div className="cv-stat-n" style={{ color: vColor(cd.avg) }}>
-                {cd.avg > 0 ? '+' : ''}
-                {cd.avg}
-              </div>
-              <div className="cv-stat-l">{t('平均整體 valence')}</div>
-            </div>
-            <div className="cv-stat">
-              <div className="cv-stat-n">
-                {cd.delta > 0 ? '+' : ''}
-                {cd.delta}
-              </div>
-              <div className="cv-stat-l">{t('變化（末−首）')}</div>
-            </div>
-            <div className="cv-stat">
-              <div className="cv-stat-n">
-                {cd.hi > 0 ? '+' : ''}
-                {cd.hi}
-                <small>
-                  {' / '}
-                  {cd.lo > 0 ? '+' : ''}
-                  {cd.lo}
-                </small>
-              </div>
-              <div className="cv-stat-l">{t('最高 / 最低')}</div>
-            </div>
-            <div className="cv-stat">
-              <div className="cv-stat-n" style={{ fontSize: 15 }}>
-                {DIM[cd.strong]}
-              </div>
-              <div className="cv-stat-l">{t('最強面向')}</div>
-            </div>
-          </div>
-        )
-      case 'trend':
-        return (
-          <div
-            className="cv-chart-wrap"
-            dangerouslySetInnerHTML={{
-              __html: valLine([{ values: cd.ov, color: DIMCOLOR.M, width: 3, label: true }], s.length, xLabels),
-            }}
-          />
-        )
-      case 'dims':
-        return (
-          <>
-            <div className="cv-legend">
-              {KEYS.map((k) => legendItem(DIMCOLOR[k], `${k} · ${DIM[k]}`, k))}
-            </div>
-            <div
-              className="cv-chart-wrap"
-              dangerouslySetInnerHTML={{
-                __html: valLine(
-                  KEYS.map((k) => ({ values: s.map((x) => x.dims[k]?.v || 0), color: DIMCOLOR[k], width: 2 })),
-                  s.length,
-                  xLabels,
-                ),
-              }}
-            />
-          </>
-        )
-      case 'topics': {
-        const topicLabels: Record<TopicKey, string> = {
-          work: t('工作／學業'),
-          relationships: t('關係'),
-          health: t('健康'),
-          rest: t('休息與恢復'),
-          growth: t('自我成長'),
-          other: t('其他'),
-        }
-        const hasTopicData = analysis.sessions.some((session) =>
-          Object.values(session.topics ?? {}).some((value) => Number(value) > 0),
-        )
-        // 舊分析沒有 topics；本機開發模式提供清楚標示的版面預覽，方便在分析 API
-        // 暫時不可用時仍能驗收圖表。正式 build 不會顯示或匯出這些模擬數值。
-        const topicSessions =
-          !hasTopicData && import.meta.env.DEV
-            ? analysis.sessions.map((session, index, all) => {
-                const progress = all.length <= 1 ? 0 : index / (all.length - 1)
-                const work = Math.round(38 - progress * 18)
-                const relationships = Math.round(18 + progress * 10)
-                const health = 14
-                const rest = Math.round(12 + progress * 8)
-                const growth = Math.round(12 + progress * 2)
-                return {
-                  ...session,
-                  topics: {
-                    work,
-                    relationships,
-                    health,
-                    rest,
-                    growth,
-                    other: 100 - work - relationships - health - rest - growth,
-                  },
-                }
-              })
-            : analysis.sessions
-        return (
-          <>
-            <div
-              className="cv-chart-wrap cv-topic-wrap"
-              dangerouslySetInnerHTML={{
-                __html: topicShareStacked(
-                  topicSessions,
-                  topicLabels,
-                  (index) => (language === 'en' ? `W${index + 1}` : `第 ${index + 1} 週`),
-                  t('重新生成分析後，即可查看每週主題占比。'),
-                ),
-              }}
-            />
-            {!hasTopicData && import.meta.env.DEV && (
-              <div className="cv-preview-note">{t('本機版面預覽資料；重新生成分析後會換成日記分析結果。')}</div>
-            )}
-            <div className="cv-note">
-              {t('每週合計為 100%，呈現日記內容的關注占比，不代表實際投入時間。')}
-            </div>
-          </>
-        )
-      }
-      case 'radar':
-        return (
-          <>
-            <div
-              className="cv-chart-wrap cv-radar-wrap"
-              dangerouslySetInnerHTML={{ __html: valRadar(cd.firstDim, cd.lastDim) }}
-            />
-            <div className="cv-legend" style={{ justifyContent: 'center' }}>
-              {legendItem('#8993A1', base ? t('T0 基準（虛線）') : t('第一次（虛線）'))}
-              {legendItem('#1F3A5C', t('最新一次'))}
-            </div>
-            <div className="cv-note">{t('內圈為 −100、中圈為 0（中性）、外圈為 +100。')}</div>
-            <div dangerouslySetInnerHTML={{ __html: radarDelta(cd.firstDim, cd.lastDim) }} />
-          </>
-        )
-      case 'affect':
-        return (
-          <>
-            <div className="cv-legend" style={{ justifyContent: 'center' }}>
-              {legendItem('#2E7057', t('正向（往上）'))}
-              {legendItem('#B0542C', t('負向（往下）'))}
-            </div>
-            <div className="cv-chart-wrap" dangerouslySetInnerHTML={{ __html: affectBalance(analysis.sessions) }} />
-          </>
-        )
-      case 'cloud':
-        return <div dangerouslySetInnerHTML={{ __html: emotionWordCloud(analysis.sessions) }} />
-    }
-    return null
-  }
 
   if (checking) return null
 
@@ -1259,7 +966,9 @@ function MemberDetailPage() {
                         {t('納入客戶版')}
                       </label>
                     </div>
-                    {open && renderChart(c.key)}
+                    {open && (
+                      <ReportChart chartKey={c.key} sessions={analysis.sessions} baseline={baseline} />
+                    )}
                   </div>
                   )
                 })}
@@ -1694,7 +1403,8 @@ function MemberDetailPage() {
                           <div className="cv-slbl">
                             <span>{t(c.title)}</span>
                           </div>
-                          {renderChart(c.key)}
+                          <ReportChart chartKey={c.key} sessions={analysis.sessions} baseline={baseline} />
+
                         </div>
                       ))}
                     </div>
