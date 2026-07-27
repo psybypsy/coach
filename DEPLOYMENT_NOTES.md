@@ -34,6 +34,22 @@ alter table journal_posts
 **必須在 Supabase 執行 `supabase/migrations/007_member_baseline.sql`**，
 否則學員會卡在起始分數頁面無法送出。
 
+### Migration 008 - 學員版 PERMA 報告
+
+新增 `member_reports` 表：學員每次填完五題後，後端跑分析並產生學員版報告，
+排版與圖表沿用教練後台的「客戶交付版」。
+
+週次規則（week 1 = 2026/07/27 那一週）：
+- week 1、2、3、5、6、7 → 自動發布，學員立刻看得到
+- week 4、8 → 產生草稿但學員看不到，教練在成員頁「學員版報告」區塊
+  編輯確認後按「發布給學員」才會出現
+
+**必須在 Supabase 執行 `supabase/migrations/008_member_reports.sql`**，
+否則學員的「我的報告」頁會是空的。
+
+> 若之後要調整週次起點，前後端各有一份設定要一起改：
+> `src/lib/week.ts` 的 `PROGRAM_WEEK_1_START` 與 `backend/app.py` 的同名常數。
+
 ---
 
 ## 其他更新
