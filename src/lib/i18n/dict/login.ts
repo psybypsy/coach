@@ -20,7 +20,7 @@ export const login: Record<string, Translation> = {
   '重新輸入 email': { en: 'Re-enter email' },
   '驗證碼有誤，請確認後重試。': { en: 'Incorrect code. Please try again.' },
   '最近使用的 email': { en: 'Recent emails' },
-  '此 email 不在允許名單內，請確認是否為陳郁敏老師邀請的信箱，或聯繫老師確認。': {
+  '此 email 不在允許名單內，請確認是否為 Yee Ming Tan 老師邀請的信箱，或聯繫老師確認。': {
     en: 'This email is not on the invite list. Please confirm with your coach.',
   },
   '寄送失敗，請確認 email 格式後再試一次。': {

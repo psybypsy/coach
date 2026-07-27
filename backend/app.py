@@ -356,6 +356,9 @@ _PERMA_DIM = {
 _TOPIC_KEYS = ["work", "relationships", "health", "rest", "growth", "other"]
 _ALLOWED_BLOCK_TITLES = {
     "perma five-dimension profile", "perma 五面向剖析",
+    "strengths & inner resources", "優勢與內在資源",
+    # 每週客戶版用「回顧」而非「剖析」；漏了它會讓單週分析的區塊被過濾掉、整個生成失敗
+    "perma 五面向回顧",
 }
 # 報告只保留四個量化圖表。
 _CLIENT_CHART_DEFAULTS = {
@@ -405,13 +408,15 @@ Intelligence-brief rules: stay evidence-based, quote the person's words and cite
 
 FORMATTING — keep every block skimmable: write in short paragraphs and - bullet points, prefer bullets over dense prose, and keep sentences short.
 
-Include only this block. Do not create any other brief block:
+Include only these two blocks, in this order. Do not create any other brief block:
 [[BLOCK]] PERMA Five-Dimension Profile
+[[BLOCK]] Strengths & Inner Resources
 
-This block must: (a) stay tied to this person's specific quotes with week citations; (b) end with a "**References**" sub-heading listing 2-3 APA-format references (journal or book titles in * italics *).
+Both blocks must: (a) stay tied to this person's specific quotes with week citations; (b) end with a "**References**" sub-heading listing 2-3 APA-format references (journal or book titles in * italics *) relevant only to that block.
 
 Per-block requirements:
 - PERMA Five-Dimension Profile: analyze P/E/R/M/A one by one, noting fullness (abundant / stable / thin / absent), change over time and key quotes, then integrate the overall pattern through a PERMA lens. References may draw from: Seligman, M. E. P. (2011). *Flourish: A visionary new understanding of happiness and well-being*. Free Press.; Fredrickson, B. L. (2001). The role of positive emotions in positive psychology: The broaden-and-build theory of positive emotions. *American Psychologist, 56*(3), 218-226.; Csikszentmihalyi, M. (1990). *Flow: The psychology of optimal experience*. Harper & Row.
+- Strengths & Inner Resources: identify the character strengths and reusable inner resources this person demonstrates, naming them with VIA character-strength vocabulary (e.g. zest, curiosity, perseverance, perspective, social intelligence, gratitude, self-regulation, bravery, kindness, fairness, humour, hope). Lead each strength with a line "- **Strength name**", then indented two-space sub-bullets giving the supporting quote (with week citation) and where this strength could be drawn on again. Judge across all weeks and pick the 3-4 best-evidenced; do not enumerate exhaustively. References may draw from: Peterson, C., & Seligman, M. E. P. (2004). *Character strengths and virtues: A handbook and classification*. Oxford University Press.; Niemiec, R. M. (2018). *Character strengths interventions: A field guide for practitioners*. Hogrefe.; Linley, P. A., Nielsen, K. M., Gillett, R., & Biswas-Diener, R. (2010). Using signature strengths in pursuit of goals. *International Coaching Psychology Review, 5*(1), 6-15.
 Language: English. No emoji anywhere. Tone: professional, precise, theoretically grounded — like a senior coach's clinical notes."""
 
 
@@ -445,13 +450,15 @@ def _coach_analysis_system(week_count: int, language: str = "en") -> str:
 
 排版（教練要能快速掃讀）：內文用簡短段落與 - 條列呈現，多用條列、少用長段落、句子精簡。逐一分析多個項目（例如 P/E/R/M/A 五面向、SDT 三需求）時，每個項目先用一行「- **項目名稱**」當作該項目的粗體標籤，再用縮排兩格的子條列「  - 證據 / 引文」列出其下的具體證據，形成有層級的巢狀條列，不要把標籤與證據全部擠在同一層。
 
-務必只包含以下一個區塊，不得產生其他情報簡報區塊：
+務必只包含以下兩個區塊、依此順序，不得產生其他情報簡報區塊：
 [[BLOCK]] PERMA 五面向剖析
+[[BLOCK]] 優勢與內在資源
 
-此區塊必須：(a) 全程扣合此人的具體引文並註明第幾次；(b) 在內文最後另起一行、以「**參考文獻**」為小標，再用 - 條列 2 至 3 筆 APA 格式文獻（期刊名或書名以 * 斜體 * 標示）。
+兩個區塊都必須：(a) 全程扣合此人的具體引文並註明第幾次；(b) 在內文最後另起一行、以「**參考文獻**」為小標，再用 - 條列 2 至 3 筆 APA 格式文獻（期刊名或書名以 * 斜體 * 標示），且只列與該區塊主題直接相關者，不得跨區塊混用。
 
 各區塊要求：
 - PERMA 五面向剖析：逐一分析 P/E/R/M/A 五面向，標飽滿度（充沛／穩定／稀薄／缺席）、變化與關鍵引文，並以 PERMA 觀點整合此人整體樣態。參考文獻可從下列擇要引用：Seligman, M. E. P. (2011). *Flourish: A visionary new understanding of happiness and well-being*. Free Press.；Fredrickson, B. L. (2001). The role of positive emotions in positive psychology: The broaden-and-build theory of positive emotions. *American Psychologist, 56*(3), 218–226.；Csikszentmihalyi, M. (1990). *Flow: The psychology of optimal experience*. Harper & Row.
+- 優勢與內在資源：辨識此人展現的性格優勢與可再次運用的內在資源，以 VIA 性格優勢架構的語彙命名（例如熱情與活力、好奇心、毅力、洞察力、社會智慧、感恩、自我調節、勇氣、仁慈、公平、幽默、希望）。每項優勢先用一行「- **優勢名稱**」當標籤，再用縮排兩格的子條列寫：扣合的原話證據（註明第幾次）、以及這項優勢可以再被動用在哪裡。跨全部週綜合判斷，挑 3 至 4 項最有證據支持者，不要窮舉。參考文獻可從下列擇要引用：Peterson, C., & Seligman, M. E. P. (2004). *Character strengths and virtues: A handbook and classification*. Oxford University Press.；Niemiec, R. M. (2018). *Character strengths interventions: A field guide for practitioners*. Hogrefe.；Linley, P. A., Nielsen, K. M., Gillett, R., & Biswas-Diener, R. (2010). Using signature strengths in pursuit of goals. *International Coaching Psychology Review, 5*(1), 6–15.
 語言：繁體中文（台灣）。全篇不得使用任何 emoji。語氣專業、精確，兼具實證理論素養，如資深教練結合學理的臨床筆記。"""
 
 
@@ -487,9 +494,10 @@ def _weekly_client_analysis_system() -> str:
 
 區塊內文格式：
 - 逐一走過 P/E/R/M/A 五面向。每個面向先一行「- **P（正向情緒）：飽滿度**」（飽滿度用：充沛／穩定／正在萌芽／這週較少著墨），再用縮排兩格的子條列「  - …」寫 1 至 2 點具體觀察，每點都扣合你引用的原話。
-- 五面向之後，另起一行「- **這週的整體樣貌**」，用縮排子條列寫給客戶的總結：先點出這週最突出的能量來源，再指出一個溫和的觀察或邀請。
+- 五面向之後，另起一行「- **你的優勢與內在資源**」，接著用縮排兩格的子條列寫 2 至 3 點。每一點的寫法：先點名一項這週真的展現出來的性格優勢（用 VIA 性格優勢的語彙，例如：熱情與活力、好奇心、毅力、洞察力、社會智慧、感恩、自我調節、勇氣、仁慈、公平、幽默、希望），緊接著用他自己的原話當證據，最後一句點出這項優勢「還可以用在哪裡」，讓他知道這是可再次動用的資源，而不只是一個標籤。
+- 優勢之後，另起一行「- **這週的整體樣貌**」，用縮排子條列寫給客戶的總結：先點出這週最突出的能量來源，再指出一個溫和的觀察或邀請。
 - 總結的最後，另起一行單獨寫一句**金句**，格式為「> 一句話的金句」（以 > 開頭）。這句要短、有畫面、能帶來希望感，並且是從他這週自己的文字裡長出來的，不是空泛勵志語。
-- 最後另起一行，以「**參考文獻**」為小標，用 - 條列 2 至 3 筆 APA 格式文獻（期刊名或書名以 * 斜體 * 標示）。可從下列擇要引用：Seligman, M. E. P. (2011). *Flourish: A visionary new understanding of happiness and well-being*. Free Press.；Fredrickson, B. L. (2001). The role of positive emotions in positive psychology: The broaden-and-build theory of positive emotions. *American Psychologist, 56*(3), 218–226.；Csikszentmihalyi, M. (1990). *Flow: The psychology of optimal experience*. Harper & Row.
+- 最後另起一行，以「**參考文獻**」為小標，用 - 條列 2 至 3 筆 APA 格式文獻（期刊名或書名以 * 斜體 * 標示）。既然談了優勢，請至少納入一筆 VIA 性格優勢文獻。可從下列擇要引用：Peterson, C., & Seligman, M. E. P. (2004). *Character strengths and virtues: A handbook and classification*. Oxford University Press.；Niemiec, R. M. (2018). *Character strengths interventions: A field guide for practitioners*. Hogrefe.；Seligman, M. E. P. (2011). *Flourish: A visionary new understanding of happiness and well-being*. Free Press.；Fredrickson, B. L. (2001). The role of positive emotions in positive psychology: The broaden-and-build theory of positive emotions. *American Psychologist, 56*(3), 218–226.；Csikszentmihalyi, M. (1990). *Flow: The psychology of optimal experience*. Harper & Row.
 
 語言：繁體中文（台灣）。全篇不得使用任何 emoji。"""
 
@@ -787,7 +795,7 @@ async def _send_completed_report(member_id: str, analysis: dict, client_text: st
     </ul>
     <p>這份報告不是診斷或評分，而是一份幫助你理解近期經驗的整理。建議你找一段不被打擾的時間閱讀，並標記最有共鳴、最想進一步探索的內容。</p>
     <p>若有任何疑問，或希望在教練會談中一起討論，歡迎直接回覆這封信。</p>
-    <p>祝福你，<br>陳郁敏 教練</p>
+    <p>祝福你，<br>Yee Ming Tan 教練</p>
     """
     payload: dict = {
         "from": REPORT_EMAIL_FROM,
@@ -1163,10 +1171,29 @@ def _weekly_topic_pie_drawing(topics: dict, font_name: str):
     if not pairs:
         return None
 
-    drawing = Drawing(460, 176)
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    # 依實際內容量測寬度再置中：餅圖與圖例若用固定座標，整組會偏左、右側空一大塊
+    width, pie_size, gap = 460, 140, 26
+    label_margin = 30  # 圓餅外圈的百分比標籤會超出餅身，兩側各留一段
+    legend_font, swatch_width, text_space = 9, 9, 5
+    legend_labels = [f"{name}　{value}%" for name, value in pairs]
+    legend_width = swatch_width + text_space + max(
+        stringWidth(label, font_name, legend_font) for label in legend_labels
+    )
+    total_width = label_margin + pie_size + label_margin + gap + legend_width
+    start_x = max(0.0, (width - total_width) / 2)
+
+    row_gap = 15
+    legend_height = (len(pairs) - 1) * row_gap
+    height = max(pie_size + label_margin * 2, legend_height + 40)
+    pie_y = (height - pie_size) / 2
+    pie_center_y = pie_y + pie_size / 2
+
+    drawing = Drawing(width, height)
     pie = Pie()
-    pie.x, pie.y = 40, 20
-    pie.width = pie.height = 136
+    pie.x, pie.y = start_x + label_margin, pie_y
+    pie.width = pie.height = pie_size
     pie.data = [value for _, value in pairs]
     pie.labels = [f"{value}%" for _, value in pairs]
     pie.slices.fontName = font_name
@@ -1179,16 +1206,18 @@ def _weekly_topic_pie_drawing(topics: dict, font_name: str):
     drawing.add(pie)
 
     legend = Legend()
-    legend.x, legend.y = 210, 140
+    # legend.y 是圖例區塊的頂端，往下堆疊；加回半個區塊高度才會與餅圖垂直置中
+    legend.x = start_x + label_margin + pie_size + label_margin + gap
+    legend.y = pie_center_y + legend_height / 2
     legend.fontName = font_name
-    legend.fontSize = 9
+    legend.fontSize = legend_font
     legend.alignment = "right"
-    legend.columnMaximum = 6
-    legend.dxTextSpace = 5
-    legend.deltay = 15
+    legend.columnMaximum = len(pairs)
+    legend.dxTextSpace = text_space
+    legend.deltay = row_gap
     legend.colorNamePairs = [
-        (colors.HexColor(_TOPIC_CHART_COLORS[index % len(_TOPIC_CHART_COLORS)]), f"{name}　{value}%")
-        for index, (name, value) in enumerate(pairs)
+        (colors.HexColor(_TOPIC_CHART_COLORS[index % len(_TOPIC_CHART_COLORS)]), label)
+        for index, label in enumerate(legend_labels)
     ]
     drawing.add(legend)
     return drawing
@@ -1201,8 +1230,10 @@ def _build_weekly_report_pdf(
     baseline: dict,
     session: dict,
     block: dict,
+    strengths_body: str = "",
 ) -> bytes:
-    """產生只根據單週書寫、並與 T0 比較的繁中 PDF。"""
+    """產生只根據單週書寫、並與 T0 比較的繁中 PDF。
+    strengths_body 為「優勢與內在資源」段落（取自教練深度分析），有值才附在最後。"""
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_CENTER
     from reportlab.lib.pagesizes import A4
@@ -1210,7 +1241,7 @@ def _build_weekly_report_pdf(
     from reportlab.lib.units import mm
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
     font_name = "NotoSansTC"
     font_path = os.path.join(os.path.dirname(__file__), "assets", "fonts", "NotoSansTC-Regular.ttf")
@@ -1244,22 +1275,6 @@ def _build_weekly_report_pdf(
     )
 
     dims = session.get("dims") or {}
-    dim_labels = {"P": "正向情緒", "E": "投入", "R": "關係", "M": "意義", "A": "成就"}
-    rows = [["面向", "T0", f"第 {week_number} 週", "變化"]]
-    for key in _PERMA_KEYS:
-        t0 = _baseline_valence(baseline.get(key))
-        current = int((dims.get(key) or {}).get("v", 0))
-        rows.append([f"{key} {dim_labels[key]}", str(t0), str(current), f"{current - t0:+d}"])
-    comparison = Table(rows, colWidths=[58 * mm, 34 * mm, 34 * mm, 34 * mm])
-    comparison.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, -1), font_name),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E9EEF4")),
-        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CAD2DC")),
-        ("ALIGN", (1, 1), (-1, -1), "CENTER"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]))
 
     quote_style = ParagraphStyle(
         "WeeklyQuoteZH", parent=body, fontSize=12, leading=20, alignment=TA_CENTER,
@@ -1287,8 +1302,6 @@ def _build_weekly_report_pdf(
         Paragraph("內圈為 −100、中圈為 0（中性）、外圈為 +100。",
                   ParagraphStyle("WeeklyRadarNoteZH", parent=body, fontSize=8.5, leading=13,
                                  alignment=TA_CENTER, textColor=colors.HexColor("#6A7685"))),
-        Spacer(1, 2 * mm),
-        comparison,
         Spacer(1, 5 * mm),
     ]
 
@@ -1316,6 +1329,23 @@ def _build_weekly_report_pdf(
         else:
             story.append(Paragraph(html.escape(text), body))
 
+    # 優勢與內在資源（取自教練深度分析，跨全部週）；有內容才附上
+    if strengths_body.strip():
+        story.append(Spacer(1, 4 * mm))
+        story.append(Paragraph("優勢與內在資源", heading))
+        for raw_line in _plain_markdown(strengths_body).split("\n"):
+            line = raw_line.rstrip()
+            if not line.strip():
+                continue
+            indent = len(line) - len(line.lstrip())
+            text = line.strip()
+            if text.startswith("- ") and indent >= 2:
+                story.append(Paragraph("・" + html.escape(text[2:].strip()), sub_style))
+            elif text.startswith("- "):
+                story.append(Paragraph(html.escape(text[2:].strip()), dim_style))
+            else:
+                story.append(Paragraph(html.escape(text), body))
+
     story.extend([
         Spacer(1, 4 * mm),
         Paragraph(
@@ -1326,6 +1356,24 @@ def _build_weekly_report_pdf(
     ])
     doc.build(story)
     return out.getvalue()
+
+
+async def _fetch_strengths_body(member_id: str) -> str:
+    """取教練深度分析裡的「優勢與內在資源」內文，附在每週 PDF 最後。沒有就回空字串。"""
+    try:
+        resp = await db().get(
+            f"{SUPABASE_REST}/coach_analyses",
+            headers=SUPABASE_HEADERS,
+            params=[("member_id", f"eq.{member_id}"), ("select", "blocks"), ("limit", "1")],
+        )
+        rows = resp.json() if resp.status_code == 200 else []
+        blocks = (rows[0].get("blocks") if rows else None) or []
+        for blk in blocks:
+            if str(blk.get("title") or "").strip() in ("優勢與內在資源", "Strengths & Inner Resources"):
+                return str(blk.get("body") or "")
+    except Exception as exc:
+        logger.warning("fetch strengths failed [%s]: %s", type(exc).__name__, exc)
+    return ""
 
 
 def _weekly_email_subject(week_number: int) -> str:
@@ -1341,7 +1389,7 @@ def _weekly_email_html(member_name: str) -> str:
     <p>我們花了些時間讀完你這一週留下的紀錄，也從中看到了一些日常裡幸福感起伏的痕跡。</p>
     <p>我們也整理了這週幸福感的變化趨勢（見附件），供你參考。建議你自己重新翻閱時，可以帶著兩個問題去看：這一週最讓你有感的收穫是什麼？如果重來一次，有沒有哪個部分想試著調整？</p>
     <p>也提醒你，下週記得同步填寫 PERMA 的覺察練習，讓紀錄能更完整。</p>
-    <p>一切安好，<br>陳郁敏 教練</p>
+    <p>一切安好，<br>Yee Ming Tan 教練</p>
     """
 
 
@@ -1360,7 +1408,10 @@ async def _send_weekly_report(
     if not email:
         return {"status": "missing_email", "detail": "找不到會員 email"}
 
-    pdf_bytes = _build_weekly_report_pdf(name, week_number, week_start, baseline, session, block)
+    strengths_body = await _fetch_strengths_body(member_id)
+    pdf_bytes = _build_weekly_report_pdf(
+        name, week_number, week_start, baseline, session, block, strengths_body
+    )
     email_html = _weekly_email_html(name)
     payload: dict = {
         "from": REPORT_EMAIL_FROM,
@@ -1679,6 +1730,165 @@ async def coach_weekly_reports_generate(req: CoachMemberRequest, authorization: 
     return {"generated": len(results), "reports": results}
 
 
+_MONTHLY_MILESTONES = (4, 8)
+
+
+async def _completed_weeks_and_baseline(member_id: str) -> tuple[list[dict], dict]:
+    """取「五面向都填寫」的完整週（依週排序、同週取最後一筆）與 T0 基準；缺任一則丟 409。"""
+    posts = await _fetch_member_posts(member_id)
+    completed_all = [
+        post for post in posts
+        if all(str(post.get(f"{key.lower()}_content") or "").strip() for key in _PERMA_KEYS)
+    ]
+    by_week: dict[str, dict] = {}
+    for post in completed_all:
+        by_week[str(post.get("week_start") or "")] = post
+    completed = [by_week[key] for key in sorted(by_week)]
+    if not completed:
+        raise HTTPException(status_code=409, detail="這位成員還沒有『五面向都填寫』的完整週")
+
+    resp = await db().get(
+        f"{SUPABASE_REST}/coach_analyses",
+        headers=SUPABASE_HEADERS,
+        params=[("member_id", f"eq.{member_id}"), ("select", "*"), ("limit", "1")],
+    )
+    rows = resp.json() if resp.status_code == 200 else []
+    baseline = (rows[0].get("baseline") if rows else None)
+    if not isinstance(baseline, dict) or not all(key in baseline for key in _PERMA_KEYS):
+        raise HTTPException(status_code=409, detail="請先在成員頁最上方填寫完整 T0 基準點（五面向）")
+    return completed, baseline
+
+
+@app.post("/api/coach/monthly-reports/generate")
+async def coach_monthly_reports_generate(req: CoachMemberRequest, authorization: str = Header(...)):
+    """第 4 週與第 8 週各產生一份跨週回顧（第 4 週看 1–4 週、第 8 週看 1–8 週），
+    與 T0 基準比較，存進 perma_monthly_reports。僅教練端閱讀，不寄信。"""
+    token = authorization.removeprefix("Bearer ").strip()
+    coach_id = await require_coach(token)
+    member_id = req.member_id
+
+    completed, baseline = await _completed_weeks_and_baseline(member_id)
+
+    results = []
+    for milestone in _MONTHLY_MILESTONES:
+        if len(completed) < milestone:
+            results.append({"milestone_week": milestone, "status": "not_enough_weeks",
+                            "detail": f"目前只有 {len(completed)} 個完整週"})
+            continue
+        window = completed[:milestone]
+        try:
+            sessions, blocks = await _analyze_completed_posts(window, coach_id)
+        except Exception as exc:
+            logger.exception("monthly report failed member=%s milestone=%s", member_id, milestone)
+            results.append({"milestone_week": milestone, "status": "error", "detail": str(exc)[:180]})
+            continue
+        saved = {
+            "member_id": member_id,
+            "milestone_week": milestone,
+            "weeks_covered": len(window),
+            "week_start_from": str(window[0].get("week_start") or ""),
+            "week_start_to": str(window[-1].get("week_start") or ""),
+            "content": {
+                "v": 1,
+                "baseline": baseline,
+                "sessions": sessions,
+                "blocks": blocks,
+                "scope": f"weeks_1_to_{milestone}",
+            },
+            "updated_at": datetime.now(TW_TZ).isoformat(),
+        }
+        save_resp = await db().post(
+            f"{SUPABASE_REST}/perma_monthly_reports",
+            headers={**SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates,return=representation"},
+            json=saved,
+        )
+        if save_resp.status_code not in (200, 201):
+            results.append({"milestone_week": milestone, "status": "save_failed",
+                            "detail": save_resp.text[:180]})
+            continue
+        results.append({"milestone_week": milestone, "status": "ok", "weeks_covered": len(window)})
+    return {"reports": results}
+
+
+class CoachMonthlyFrameworkRequest(BaseModel):
+    member_id: str
+    milestone_week: int
+    framework: dict
+    language: str = "zh-TW"
+
+
+@app.post("/api/coach/monthly-reports/analyze-framework")
+async def coach_monthly_analyze_framework(
+    req: CoachMonthlyFrameworkRequest, authorization: str = Header(...)
+):
+    """用教練自訂的 AI 框架，只針對該里程碑涵蓋的週次做分析，並把新區塊追加進該份月報告。"""
+    token = authorization.removeprefix("Bearer ").strip()
+    coach_id = await require_coach(token)
+
+    fw = req.framework or {}
+    if not isinstance(fw.get("dimensions"), list) or not fw["dimensions"]:
+        raise HTTPException(status_code=400, detail="框架不完整，請至少保留一個維度")
+    if req.milestone_week not in _MONTHLY_MILESTONES:
+        raise HTTPException(status_code=400, detail="只支援第 4 週與第 8 週的月報告")
+
+    resp = await db().get(
+        f"{SUPABASE_REST}/perma_monthly_reports",
+        headers=SUPABASE_HEADERS,
+        params=[
+            ("member_id", f"eq.{req.member_id}"),
+            ("milestone_week", f"eq.{req.milestone_week}"),
+            ("select", "*"),
+            ("limit", "1"),
+        ],
+    )
+    rows = resp.json() if resp.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=409, detail="請先生成這份月報告")
+    row = rows[0]
+    content = row.get("content") if isinstance(row.get("content"), dict) else {}
+
+    completed, _ = await _completed_weeks_and_baseline(req.member_id)
+    window = completed[: req.milestone_week]
+    if not window:
+        raise HTTPException(status_code=409, detail="找不到這段期間的完整週")
+
+    msg = await claude().messages.create(
+        model=_COACH_ANALYSIS_MODEL,
+        max_tokens=3000,
+        thinking={"type": "disabled"},
+        system=_framework_block_system(fw, len(window), "zh-TW"),
+        messages=[{"role": "user", "content": f"成員資料：\n\n{_posts_dump(window)}"}],
+    )
+    meter_claude("coach-monthly-analyze-framework", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)
+
+    match = re.search(r"\{.*\}", _msg_text(msg), re.DOTALL)
+    if not match:
+        raise HTTPException(status_code=502, detail="框架分析失敗，請重新生成")
+    try:
+        parsed = json.loads(match.group())
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=502, detail="框架分析失敗，請重新生成")
+
+    title = str(parsed.get("title") or fw.get("name") or "自訂框架").strip()
+    body = str(parsed.get("body") or "").strip()
+    if not body:
+        raise HTTPException(status_code=502, detail="框架分析失敗，請重新生成")
+
+    blocks = list(content.get("blocks") or []) + [
+        {"title": title, "body": body, "include": False, "custom": True}
+    ]
+    new_content = {**content, "blocks": blocks}
+    update_resp = await db().patch(
+        f"{SUPABASE_REST}/perma_monthly_reports",
+        headers={**SUPABASE_HEADERS, "Prefer": "return=representation"},
+        params=[("member_id", f"eq.{req.member_id}"), ("milestone_week", f"eq.{req.milestone_week}")],
+        json={"content": new_content, "updated_at": datetime.now(TW_TZ).isoformat()},
+    )
+    if update_resp.status_code in (200, 201) and update_resp.json():
+        return update_resp.json()[0]
+    return {**row, "content": new_content}
+
+
 class CoachWeeklyPreviewRequest(BaseModel):
     member_id: str
     week_start: str
@@ -1715,7 +1925,10 @@ async def coach_weekly_report_preview(req: CoachWeeklyPreviewRequest, authorizat
 
     week_number = int(row.get("week_number") or 0)
     name, email = await _member_identity(req.member_id)
-    pdf_bytes = _build_weekly_report_pdf(name, week_number, req.week_start, baseline, session, block)
+    strengths_body = await _fetch_strengths_body(req.member_id)
+    pdf_bytes = _build_weekly_report_pdf(
+        name, week_number, req.week_start, baseline, session, block, strengths_body
+    )
     return {
         "week_number": week_number,
         "week_start": req.week_start,
@@ -2034,14 +2247,21 @@ async def coach_translate(req: CoachTranslateRequest, authorization: str = Heade
         return analysis
 
     source = {"blocks": analysis.get("blocks") or [], "sessions": analysis.get("sessions") or []}
-    msg = await claude().messages.create(
+    # 區塊多、內文長時輸出可達上萬 token；上限太低會把 JSON 截斷導致解析失敗，
+    # 而高 max_tokens 的長請求 SDK 要求必須用串流。
+    async with claude().messages.stream(
         model=_COACH_ANALYSIS_MODEL,
-        max_tokens=8000,
+        max_tokens=32000,
         thinking={"type": "disabled"},
         system=_translate_system(req.target),
         messages=[{"role": "user", "content": json.dumps(source, ensure_ascii=False)}],
-    )
+    ) as stream:
+        msg = await stream.get_final_message()
     meter_claude("coach-translate", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)
+
+    if getattr(msg, "stop_reason", None) == "max_tokens":
+        logger.warning("coach_translate truncated by max_tokens (member=%s)", req.member_id)
+        raise HTTPException(status_code=502, detail="分析內容過長，翻譯被截斷；請減少區塊數量後再試")
 
     try:
         match = re.search(r"\{.*\}", _msg_text(msg), re.DOTALL)

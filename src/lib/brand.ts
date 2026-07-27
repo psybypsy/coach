@@ -5,7 +5,7 @@ export const BRAND = {
   name: 'Ipsen Taiwan',
   tagline: '職場幸福感書寫', // 英文由 i18n dict 對應
   coachEn: 'Tan Yee Ming Coach',
-  coachZh: '陳郁敏 教練',
+  coachZh: 'Yee Ming Tan 教練',
 } as const
 
 // 依語言回傳教練署名。

@@ -42,6 +42,7 @@ interface BriefBlock {
   title: string
   body: string
   include: boolean
+  custom?: boolean // 由教練自訂 AI 框架生成的區塊
 }
 
 // T0 基準點：教練手填的五面向幸福感分數（0–10），作為所有圖表的起點（見遷移 005）
@@ -78,6 +79,36 @@ interface WeeklyPermaReport {
   report_email_recipient?: string | null
 }
 
+// 月報告（里程碑）：第 4 週看 1–4 週、第 8 週看 1–8 週；僅教練端閱讀
+interface MonthlyPermaReport {
+  member_id: string
+  milestone_week: number
+  weeks_covered: number
+  week_start_from: string | null
+  week_start_to: string | null
+  content: {
+    baseline: BaselineScores
+    sessions: SessionScore[]
+    blocks: BriefBlock[]
+    scope: string
+  }
+}
+
+interface FwDimension {
+  name: string
+  look_for: string
+  evidence_rule: string
+}
+
+interface Framework {
+  name: string
+  basis: string
+  lens: string
+  dimensions: FwDimension[]
+  references: string[]
+  note: string
+}
+
 // 客戶端預覽：後端回傳「實際會寄出」的信件內文與 PDF（與寄送共用同一組產生函式）
 interface WeeklyReportPreview {
   week_number: number
@@ -110,9 +141,13 @@ function makeBaselineSession(b: BaselineScores | null | undefined): SessionScore
 const ALLOWED_BLOCK_TITLES = new Set([
   'perma five-dimension profile',
   'perma 五面向剖析',
+  'strengths & inner resources',
+  '優勢與內在資源',
 ])
 
 function isAllowedBlock(block: BriefBlock): boolean {
+  // custom=true 是教練用自訂框架生成的區塊，標題不固定，不受白名單限制
+  if (block.custom) return true
   return ALLOWED_BLOCK_TITLES.has(String(block.title || '').trim().toLowerCase())
 }
 
@@ -122,8 +157,17 @@ function isLegacyClientText(text: string | null | undefined): boolean {
   )
 }
 
-function blockTitleForLanguage(_block: BriefBlock, language: 'en' | 'zh-TW'): string {
-  return language === 'zh-TW' ? 'PERMA 五面向剖析' : 'PERMA Five-Dimension Profile'
+// 兩個標準區塊依介面語言顯示 canonical 標題；自訂框架區塊沿用 AI 生成的原標題
+const CANONICAL_BLOCK_TITLES: Record<string, { 'zh-TW': string; en: string }> = {
+  'perma five-dimension profile': { 'zh-TW': 'PERMA 五面向剖析', en: 'PERMA Five-Dimension Profile' },
+  'perma 五面向剖析': { 'zh-TW': 'PERMA 五面向剖析', en: 'PERMA Five-Dimension Profile' },
+  'strengths & inner resources': { 'zh-TW': '優勢與內在資源', en: 'Strengths & Inner Resources' },
+  '優勢與內在資源': { 'zh-TW': '優勢與內在資源', en: 'Strengths & Inner Resources' },
+}
+
+function blockTitleForLanguage(block: BriefBlock, language: 'en' | 'zh-TW'): string {
+  const raw = String(block.title || '').trim()
+  return CANONICAL_BLOCK_TITLES[raw.toLowerCase()]?.[language] ?? raw
 }
 
 const CHART_DEFS: { key: string; title: string }[] = [
@@ -219,6 +263,136 @@ function ReportNav({ items, active }: { items: NavItem[]; active: string }) {
   )
 }
 
+// AI 自訂分析框架面板：教練描述想分析什麼 → AI 依文獻生成可編輯框架 → 追加成新的分析區塊。
+// 教練情報簡報與各里程碑月報告共用同一個元件，避免兩處實作走鐘。
+function FrameworkPanel({
+  fwKey,
+  desc,
+  draft,
+  busy,
+  intro,
+  onDescChange,
+  onGenerate,
+  onPatch,
+  onRun,
+  onCancel,
+  t,
+}: {
+  fwKey: string
+  desc: string
+  draft: Framework | null
+  busy: string | null
+  intro: string
+  onDescChange: (value: string) => void
+  onGenerate: () => void
+  onPatch: (patch: Partial<Framework>) => void
+  onRun: () => void
+  onCancel: () => void
+  t: (key: string) => string
+}) {
+  return (
+    <>
+      <div className="cv-fw-intro">
+        <div className="cv-fw-hd">{t('用 AI 框架增加新的分析內容')}</div>
+        <p className="mb-2 text-xs text-muted-foreground">{intro}</p>
+        <textarea
+          className="cv-fw-in"
+          rows={2}
+          value={desc}
+          onChange={(e) => onDescChange(e.target.value)}
+          placeholder={t('例如：面對轉變時的能動性／情緒調節方式／自我批評 vs 自我疼惜')}
+        />
+        <button
+          onClick={onGenerate}
+          disabled={busy !== null}
+          className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground-soft disabled:opacity-50"
+        >
+          {busy === `gen-${fwKey}` ? t('生成中…') : t('AI 生成分析框架')}
+        </button>
+      </div>
+
+      {draft && (
+        <div className="cv-fw">
+          <div className="cv-fw-hd">{t('生成的分析框架（可編輯）')}</div>
+          <label className="cv-fw-lab">{t('框架名稱')}</label>
+          <input className="cv-fw-in" value={draft.name} onChange={(e) => onPatch({ name: e.target.value })} />
+          <label className="cv-fw-lab">{t('理論依據 / 出處')}</label>
+          <input className="cv-fw-in" value={draft.basis} onChange={(e) => onPatch({ basis: e.target.value })} />
+          <label className="cv-fw-lab">{t('分析視角')}</label>
+          <input className="cv-fw-in" value={draft.lens} onChange={(e) => onPatch({ lens: e.target.value })} />
+          <label className="cv-fw-lab">{t('分析維度')}</label>
+          {draft.dimensions.map((d, di) => (
+            <div key={di} className="cv-fw-dim">
+              <button
+                className="cv-fw-del"
+                title={t('移除維度')}
+                onClick={() => onPatch({ dimensions: draft.dimensions.filter((_, x) => x !== di) })}
+              >
+                ×
+              </button>
+              {(['name', 'look_for', 'evidence_rule'] as const).map((field) => (
+                <input
+                  key={field}
+                  className="cv-fw-in"
+                  value={d[field]}
+                  placeholder={t(
+                    field === 'name'
+                      ? '維度名'
+                      : field === 'look_for'
+                        ? '要留意的語言／行為線索'
+                        : '證據規則（引用原話）',
+                  )}
+                  onChange={(e) =>
+                    onPatch({
+                      dimensions: draft.dimensions.map((x, xi) =>
+                        xi === di ? { ...x, [field]: e.target.value } : x,
+                      ),
+                    })
+                  }
+                />
+              ))}
+            </div>
+          ))}
+          <button
+            className="cv-fw-add"
+            onClick={() =>
+              onPatch({ dimensions: [...draft.dimensions, { name: '', look_for: '', evidence_rule: '' }] })
+            }
+          >
+            ＋ {t('新增維度')}
+          </button>
+          {draft.references?.length > 0 && (
+            <div className="cv-fw-refs">
+              {t('參考文獻')}
+              <ul>
+                {draft.references.map((r, ri) => (
+                  <li key={ri}>{r}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {draft.note && <div className="cv-fw-note">{draft.note}</div>}
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={onRun}
+              disabled={busy !== null}
+              className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+            >
+              {busy === `run-${fwKey}` ? t('分析中…') : t('用這個框架分析')}
+            </button>
+            <button
+              onClick={onCancel}
+              className="rounded-lg border border-border px-4 py-2 text-xs text-foreground-soft"
+            >
+              {t('取消')}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 // #6 可收合的 section 標題（點整行展開／收合，帶旋轉三角）
 function SectionHeading({
   open,
@@ -279,6 +453,14 @@ function MemberDetailPage() {
   const [openBlocks, setOpenBlocks] = useState<number[]>([])
   const [openWeeklyReports, setOpenWeeklyReports] = useState<number[]>([])
   const [weeklyBusy, setWeeklyBusy] = useState(false)
+  // 月報告（第 4／第 8 週）與其 AI 自訂框架
+  const [monthlyReports, setMonthlyReports] = useState<MonthlyPermaReport[]>([])
+  const [monthlyBusy, setMonthlyBusy] = useState(false)
+  const [openMonthly, setOpenMonthly] = useState<number[]>([])
+  // key 用字串：'brief' 為教練情報簡報（隨時可用），數字字串為各里程碑月報告
+  const [fwDesc, setFwDesc] = useState<Record<string, string>>({})
+  const [fwDraft, setFwDraft] = useState<Record<string, Framework | null>>({})
+  const [fwBusy, setFwBusy] = useState<string | null>(null)
   // 客戶視角預覽：客戶實際收到的信件內文＋PDF 附件（由後端用寄送同一套函式重建）
   const [preview, setPreview] = useState<WeeklyReportPreview | null>(null)
   const [previewBusy, setPreviewBusy] = useState<string | null>(null)
@@ -346,13 +528,17 @@ function MemberDetailPage() {
       { id: 'sec-baseline', label: t('T0 基準點') },
       { id: 'sec-deep', label: t('教練深度分析') },
     ]
+    // 順序必須與頁面上區塊實際出現的先後一致，否則 scrollspy 高亮會跳來跳去
     if (hasDeepAnalysis) {
       items.push({ id: 'sec-charts', label: t('圖表'), indent: true })
       items.push({ id: 'sec-blocks', label: t('教練情報簡報'), indent: true })
-      items.push({ id: 'sec-client', label: t('客戶交付版') })
     }
     if (posts.length > 0) {
       items.push({ id: 'sec-weekly-reports', label: t('每週 PERMA 報告') })
+      items.push({ id: 'sec-monthly-reports', label: t('每月 PERMA 報告') })
+    }
+    if (hasDeepAnalysis) {
+      items.push({ id: 'sec-client', label: t('客戶交付版') })
     }
     items.push({ id: 'sec-timeline', label: t('書寫時間軸') })
     return items
@@ -397,6 +583,7 @@ function MemberDetailPage() {
       { data: postRows },
       { data: analysisRow },
       { data: weeklyReportRows },
+      { data: monthlyReportRows },
     ] =
       await Promise.all([
         supabase.from('profiles').select('display_name').eq('id', id).single(),
@@ -416,6 +603,11 @@ function MemberDetailPage() {
           .select('*')
           .eq('member_id', id)
           .order('week_number', { ascending: true }),
+        supabase
+          .from('perma_monthly_reports')
+          .select('*')
+          .eq('member_id', id)
+          .order('milestone_week', { ascending: true }),
       ])
     setName(profile?.display_name ?? '')
     setEntries((entryRows as unknown as EntryRow[]) ?? [])
@@ -423,6 +615,7 @@ function MemberDetailPage() {
     const row = (analysisRow as unknown as CoachAnalysis) ?? null
     setAnalysis(row)
     setWeeklyReports((weeklyReportRows as unknown as WeeklyPermaReport[]) ?? [])
+    setMonthlyReports((monthlyReportRows as unknown as MonthlyPermaReport[]) ?? [])
     const b = row?.baseline
     setBaselineDraft(
       b ? (Object.fromEntries(KEYS.map((k) => [k, String(b[k] ?? '')])) as Record<DimKey, string>) : emptyBaselineDraft,
@@ -485,6 +678,138 @@ function MemberDetailPage() {
     } finally {
       setWeeklyBusy(false)
     }
+  }
+
+  async function reloadMonthlyReports() {
+    const { data } = await supabase
+      .from('perma_monthly_reports')
+      .select('*')
+      .eq('member_id', id)
+      .order('milestone_week', { ascending: true })
+    setMonthlyReports((data as unknown as MonthlyPermaReport[]) ?? [])
+  }
+
+  // 生成第 4 週（1–4 週）與第 8 週（1–8 週）的跨週回顧，僅教練端閱讀
+  async function generateMonthlyReports() {
+    if (!baseline) {
+      setMessage(t('請先在最上方填寫並儲存 T0 基準點'))
+      return
+    }
+    setMonthlyBusy(true)
+    setMessage(null)
+    try {
+      const resp = await authFetch('/api/coach/monthly-reports/generate', { member_id: id })
+      if (resp.ok) {
+        const data = (await resp.json()) as { reports?: { status?: string; detail?: string }[] }
+        await reloadMonthlyReports()
+        const ok = (data.reports ?? []).filter((r) => r.status === 'ok').length
+        const skipped = (data.reports ?? []).find((r) => r.status === 'not_enough_weeks')
+        setMessage(`${t('已生成月報告')} ${ok}${skipped ? `　（${skipped.detail}）` : ''}`)
+      } else {
+        const body = (await resp.json().catch(() => ({}))) as { detail?: string }
+        setMessage(body.detail || t('生成失敗，請再試一次。'))
+      }
+    } catch {
+      setMessage(t('生成失敗，請再試一次。'))
+    } finally {
+      setMonthlyBusy(false)
+    }
+  }
+
+  // 教練用自然語言描述 → AI 上網找對應實證理論 → 回傳可編輯的結構化框架
+  async function generateFramework(key: string) {
+    const desc = (fwDesc[key] || '').trim()
+    if (desc.length < 4) {
+      setMessage(t('請先描述你想分析什麼'))
+      return
+    }
+    setFwBusy(`gen-${key}`)
+    setMessage(null)
+    try {
+      const resp = await authFetch('/api/coach/framework/generate', { description: desc, language: 'zh-TW' })
+      if (resp.ok) {
+        const fw = (await resp.json()) as Framework
+        setFwDraft((p) => ({ ...p, [key]: fw }))
+      } else {
+        const body = (await resp.json().catch(() => ({}))) as { detail?: string }
+        setMessage(body.detail || t('生成失敗，請再試一次。'))
+      }
+    } catch {
+      setMessage(t('生成失敗，請再試一次。'))
+    } finally {
+      setFwBusy(null)
+    }
+  }
+
+  // 用（教練確認過的）框架分析全部週記，把新區塊追加進教練情報簡報——不必等到里程碑，隨時可用
+  async function runBriefFramework() {
+    const fw = fwDraft.brief
+    if (!fw || !fw.dimensions?.length) {
+      setMessage(t('框架不完整，請至少保留一個維度'))
+      return
+    }
+    setFwBusy('run-brief')
+    setMessage(null)
+    try {
+      const resp = await authFetch('/api/coach/analyze-framework', {
+        member_id: id,
+        framework: fw,
+        language: 'zh-TW',
+      })
+      if (resp.ok) {
+        setAnalysis((await resp.json()) as CoachAnalysis)
+        setFwDraft((p) => ({ ...p, brief: null }))
+        setFwDesc((p) => ({ ...p, brief: '' }))
+        setMessage(t('已加入新的分析內容'))
+      } else {
+        const body = (await resp.json().catch(() => ({}))) as { detail?: string }
+        setMessage(body.detail || t('生成失敗，請再試一次。'))
+      }
+    } catch {
+      setMessage(t('生成失敗，請再試一次。'))
+    } finally {
+      setFwBusy(null)
+    }
+  }
+
+  // 用（教練確認過的）框架分析該里程碑涵蓋的週次，並把新區塊追加進月報告
+  async function runMonthlyFramework(milestone: number) {
+    const fw = fwDraft[String(milestone)]
+    if (!fw || !fw.dimensions?.length) {
+      setMessage(t('框架不完整，請至少保留一個維度'))
+      return
+    }
+    setFwBusy(`run-${milestone}`)
+    setMessage(null)
+    try {
+      const resp = await authFetch('/api/coach/monthly-reports/analyze-framework', {
+        member_id: id,
+        milestone_week: milestone,
+        framework: fw,
+        language: 'zh-TW',
+      })
+      if (resp.ok) {
+        await reloadMonthlyReports()
+        setFwDraft((p) => ({ ...p, [String(milestone)]: null }))
+        setFwDesc((p) => ({ ...p, [String(milestone)]: '' }))
+        setOpenMonthly((p) => (p.includes(milestone) ? p : [...p, milestone]))
+        setMessage(t('已加入新的分析內容'))
+      } else {
+        const body = (await resp.json().catch(() => ({}))) as { detail?: string }
+        setMessage(body.detail || t('生成失敗，請再試一次。'))
+      }
+    } catch {
+      setMessage(t('生成失敗，請再試一次。'))
+    } finally {
+      setFwBusy(null)
+    }
+  }
+
+  function patchFw(key: string, patch: Partial<Framework>) {
+    setFwDraft((p) => {
+      const cur = p[key]
+      return cur ? { ...p, [key]: { ...cur, ...patch } } : p
+    })
   }
 
   // 預覽某一週「客戶實際收到」的信件與 PDF：後端讀已存的分析重建，不重跑 AI、不寄信
@@ -882,7 +1207,7 @@ function MemberDetailPage() {
             ...chartParagraphs,
             new Paragraph({
               spacing: { before: 400 },
-              children: [new TextRun({ text: t('教練　陳郁敏'), size: 22, color: '54606E' })],
+              children: [new TextRun({ text: t('教練　Yee Ming Tan'), size: 22, color: '54606E' })],
             }),
           ],
         },
@@ -1125,6 +1450,11 @@ function MemberDetailPage() {
         : undefined
   const viewBlocks = briefTr?.blocks ?? analysis?.blocks ?? []
   const hasCurrentClientText = !!analysis?.client_text && !isLegacyClientText(analysis.client_text)
+  // 「優勢與內在資源」區塊（跨全部週的綜合分析），顯示語言版供每週報告頂部概覽引用。
+  const strengthsIndex = (analysis?.blocks ?? []).findIndex((b) =>
+    ['優勢與內在資源', 'Strengths & Inner Resources'].includes(String(b.title || '').trim()),
+  )
+  const strengthsView = strengthsIndex >= 0 ? viewBlocks[strengthsIndex] ?? analysis?.blocks[strengthsIndex] : null
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-8">
@@ -1345,6 +1675,21 @@ function MemberDetailPage() {
                   </div>
                   )
                 })}
+
+                {/* AI 自訂框架：隨時可用，不必等到里程碑；生成的區塊會追加進上面的情報簡報 */}
+                <FrameworkPanel
+                  fwKey="brief"
+                  desc={fwDesc.brief ?? ''}
+                  draft={fwDraft.brief ?? null}
+                  busy={fwBusy}
+                  intro={t('用自己的話描述想分析什麼，AI 會依心理學文獻生成有理論依據的框架；你可以編輯後套用到這位成員的全部週記。')}
+                  onDescChange={(v) => setFwDesc((p) => ({ ...p, brief: v }))}
+                  onGenerate={() => generateFramework('brief')}
+                  onPatch={(patch) => patchFw('brief', patch)}
+                  onRun={runBriefFramework}
+                  onCancel={() => setFwDraft((p) => ({ ...p, brief: null }))}
+                  t={t}
+                />
               </>
             )}
             </>
@@ -1481,6 +1826,15 @@ function MemberDetailPage() {
                             )
                           })()}
                           <div className="cv-md" dangerouslySetInnerHTML={{ __html: mdToHtml(block.body) }} />
+                          {/* 優勢與內在資源（跨全部週的綜合分析）：每份週報告都附上，作為教練會談的優勢視角 */}
+                          {strengthsView && (
+                            <>
+                              <div className="cv-slbl" style={{ marginTop: 16 }}>
+                                <span>{t('優勢與內在資源')}</span>
+                              </div>
+                              <div className="cv-md" dangerouslySetInnerHTML={{ __html: mdToHtml(strengthsView.body) }} />
+                            </>
+                          )}
                           {/* 上面的圖表是教練專用視角；客戶收到的信只有文字＋PDF 附件，用這顆按鈕看實際內容 */}
                           <div className="cv-block-actions">
                             <span className="text-[11px] text-muted-foreground">
@@ -1497,6 +1851,156 @@ function MemberDetailPage() {
                                 : t('預覽客戶收到的信與 PDF')}
                             </button>
                           </div>
+                        </div>
+                      )}
+                    </article>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* ── 月報告（第 4／第 8 週）：跨週回顧＋可用 AI 框架追加內容 ── */}
+          {posts.length > 0 && (
+            <section className="mb-8" id="sec-monthly-reports">
+              <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('每月 PERMA 報告')}</h2>
+              <p className="mb-3 text-xs text-muted-foreground">
+                {t('第 4 週回顧第 1–4 週、第 8 週回顧第 1–8 週，並與 T0 基準比較；僅教練可見。')}
+              </p>
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                <button
+                  onClick={generateMonthlyReports}
+                  disabled={monthlyBusy || !baseline}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                >
+                  {monthlyBusy
+                    ? t('生成中…')
+                    : monthlyReports.length > 0
+                      ? t('重新生成月報告')
+                      : t('生成月報告')}
+                </button>
+                {!baseline && <span className="text-xs text-muted-foreground">{t('需先設定並儲存 T0 基準點')}</span>}
+              </div>
+              {monthlyReports.length === 0 && (
+                <p className="mb-3 text-sm text-muted-foreground">
+                  {t('目前還沒有月報告。完成 4 週或 8 週後，按上方按鈕即可生成。')}
+                </p>
+              )}
+              <div className="flex flex-col gap-3">
+                {monthlyReports.map((report) => {
+                  const m = report.milestone_week
+                  const open = openMonthly.includes(m)
+                  const sessions = report.content?.sessions ?? []
+                  const blocks = report.content?.blocks ?? []
+                  const rb = report.content?.baseline
+                  const draft = fwDraft[m] ?? null
+                  return (
+                    <article key={m} className="cv-block">
+                      <button
+                        type="button"
+                        className="cv-block-hd w-full text-left"
+                        onClick={() =>
+                          setOpenMonthly((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]))
+                        }
+                      >
+                        <span className="cv-caret" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>
+                          ▶
+                        </span>
+                        <span className="cv-block-title">
+                          {language === 'zh-TW' ? `第 ${m} 週月報告` : `Month report · week ${m}`}
+                          {report.week_start_from ? ` · ${report.week_start_from} → ${report.week_start_to}` : ''}
+                        </span>
+                        <span className="cv-block-tag">
+                          {language === 'zh-TW'
+                            ? `第 1–${m} 週`
+                            : `weeks 1–${m}`}
+                        </span>
+                      </button>
+                      {open && (
+                        <div className="cv-block-body">
+                          {sessions.length > 0 && rb && (() => {
+                            const t0Dims = Object.fromEntries(
+                              KEYS.map((k) => [k, baselineToValence(rb[k])]),
+                            ) as Record<DimKey, number>
+                            const lastDims = Object.fromEntries(
+                              KEYS.map((k) => [k, sessions[sessions.length - 1]?.dims?.[k]?.v ?? 0]),
+                            ) as Record<DimKey, number>
+                            const xLabels = ['T0', ...sessions.map((_, i) => String(i + 1))]
+                            return (
+                              <>
+                                <div className="cv-slbl">
+                                  <span>{t('五面向 valence 趨勢')}</span>
+                                </div>
+                                <div className="cv-legend">
+                                  {KEYS.map((k) => (
+                                    <span key={k}>
+                                      <i style={{ background: DIMCOLOR[k] }} />
+                                      {k} · {DIM[k]}
+                                    </span>
+                                  ))}
+                                </div>
+                                <div
+                                  className="cv-chart-wrap mb-3"
+                                  dangerouslySetInnerHTML={{
+                                    __html: valLine(
+                                      KEYS.map((k) => ({
+                                        values: [t0Dims[k], ...sessions.map((s) => s.dims?.[k]?.v ?? 0)],
+                                        color: DIMCOLOR[k],
+                                        width: 2,
+                                      })),
+                                      sessions.length + 1,
+                                      xLabels,
+                                    ),
+                                  }}
+                                />
+                                <div className="cv-slbl">
+                                  <span>{t('五面向 valence 剖面')}</span>
+                                </div>
+                                <div
+                                  className="cv-chart-wrap mb-1"
+                                  style={{ display: 'flex', justifyContent: 'center' }}
+                                  dangerouslySetInnerHTML={{ __html: valRadar(t0Dims, lastDims) }}
+                                />
+                                <div className="cv-legend mb-3" style={{ justifyContent: 'center' }}>
+                                  <span>
+                                    <i style={{ background: '#8993A1' }} />
+                                    {t('T0 基準（虛線）')}
+                                  </span>
+                                  <span>
+                                    <i style={{ background: '#1F3A5C' }} />
+                                    {t('最新一次')}
+                                  </span>
+                                </div>
+                              </>
+                            )
+                          })()}
+
+                          {blocks.map((b, bi) => (
+                            <div key={bi} className="mb-3">
+                              <div className="cv-slbl">
+                                <span>
+                                  {b.title}
+                                  {b.custom ? `　（${t('AI 框架')}）` : ''}
+                                </span>
+                              </div>
+                              <div className="cv-md" dangerouslySetInnerHTML={{ __html: mdToHtml(b.body) }} />
+                            </div>
+                          ))}
+
+                          {/* AI 框架：教練描述想分析什麼 → 生成框架 → 追加成新的分析內容 */}
+                          <FrameworkPanel
+                            fwKey={String(m)}
+                            desc={fwDesc[String(m)] ?? ''}
+                            draft={draft}
+                            busy={fwBusy}
+                            intro={t('用自己的話描述想分析什麼，AI 會依心理學文獻生成有理論依據的框架；你可以編輯後套用到這段期間。')}
+                            onDescChange={(v) => setFwDesc((p) => ({ ...p, [String(m)]: v }))}
+                            onGenerate={() => generateFramework(String(m))}
+                            onPatch={(patch) => patchFw(String(m), patch)}
+                            onRun={() => runMonthlyFramework(m)}
+                            onCancel={() => setFwDraft((p) => ({ ...p, [String(m)]: null }))}
+                            t={t}
+                          />
                         </div>
                       )}
                     </article>
@@ -1612,7 +2116,7 @@ function MemberDetailPage() {
                       ))}
                     </div>
                   )}
-                  <div className="cv-doc-sign">{t('教練　陳郁敏')}</div>
+                  <div className="cv-doc-sign">{t('教練　Yee Ming Tan')}</div>
                 </div>
               )}
               </>

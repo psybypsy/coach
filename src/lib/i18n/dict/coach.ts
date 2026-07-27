@@ -89,7 +89,7 @@ export const coach: Record<string, Translation> = {
   '列印 / 匯出 PDF': { en: 'Print / Export PDF' },
   '個人福祉回顧': { en: 'Personal Well-being Review' },
   '情緒歷程一覽': { en: 'Emotional journey at a glance' },
-  '教練　陳郁敏': { en: 'Coach · Tan Yee Ming' },
+  '教練　Yee Ming Tan': { en: 'Coach · Yee Ming Tan' },
 
   // 內文語言切換
   '內文語言': { en: 'Text language' },
@@ -205,6 +205,26 @@ export const coach: Record<string, Translation> = {
   '本週情緒詞雲': { en: 'This week’s emotion word cloud' },
   '這週沒有可用的主題資料。': { en: 'No topic data available for this week.' },
   '與 T0 的逐面向變化': { en: 'Change from T0 by dimension' },
+
+  // 每月（里程碑）報告
+  '每月 PERMA 報告': { en: 'Monthly PERMA Reports' },
+  '第 4 週回顧第 1–4 週、第 8 週回顧第 1–8 週，並與 T0 基準比較；僅教練可見。': {
+    en: 'The week-4 report reviews weeks 1–4 and the week-8 report reviews weeks 1–8, both compared with the T0 baseline. Coach-only.',
+  },
+  '生成月報告': { en: 'Generate monthly reports' },
+  '重新生成月報告': { en: 'Regenerate monthly reports' },
+  '目前還沒有月報告。完成 4 週或 8 週後，按上方按鈕即可生成。': {
+    en: 'No monthly reports yet. Once 4 or 8 weeks are complete, use the button above to generate them.',
+  },
+  '已生成月報告': { en: 'Monthly reports generated:' },
+  '用 AI 框架增加新的分析內容': { en: 'Add new analysis with an AI framework' },
+  '用自己的話描述想分析什麼，AI 會依心理學文獻生成有理論依據的框架；你可以編輯後套用到這段期間。': {
+    en: 'Describe in your own words what you want to analyze. AI generates a theory-grounded framework from the psychology literature; edit it, then apply it to this period.',
+  },
+  '例如：面對轉變時的能動性／情緒調節方式／自我批評 vs 自我疼惜': {
+    en: 'e.g. agency through change / how they regulate emotion / self-criticism vs self-compassion',
+  },
+  '已加入新的分析內容': { en: 'New analysis added' },
   '直接編輯客戶版文字（Markdown：## 標題、** 粗體、- 條列），儲存後即更新交付文件。': {
     en: 'Edit the client version text directly (Markdown: ## headings, ** bold **, - bullets). Saving updates the deliverable.',
   },
