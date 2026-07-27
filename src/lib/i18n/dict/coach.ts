@@ -56,6 +56,20 @@ export const coach: Record<string, Translation> = {
   },
   '已寄送': { en: 'Emailed' },
   '等待寄送': { en: 'Awaiting email' },
+  // 客戶視角預覽（每週報告）
+  '預覽客戶收到的信與 PDF': { en: 'Preview what the client receives' },
+  '上方圖表僅教練可見，客戶收到的是下列信件與 PDF。': {
+    en: 'The charts above are coach-only; the client receives the email and PDF below.',
+  },
+  '客戶收到的內容': { en: 'What the client receives' },
+  '收件者': { en: 'To' },
+  '主旨': { en: 'Subject' },
+  '附件': { en: 'Attachment' },
+  '這一週尚未實際寄出，以下為將寄出的內容。': {
+    en: 'This week has not been emailed yet — this is what will be sent.',
+  },
+  'PDF 附件': { en: 'PDF attachment' },
+  '預覽失敗，請再試一次。': { en: 'Preview failed. Please try again.' },
   '面向': { en: 'Dimension' },
   'T0 基準': { en: 'T0 baseline' },
   '本週': { en: 'This week' },
@@ -176,6 +190,21 @@ export const coach: Record<string, Translation> = {
   '整體（自動平均）：': { en: 'Overall (auto average): ' },
   '五個面向都填 0–10 才會套用到圖表。': { en: 'Fill all five dimensions (0–10) to apply to the charts.' },
   'T0 基準（虛線）': { en: 'T0 baseline (dashed)' },
+
+  // 每週報告：教練手動生成
+  '生成每週報告': { en: 'Generate weekly reports' },
+  '重新生成每週報告': { en: 'Regenerate weekly reports' },
+  '需先設定並儲存 T0 基準點': { en: 'Set and save the T0 baseline first' },
+  '請先在最上方填寫並儲存 T0 基準點': { en: 'Fill in and save the T0 baseline at the top first' },
+  '目前還沒有每週報告。按上方按鈕，即可為每個「五面向都填寫」的完整週各生成一份。': {
+    en: 'No weekly reports yet. Use the button above to generate one for each fully completed week (all five dimensions filled).',
+  },
+  '已生成每週報告': { en: 'Weekly reports generated:' },
+  '生成失敗，請再試一次。': { en: 'Generation failed, please try again.' },
+  '本週主題占比': { en: 'This week’s topic share' },
+  '本週情緒詞雲': { en: 'This week’s emotion word cloud' },
+  '這週沒有可用的主題資料。': { en: 'No topic data available for this week.' },
+  '與 T0 的逐面向變化': { en: 'Change from T0 by dimension' },
   '直接編輯客戶版文字（Markdown：## 標題、** 粗體、- 條列），儲存後即更新交付文件。': {
     en: 'Edit the client version text directly (Markdown: ## headings, ** bold **, - bullets). Saving updates the deliverable.',
   },

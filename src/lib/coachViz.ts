@@ -306,6 +306,68 @@ export function topicShareStacked(
   return svg + '</svg>'
 }
 
+// 單週主題占比圓餅圖：一個時間點的組成用餅圖最直觀（跨多週才用堆疊長條）。
+export function topicSharePie(
+  topics: Partial<Record<TopicKey, number>> | undefined,
+  labels: Record<TopicKey, string>,
+  emptyMessage: string,
+): string {
+  const colors: Record<TopicKey, string> = {
+    work: HEX.primary,
+    relationships: HEX.R,
+    health: HEX.E,
+    rest: HEX.P,
+    growth: HEX.A,
+    other: HEX.neu,
+  }
+  const entries = TOPIC_KEYS.map((k) => ({ k, v: Math.max(0, Number(topics?.[k]) || 0) })).filter((e) => e.v > 0)
+  const total = entries.reduce((s, e) => s + e.v, 0)
+  if (!total) return `<div class="cv-note">${esc(emptyMessage)}</div>`
+
+  const W = 300
+  const cx = 150
+  const cy = 120
+  const R = 96
+  const legendTop = 232
+  const legendRowH = 24
+  const legendRows = Math.ceil(entries.length / 2)
+  const H = legendTop + legendRows * legendRowH
+  const pt = (ang: number, r: number): [number, number] => [cx + Math.cos(ang) * r, cy + Math.sin(ang) * r]
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="本週主題占比圓餅圖">`
+
+  let a0 = -Math.PI / 2
+  entries.forEach((e) => {
+    const frac = e.v / total
+    const a1 = a0 + frac * 2 * Math.PI
+    const large = frac > 0.5 ? 1 : 0
+    if (frac >= 0.999) {
+      // 單一主題占滿：畫整圓，避免 arc 起訖同點畫不出來
+      svg += `<circle cx="${cx}" cy="${cy}" r="${R}" fill="${colors[e.k]}"/>`
+    } else {
+      const [x0, y0] = pt(a0, R)
+      const [x1, y1] = pt(a1, R)
+      svg += `<path d="M ${cx} ${cy} L ${x0.toFixed(1)} ${y0.toFixed(1)} A ${R} ${R} 0 ${large} 1 ${x1.toFixed(1)} ${y1.toFixed(1)} Z" fill="${colors[e.k]}" stroke="#fff" stroke-width="1.5"/>`
+    }
+    const pct = Math.round(frac * 100)
+    if (frac >= 0.08) {
+      const [lx, ly] = pt((a0 + a1) / 2, R * 0.62)
+      svg += `<text x="${lx.toFixed(1)}" y="${(ly + 4).toFixed(1)}" text-anchor="middle" font-size="12" font-weight="800" fill="#fff">${pct}%</text>`
+    }
+    a0 = a1
+  })
+
+  entries.forEach((e, i) => {
+    const col = i % 2
+    const row = Math.floor(i / 2)
+    const lx = 12 + col * (W / 2)
+    const ly = legendTop + row * legendRowH
+    const pct = Math.round((e.v / total) * 100)
+    svg += `<rect x="${lx}" y="${ly}" width="12" height="12" rx="3" fill="${colors[e.k]}"/>`
+    svg += `<text x="${lx + 18}" y="${ly + 11}" font-size="11" fill="${HEX.text2}">${esc(labels[e.k])} ${pct}%</text>`
+  })
+  return svg + '</svg>'
+}
+
 // 情緒詞雲：字級／字重／不透明度隨頻率，依效價上色，大字置中
 export function emotionWordCloud(sessions: SessionScore[]): string {
   const map: Record<string, { word: string; valence: string; n: number }> = {}

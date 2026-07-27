@@ -13,6 +13,7 @@ import {
   valRadar,
   radarDelta,
   topicShareStacked,
+  topicSharePie,
   emotionWordCloud,
   type SessionScore,
   type DimKey,
@@ -75,6 +76,19 @@ interface WeeklyPermaReport {
   }
   report_emailed_at?: string | null
   report_email_recipient?: string | null
+}
+
+// 客戶端預覽：後端回傳「實際會寄出」的信件內文與 PDF（與寄送共用同一組產生函式）
+interface WeeklyReportPreview {
+  week_number: number
+  week_start: string
+  recipient_name: string
+  recipient_email: string
+  subject: string
+  email_html: string
+  pdf_filename: string
+  pdf_base64: string
+  emailed_at?: string | null
 }
 
 // T0 分數尺度：0–10 → valence −100~+100（5=0 中性、10=+100、0=−100）
@@ -264,6 +278,12 @@ function MemberDetailPage() {
   const [autoTranslationAttempted, setAutoTranslationAttempted] = useState(false)
   const [openBlocks, setOpenBlocks] = useState<number[]>([])
   const [openWeeklyReports, setOpenWeeklyReports] = useState<number[]>([])
+  const [weeklyBusy, setWeeklyBusy] = useState(false)
+  // 客戶視角預覽：客戶實際收到的信件內文＋PDF 附件（由後端用寄送同一套函式重建）
+  const [preview, setPreview] = useState<WeeklyReportPreview | null>(null)
+  const [previewBusy, setPreviewBusy] = useState<string | null>(null)
+  // PDF 以 blob URL 內嵌在對話框裡顯示（window.open(blob:) 常被瀏覽器攔截，不可靠）
+  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
   // 圖表模塊預設收起；展開的 key 記在這裡（#6：所有模塊都可展開／收合）
   const [openCharts, setOpenCharts] = useState<string[]>([])
   // #6 最外層三個大 section 也可展開／收合，預設全展開
@@ -297,6 +317,18 @@ function MemberDetailPage() {
     void guardAndLoad()
   }, [id])
 
+  // 預覽的 PDF：base64 → blob URL，供對話框內嵌顯示與下載；關閉時釋放
+  useEffect(() => {
+    if (!preview) {
+      setPreviewPdfUrl(null)
+      return
+    }
+    const bytes = Uint8Array.from(atob(preview.pdf_base64), (c) => c.charCodeAt(0))
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+    setPreviewPdfUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [preview])
+
   useEffect(() => {
     if (!analysis || briefLang !== 'zh-TW' || autoTranslationAttempted) return
     const canonicalIsChinese = analysis.blocks.some((block) =>
@@ -319,12 +351,12 @@ function MemberDetailPage() {
       items.push({ id: 'sec-blocks', label: t('教練情報簡報'), indent: true })
       items.push({ id: 'sec-client', label: t('客戶交付版') })
     }
-    if (weeklyReports.length > 0) {
+    if (posts.length > 0) {
       items.push({ id: 'sec-weekly-reports', label: t('每週 PERMA 報告') })
     }
     items.push({ id: 'sec-timeline', label: t('書寫時間軸') })
     return items
-  }, [hasDeepAnalysis, weeklyReports.length, t])
+  }, [hasDeepAnalysis, posts.length, t])
 
   // 依捲動位置自動高亮側欄目前章節（進入視窗上方 35% 區帶即視為目前章節）
   useEffect(() => {
@@ -417,6 +449,66 @@ function MemberDetailPage() {
     }
     setSavingBaseline(false)
   }
+
+  async function reloadWeeklyReports() {
+    const { data } = await supabase
+      .from('perma_weekly_reports')
+      .select('*')
+      .eq('member_id', id)
+      .order('week_number', { ascending: true })
+    setWeeklyReports((data as unknown as WeeklyPermaReport[]) ?? [])
+  }
+
+  // 教練手動生成每週報告：只依該週內容分析、與 T0 比較，存進 perma_weekly_reports（並依設定寄給成員）
+  async function generateWeeklyReports() {
+    if (!baseline) {
+      setMessage(t('請先在最上方填寫並儲存 T0 基準點'))
+      return
+    }
+    setWeeklyBusy(true)
+    setMessage(null)
+    try {
+      const resp = await authFetch('/api/coach/weekly-reports/generate', { member_id: id })
+      if (resp.ok) {
+        const data = (await resp.json()) as { generated?: number; reports?: { status?: string }[] }
+        const sent = (data.reports ?? []).filter((r) => r.status === 'sent').length
+        await reloadWeeklyReports()
+        setMessage(
+          `${t('已生成每週報告')} ${data.generated ?? 0}${sent ? `，${t('已寄送')} ${sent}` : ''}`,
+        )
+      } else {
+        const body = (await resp.json().catch(() => ({}))) as { detail?: string }
+        setMessage(body.detail || t('生成失敗，請再試一次。'))
+      }
+    } catch {
+      setMessage(t('生成失敗，請再試一次。'))
+    } finally {
+      setWeeklyBusy(false)
+    }
+  }
+
+  // 預覽某一週「客戶實際收到」的信件與 PDF：後端讀已存的分析重建，不重跑 AI、不寄信
+  async function openWeeklyPreview(weekStart: string) {
+    setPreviewBusy(weekStart)
+    setMessage(null)
+    try {
+      const resp = await authFetch('/api/coach/weekly-reports/preview', {
+        member_id: id,
+        week_start: weekStart,
+      })
+      if (resp.ok) {
+        setPreview((await resp.json()) as WeeklyReportPreview)
+      } else {
+        const body = (await resp.json().catch(() => ({}))) as { detail?: string }
+        setMessage(body.detail || t('預覽失敗，請再試一次。'))
+      }
+    } catch {
+      setMessage(t('預覽失敗，請再試一次。'))
+    } finally {
+      setPreviewBusy(null)
+    }
+  }
+
 
   async function authFetch(path: string, body?: Record<string, unknown>) {
     const {
@@ -1260,12 +1352,31 @@ function MemberDetailPage() {
           </section>
 
           {/* ── 每週 PERMA 報告：每一份只使用該週內容，並與 T0 比較 ── */}
-          {weeklyReports.length > 0 && (
+          {posts.length > 0 && (
             <section className="mb-8" id="sec-weekly-reports">
               <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('每週 PERMA 報告')}</h2>
               <p className="mb-3 text-xs text-muted-foreground">
                 {t('每份報告只根據該週的 P／E／R／M／A 內容分析，並與 T0 基準比較。')}
               </p>
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                <button
+                  onClick={generateWeeklyReports}
+                  disabled={weeklyBusy || !baseline}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                >
+                  {weeklyBusy
+                    ? t('生成中…')
+                    : weeklyReports.length > 0
+                      ? t('重新生成每週報告')
+                      : t('生成每週報告')}
+                </button>
+                {!baseline && <span className="text-xs text-muted-foreground">{t('需先設定並儲存 T0 基準點')}</span>}
+              </div>
+              {weeklyReports.length === 0 && (
+                <p className="mb-3 text-sm text-muted-foreground">
+                  {t('目前還沒有每週報告。按上方按鈕，即可為每個「五面向都填寫」的完整週各生成一份。')}
+                </p>
+              )}
               <div className="flex flex-col gap-3">
                 {weeklyReports.map((report) => {
                   const open = openWeeklyReports.includes(report.week_number)
@@ -1289,7 +1400,8 @@ function MemberDetailPage() {
                           ▶
                         </span>
                         <span className="cv-block-title">
-                          {t('第')} {report.week_number} {t('週')} · {report.week_start}
+                          {language === 'zh-TW' ? `第 ${report.week_number} 週` : `Week ${report.week_number}`} ·{' '}
+                          {report.week_start}
                         </span>
                         <span className={`cv-block-tag ${report.report_emailed_at ? 'inc' : ''}`}>
                           {report.report_emailed_at ? t('已寄送') : t('等待寄送')}
@@ -1297,38 +1409,94 @@ function MemberDetailPage() {
                       </button>
                       {open && session && reportBaseline && block && (
                         <div className="cv-block-body">
-                          <div className="mb-4 overflow-x-auto">
-                            <table className="w-full border-collapse text-sm">
-                              <thead>
-                                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                                  <th className="px-2 py-2">{t('面向')}</th>
-                                  <th className="px-2 py-2">{t('T0 基準')}</th>
-                                  <th className="px-2 py-2">{t('本週')}</th>
-                                  <th className="px-2 py-2">{t('變化')}</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {KEYS.map((key) => {
-                                  const t0 = baselineToValence(reportBaseline[key])
-                                  const current = session.dims?.[key]?.v ?? 0
-                                  const delta = current - t0
-                                  return (
-                                    <tr key={key} className="border-b border-border/70">
-                                      <td className="px-2 py-2 font-semibold" style={{ color: DIMCOLOR[key] }}>
-                                        {key} · {DIM[key]}
-                                      </td>
-                                      <td className="px-2 py-2">{t0 > 0 ? `+${t0}` : t0}</td>
-                                      <td className="px-2 py-2">{current > 0 ? `+${current}` : current}</td>
-                                      <td className="px-2 py-2 font-semibold" style={{ color: vColor(delta) }}>
-                                        {delta > 0 ? `+${delta}` : delta}
-                                      </td>
-                                    </tr>
-                                  )
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
+                          {(() => {
+                            // 單週圖表：雷達（T0 vs 本週）、本週主題占比、本週情緒詞雲。
+                            // 「五面向趨勢」需跨多週，單週由雷達涵蓋五面向對比，故不重複。
+                            const t0Dims = Object.fromEntries(
+                              KEYS.map((key) => [key, baselineToValence(reportBaseline[key])]),
+                            ) as Record<DimKey, number>
+                            const weekDims = Object.fromEntries(
+                              KEYS.map((key) => [key, session.dims?.[key]?.v ?? 0]),
+                            ) as Record<DimKey, number>
+                            const topicLabels: Record<TopicKey, string> = {
+                              work: t('工作／學業'),
+                              relationships: t('關係'),
+                              health: t('健康'),
+                              rest: t('休息與恢復'),
+                              growth: t('自我成長'),
+                              other: t('其他'),
+                            }
+                            const hasTopics = Object.values(session.topics ?? {}).some((v) => Number(v) > 0)
+                            const hasEmotions = (session.emotions ?? []).length > 0
+                            return (
+                              <>
+                                <div className="cv-slbl">
+                                  <span>{t('五面向 valence 剖面')}</span>
+                                </div>
+                                <div
+                                  className="cv-chart-wrap"
+                                  style={{ display: 'flex', justifyContent: 'center' }}
+                                  dangerouslySetInnerHTML={{ __html: valRadar(t0Dims, weekDims) }}
+                                />
+                                <div className="cv-legend mb-3" style={{ justifyContent: 'center' }}>
+                                  <span>
+                                    <i style={{ background: '#8993A1' }} />
+                                    {t('T0 基準（虛線）')}
+                                  </span>
+                                  <span>
+                                    <i style={{ background: '#1F3A5C' }} />
+                                    {t('本週')}
+                                  </span>
+                                </div>
+                                {hasTopics && (
+                                  <>
+                                    <div className="cv-slbl">
+                                      <span>{t('本週主題占比')}</span>
+                                    </div>
+                                    <div
+                                      className="cv-chart-wrap mb-3"
+                                      style={{ display: 'flex', justifyContent: 'center' }}
+                                      dangerouslySetInnerHTML={{
+                                        __html: topicSharePie(
+                                          session.topics,
+                                          topicLabels,
+                                          t('這週沒有可用的主題資料。'),
+                                        ),
+                                      }}
+                                    />
+                                  </>
+                                )}
+                                {hasEmotions && (
+                                  <>
+                                    <div className="cv-slbl">
+                                      <span>{t('本週情緒詞雲')}</span>
+                                    </div>
+                                    <div
+                                      className="mb-3"
+                                      dangerouslySetInnerHTML={{ __html: emotionWordCloud([session]) }}
+                                    />
+                                  </>
+                                )}
+                              </>
+                            )
+                          })()}
                           <div className="cv-md" dangerouslySetInnerHTML={{ __html: mdToHtml(block.body) }} />
+                          {/* 上面的圖表是教練專用視角；客戶收到的信只有文字＋PDF 附件，用這顆按鈕看實際內容 */}
+                          <div className="cv-block-actions">
+                            <span className="text-[11px] text-muted-foreground">
+                              {t('上方圖表僅教練可見，客戶收到的是下列信件與 PDF。')}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => openWeeklyPreview(report.week_start)}
+                              disabled={previewBusy !== null}
+                              className="rounded-md border border-border px-3 py-1 text-xs font-semibold text-foreground-soft disabled:opacity-50"
+                            >
+                              {previewBusy === report.week_start
+                                ? t('載入中…')
+                                : t('預覽客戶收到的信與 PDF')}
+                            </button>
+                          </div>
                         </div>
                       )}
                     </article>
@@ -1495,6 +1663,56 @@ function MemberDetailPage() {
           </div>
         </div>
       )}
+
+      {/* 客戶視角預覽：信件內文與 PDF 附件都由後端用「寄送時同一組函式」重建，所見即客戶所得 */}
+      {preview && (
+        <div className="cv-modal" role="dialog" aria-modal="true" onMouseDown={() => setPreview(null)}>
+          <div className="cv-modal-box" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="cv-modal-hd">
+              <strong>{t('客戶收到的內容')}</strong>
+              <button type="button" className="cv-modal-x" onClick={() => setPreview(null)}>
+                ×
+              </button>
+            </div>
+            <div className="cv-modal-body">
+              <div className="cv-mailmeta">
+                <div>
+                  <span>{t('收件者')}</span>
+                  {preview.recipient_name}
+                  {preview.recipient_email ? `　<${preview.recipient_email}>` : ''}
+                </div>
+                <div>
+                  <span>{t('主旨')}</span>
+                  {preview.subject}
+                </div>
+                <div>
+                  <span>{t('附件')}</span>
+                  {preview.pdf_filename}
+                </div>
+                {!preview.emailed_at && (
+                  <div className="cv-mailnote">{t('這一週尚未實際寄出，以下為將寄出的內容。')}</div>
+                )}
+              </div>
+              <div className="cv-mailbody" dangerouslySetInnerHTML={{ __html: preview.email_html }} />
+              {/* PDF 直接內嵌顯示；另附下載連結，避免瀏覽器內建檢視器不可用時看不到內容 */}
+              <div className="cv-slbl" style={{ marginTop: 16 }}>
+                <span>{t('PDF 附件')}</span>
+                {previewPdfUrl && (
+                  <a
+                    href={previewPdfUrl}
+                    download={preview.pdf_filename}
+                    className="cv-block-edit"
+                    style={{ textTransform: 'none', letterSpacing: 'normal' }}
+                  >
+                    {t('下載 PDF')}
+                  </a>
+                )}
+              </div>
+              {previewPdfUrl && <iframe src={previewPdfUrl} className="cv-pdfframe" title={preview.pdf_filename} />}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1507,6 +1725,21 @@ const COACH_VIZ_CSS = `
 .cv-inc input{width:14px;height:14px;accent-color:#1F3A5C;cursor:pointer;margin:0}
 .cv-chart-wrap{overflow-x:auto;padding:4px 0}
 .cv-chart-wrap svg{max-width:none;height:auto}
+/* 客戶視角預覽對話框 */
+.cv-modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(28,37,48,.42)}
+.cv-modal-box{width:100%;max-width:640px;max-height:86vh;display:flex;flex-direction:column;background:#fff;border-radius:12px;box-shadow:0 18px 48px rgba(28,37,48,.24);overflow:hidden}
+.cv-modal-hd{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;background:#EEF0F3;border-bottom:1.5px solid #E2E5EA;font-size:13.5px;color:#1C2530}
+.cv-modal-x{border:none;background:none;font-size:20px;line-height:1;color:#8993A1;cursor:pointer;padding:0 4px}
+.cv-modal-x:hover{color:#1C2530}
+.cv-modal-body{padding:16px;overflow-y:auto}
+.cv-mailmeta{font-size:12px;color:#54606E;line-height:1.9;padding:11px 13px;background:#EEF0F3;border-radius:8px;margin-bottom:12px}
+.cv-mailmeta span{display:inline-block;min-width:58px;font-weight:700;color:#8993A1}
+.cv-mailnote{margin-top:5px;color:#8A6A26;font-weight:700}
+.cv-mailbody{font-size:13.5px;line-height:1.85;color:#2B3440;border:1.5px solid #E2E5EA;border-radius:8px;padding:14px 16px}
+.cv-mailbody p{margin:0 0 10px}
+.cv-mailbody ul{margin:6px 0 12px 20px;list-style:disc}
+.cv-mailbody li{margin-bottom:4px}
+.cv-pdfframe{width:100%;height:520px;border:1.5px solid #E2E5EA;border-radius:8px;background:#EEF0F3}
 .cv-topic-wrap svg{display:block;max-width:100%;height:auto}
 /* 雷達圖置中：Tailwind preflight 把所有 svg 設成 display:block（非預設的 inline），
    所以父層的 text-align:center 完全沒有作用——這才是一直沒置中的真正原因。
