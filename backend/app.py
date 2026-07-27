@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import logging
 import os
 import re
+import smtplib
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
+from email.utils import formataddr
 
 import anthropic
 import httpx
@@ -35,11 +39,16 @@ PORT: int = int(os.environ.get("PORT", 8000))
 ALLOWED_ORIGINS: list[str] = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",")]
 
 # ── 學員報告 Email（Resend）──
-# 三個都是選填：沒設定 RESEND_API_KEY 時就完全不寄信，其餘功能照常運作。
-RESEND_API_KEY: str | None = os.environ.get("RESEND_API_KEY")
-# 寄件人須為已在 Resend 驗證過的網域。顯示名稱用 Ipsen Taiwan（品牌決定）。
-REPORT_FROM: str = os.environ.get("REPORT_FROM", "Ipsen Taiwan <report@psybypsy.com>")
+# 用 Gmail 自己的 SMTP 寄信：不需要自有網域、不必設定 DNS。
+# GMAIL_APP_PASSWORD 是 Google 帳號的「應用程式密碼」（需先開啟兩步驟驗證），
+# 不是 Gmail 的登入密碼。沒設定時就完全不寄信，其餘功能照常運作。
+GMAIL_ADDRESS: str | None = os.environ.get("GMAIL_ADDRESS")
+GMAIL_APP_PASSWORD: str | None = os.environ.get("GMAIL_APP_PASSWORD")
+# 收件人看到的寄件者顯示名稱。品牌決定：一律 Ipsen Taiwan，不出現 PSYbyPSY。
+REPORT_FROM_NAME: str = os.environ.get("REPORT_FROM_NAME", "Ipsen Taiwan")
 APP_BASE_URL: str = os.environ.get("APP_BASE_URL", "https://coach-roan-eta.vercel.app")
+_GMAIL_SMTP_HOST = "smtp.gmail.com"
+_GMAIL_SMTP_PORT = 465  # SSL
 
 SUPABASE_REST = f"{SUPABASE_URL}/rest/v1"
 SUPABASE_HEADERS = {
@@ -1071,15 +1080,35 @@ async def _get_user_email(user_id: str) -> str | None:
     return resp.json().get("email")
 
 
+def _send_via_gmail(to_email: str, subject: str, html_body: str) -> None:
+    """透過 Gmail SMTP 寄出一封 HTML 信。阻塞式，呼叫端請用 to_thread 包起來。
+
+    用標準函式庫的 smtplib，不額外增加相依套件。
+    """
+    message = EmailMessage()
+    message["Subject"] = subject
+    # formataddr 會在顯示名稱含非 ASCII 字元時自動做 RFC 2047 編碼。
+    # 註：不要用 email.header.Header——這個檔案後面 import 了 fastapi.Header，名稱會被蓋掉。
+    message["From"] = formataddr((REPORT_FROM_NAME, GMAIL_ADDRESS or ""), charset="utf-8")
+    message["To"] = to_email
+    # 純文字備援：不支援 HTML 的信件軟體至少看得到提示與連結。
+    message.set_content("這封信包含你的 PERMA 個人回顧，請用支援 HTML 的信件軟體開啟。")
+    message.add_alternative(html_body, subtype="html")
+
+    with smtplib.SMTP_SSL(_GMAIL_SMTP_HOST, _GMAIL_SMTP_PORT, timeout=20) as smtp:
+        smtp.login(GMAIL_ADDRESS or "", GMAIL_APP_PASSWORD or "")
+        smtp.send_message(message)
+
+
 async def _email_report(report: dict) -> bool:
     """把已發布的報告寄給學員。回傳是否真的寄出。
 
-    刻意設計成「失敗不影響主流程」：沒設定 RESEND_API_KEY、拿不到 email、
-    或 Resend 回錯，都只記 log 就算了——報告本身在網站上還是看得到。
+    刻意設計成「失敗不影響主流程」：沒設定 Gmail 認證、拿不到 email、
+    或 SMTP 出錯，都只記 log 就算了——報告本身在網站上還是看得到。
     已寄過（emailed_at 有值）就不重複寄。
     """
-    if not RESEND_API_KEY:
-        logger.info("RESEND_API_KEY 未設定，略過寄送報告 email")
+    if not (GMAIL_ADDRESS and GMAIL_APP_PASSWORD):
+        logger.info("GMAIL_ADDRESS / GMAIL_APP_PASSWORD 未設定，略過寄送報告 email")
         return False
     if report.get("emailed_at"):
         return False
@@ -1104,16 +1133,11 @@ async def _email_report(report: dict) -> bool:
         report_url=f"{APP_BASE_URL}/app/report",
     )
 
-    send_resp = await db().post(
-        "https://api.resend.com/emails",
-        headers={
-            "Authorization": f"Bearer {RESEND_API_KEY}",
-            "Content-Type": "application/json",
-        },
-        json={"from": REPORT_FROM, "to": [to_email], "subject": subject, "html": html_body},
-    )
-    if send_resp.status_code not in (200, 201):
-        logger.warning("Resend 寄送失敗 %s: %s", send_resp.status_code, send_resp.text)
+    try:
+        # smtplib 是阻塞式的，丟到執行緒避免卡住 event loop。
+        await asyncio.to_thread(_send_via_gmail, to_email, subject, html_body)
+    except Exception as exc:
+        logger.warning("Gmail SMTP 寄送失敗 [%s]: %s", type(exc).__name__, exc)
         return False
 
     await db().patch(
