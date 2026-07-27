@@ -168,6 +168,9 @@ function JournalWizard() {
               onClick={() => selectVisibility('public')}
               title={t('發布到社群')}
               description={t('你的名字會顯示在社群貼文上')}
+              // Nudge：發光光暈 + 推薦標籤，鼓勵大家公開分享、彼此回饋。
+              recommended
+              badge={t('推薦')}
             />
             <VisibilityOption
               icon="🌿"
@@ -201,6 +204,15 @@ function JournalWizard() {
               title={t('僅自己可見')}
               description={t('不會出現在社群動態，只有你自己看得到')}
             />
+          </div>
+
+          {/* 鼓勵語：說明公開分享的價值，讓 nudge 有理由而不只是視覺強調。 */}
+          <div className="flex items-start gap-3 rounded-xl border border-gold/45 bg-gold/10 px-4 py-3">
+            <span className="text-lg leading-none">💛</span>
+            <p className="text-sm leading-relaxed text-foreground-soft">
+              <span className="font-semibold text-foreground">{t('分享會讓練習走得更遠。')}</span>{' '}
+              {t('你寫下的一段話，可能正好是夥伴今天需要的鼓勵；也歡迎到社群為別人留下回饋。')}
+            </p>
           </div>
 
           {error && <p className="text-sm leading-relaxed text-rust">{error}</p>}
@@ -287,6 +299,8 @@ function VisibilityOption({
   selected,
   onClick,
   children,
+  recommended = false,
+  badge,
 }: {
   icon: string
   title: string
@@ -294,6 +308,9 @@ function VisibilityOption({
   selected: boolean
   onClick: () => void
   children?: ReactNode
+  // recommended：我們想鼓勵的選項，加上持續的柔和光暈讓它在三張卡中先被看到。
+  recommended?: boolean
+  badge?: string
 }) {
   // 用 div 而非 button：內容裡（匿名選項）還有一顆「換一個」按鈕，button 不能巢狀 button。
   return (
@@ -308,13 +325,26 @@ function VisibilityOption({
         }
       }}
       className={`w-full cursor-pointer rounded-xl border p-4 text-left transition ${
-        selected ? 'border-primary bg-primary-soft/40 shadow-soft' : 'border-border bg-card hover:bg-muted'
+        recommended ? 'animate-nudge-glow' : ''
+      } ${
+        selected
+          ? 'border-primary bg-primary-soft/40 shadow-soft'
+          : recommended
+            ? 'border-gold/50 bg-card hover:bg-muted'
+            : 'border-border bg-card hover:bg-muted'
       }`}
     >
       <div className="flex items-start gap-3">
         <span className="text-xl leading-none">{icon}</span>
         <div className="min-w-0 flex-1">
-          <p className="font-heading text-base text-foreground">{title}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-heading text-base text-foreground">{title}</p>
+            {badge && (
+              <span className="rounded-full bg-gold/15 px-2 py-0.5 text-[11px] font-semibold text-gold-deep">
+                ✨ {badge}
+              </span>
+            )}
+          </div>
           <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">{description}</p>
         </div>
         <span

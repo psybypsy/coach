@@ -59,6 +59,11 @@ export const perma: Record<string, Translation> = {
   '換一個': { en: 'Shuffle' },
   '不會出現在社群動態，只有你自己看得到': { en: "Won't appear in the community feed — only you can see it" },
   '結束今天練習': { en: 'Finish today’s practice' },
+  '推薦': { en: 'Recommended' },
+  '分享會讓練習走得更遠。': { en: 'Sharing takes the practice further.' },
+  '你寫下的一段話，可能正好是夥伴今天需要的鼓勵；也歡迎到社群為別人留下回饋。': {
+    en: 'What you wrote may be exactly the encouragement a teammate needs today — and you’re just as welcome to leave feedback for others in the community.',
+  },
 
   // ── 歡迎設定名字（welcome）與個人設定（settings）──
   '歡迎！先設定你的名字': { en: 'Welcome! First, set your name' },

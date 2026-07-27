@@ -20,8 +20,8 @@ export function getLanguage(): Language {
   } catch {
     // localStorage 不可用時退回預設
   }
-  // 預設英文；使用者可切換成繁中，切換後會記在 localStorage。
-  return 'en'
+  // 預設繁中（學員多為台灣同仁）；使用者可切換成英文，切換後會記在 localStorage。
+  return 'zh-TW'
 }
 
 export function persistLanguage(lang: Language): void {
