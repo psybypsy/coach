@@ -9,6 +9,7 @@ export const coach: Record<string, Translation> = {
   },
   '待你確認，學員看不到': { en: 'Awaiting your review — not visible to the member' },
   '已發布給學員': { en: 'Published to member' },
+  '已發布給學員，並寄出報告 email': { en: 'Published to member and report email sent' },
   '編輯內容': { en: 'Edit content' },
   '發布給學員': { en: 'Publish to member' },
   '已儲存報告內容': { en: 'Report content saved' },

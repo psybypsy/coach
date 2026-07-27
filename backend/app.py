@@ -14,6 +14,7 @@ import openai
 from dotenv import load_dotenv
 
 import usage_metering
+from report_email import build_report_email
 from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -32,6 +33,13 @@ SUPABASE_SERVICE_ROLE_KEY: str = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 ANTHROPIC_API_KEY: str = os.environ["ANTHROPIC_API_KEY"]
 PORT: int = int(os.environ.get("PORT", 8000))
 ALLOWED_ORIGINS: list[str] = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",")]
+
+# ── 學員報告 Email（Resend）──
+# 三個都是選填：沒設定 RESEND_API_KEY 時就完全不寄信，其餘功能照常運作。
+RESEND_API_KEY: str | None = os.environ.get("RESEND_API_KEY")
+# 寄件人須為已在 Resend 驗證過的網域。顯示名稱用 Ipsen Taiwan（品牌決定）。
+REPORT_FROM: str = os.environ.get("REPORT_FROM", "Ipsen Taiwan <report@psybypsy.com>")
+APP_BASE_URL: str = os.environ.get("APP_BASE_URL", "https://coach-roan-eta.vercel.app")
 
 SUPABASE_REST = f"{SUPABASE_URL}/rest/v1"
 SUPABASE_HEADERS = {
@@ -1048,6 +1056,100 @@ async def coach_translate(req: CoachTranslateRequest, authorization: str = Heade
     return {**analysis, "translations": translations}
 
 
+async def _get_user_email(user_id: str) -> str | None:
+    """用 service_role 讀 auth.users 拿 email（profiles 沒有存 email）。"""
+    resp = await db().get(
+        f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+        headers={
+            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        },
+    )
+    if resp.status_code != 200:
+        logger.warning("fetch user email failed: %s", resp.status_code)
+        return None
+    return resp.json().get("email")
+
+
+async def _email_report(report: dict) -> bool:
+    """把已發布的報告寄給學員。回傳是否真的寄出。
+
+    刻意設計成「失敗不影響主流程」：沒設定 RESEND_API_KEY、拿不到 email、
+    或 Resend 回錯，都只記 log 就算了——報告本身在網站上還是看得到。
+    已寄過（emailed_at 有值）就不重複寄。
+    """
+    if not RESEND_API_KEY:
+        logger.info("RESEND_API_KEY 未設定，略過寄送報告 email")
+        return False
+    if report.get("emailed_at"):
+        return False
+
+    user_id = report["user_id"]
+    to_email = await _get_user_email(user_id)
+    if not to_email:
+        return False
+
+    profile_resp = await db().get(
+        f"{SUPABASE_REST}/profiles",
+        headers=SUPABASE_HEADERS,
+        params=[("id", f"eq.{user_id}"), ("select", "display_name"), ("limit", "1")],
+    )
+    profile_rows = profile_resp.json() if profile_resp.status_code == 200 else []
+    display_name = profile_rows[0].get("display_name", "") if profile_rows else ""
+
+    subject, html_body = build_report_email(
+        display_name=display_name,
+        week_number=report["week_number"],
+        body_md=report.get("body_md") or "",
+        report_url=f"{APP_BASE_URL}/app/report",
+    )
+
+    send_resp = await db().post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={"from": REPORT_FROM, "to": [to_email], "subject": subject, "html": html_body},
+    )
+    if send_resp.status_code not in (200, 201):
+        logger.warning("Resend 寄送失敗 %s: %s", send_resp.status_code, send_resp.text)
+        return False
+
+    await db().patch(
+        f"{SUPABASE_REST}/member_reports",
+        headers=SUPABASE_HEADERS,
+        params=[("id", f"eq.{report['id']}")],
+        json={"emailed_at": datetime.now(TW_TZ).isoformat()},
+    )
+    return True
+
+
+class CoachPublishReportRequest(BaseModel):
+    report_id: str
+
+
+@app.post("/api/coach/publish-report")
+async def coach_publish_report(req: CoachPublishReportRequest, authorization: str = Header(...)):
+    """教練確認第 4／8 週的草稿後發布給學員，並寄出報告 email。"""
+    token = authorization.removeprefix("Bearer ").strip()
+    await require_coach(token)
+
+    update_resp = await db().patch(
+        f"{SUPABASE_REST}/member_reports",
+        headers={**SUPABASE_HEADERS, "Prefer": "return=representation"},
+        params=[("id", f"eq.{req.report_id}")],
+        json={"status": "published", "published_at": datetime.now(TW_TZ).isoformat()},
+    )
+    rows = update_resp.json() if update_resp.status_code in (200, 201) else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="找不到這份報告")
+
+    report = rows[0]
+    emailed = await _email_report(report)
+    return {**report, "emailed": emailed}
+
+
 class MemberReportRequest(BaseModel):
     week_start: str  # 該週的週一（YYYY-MM-DD）
 
@@ -1126,7 +1228,11 @@ async def member_report(
     if insert_resp.status_code in (200, 201):
         rows = insert_resp.json()
         if rows:
-            return rows[0]
+            saved = rows[0]
+            # 自動發布的週次才寄信；第 4／8 週等教練按「發布給學員」時才寄。
+            if saved.get("status") == "published":
+                await _email_report(saved)
+            return saved
     logger.warning("member_reports insert failed: %s", insert_resp.text)
     return row
 

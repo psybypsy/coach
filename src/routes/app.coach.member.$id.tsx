@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import html2pdf from 'html2pdf.js'
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { supabase } from '../lib/supabase'
 import { useLanguage } from '../lib/i18n/context'
@@ -15,6 +14,7 @@ import {
 } from '../lib/coachViz'
 import { mdToHtml } from '../lib/mdToHtml'
 import { COACH_VIZ_CSS } from '../lib/coachVizCss'
+import { rasterizeExportSvgs, downloadReportPdf } from '../lib/exportPdf'
 import {
   CHART_DEFS,
   ReportChart,
@@ -345,25 +345,31 @@ function MemberDetailPage() {
     setMessage(t('已儲存報告內容'))
   }
 
+  // 走後端而非直接改資料庫：發布的同時要把報告 email 寄給學員，
+  // 而寄信需要 service_role 才讀得到對方的 email，前端做不到。
   async function publishReport(reportId: string) {
     setPublishingReport(reportId)
     setMessage(null)
-    const publishedAt = new Date().toISOString()
-    const { error } = await supabase
-      .from('member_reports')
-      .update({ status: 'published', published_at: publishedAt })
-      .eq('id', reportId)
-    if (error) {
-      setMessage(t('發布失敗，請再試一次。'))
-    } else {
+    try {
+      const resp = await authFetch('/api/coach/publish-report', { report_id: reportId })
+      if (!resp.ok) {
+        setMessage(t('發布失敗，請再試一次。'))
+        return
+      }
+      const saved = (await resp.json()) as { published_at: string; emailed?: boolean }
       setMemberReports((prev) =>
         prev.map((r) =>
-          r.id === reportId ? { ...r, status: 'published' as const, published_at: publishedAt } : r,
+          r.id === reportId
+            ? { ...r, status: 'published' as const, published_at: saved.published_at }
+            : r,
         ),
       )
-      setMessage(t('已發布給學員'))
+      setMessage(saved.emailed ? t('已發布給學員，並寄出報告 email') : t('已發布給學員'))
+    } catch {
+      setMessage(t('發布失敗，請再試一次。'))
+    } finally {
+      setPublishingReport(null)
     }
-    setPublishingReport(null)
   }
 
   // 儲存 T0 基準點：upsert coach_analyses（教練 RLS 允許 insert/update；分析未生成也可先存）
@@ -576,110 +582,11 @@ function MemberDetailPage() {
 
   // html2canvas 對 SVG 與網頁字型的載入時機較敏感。匯出前把 SVG 固定成同尺寸 PNG，
   // 避免同一份報告在不同瀏覽器／視窗寬度下發生裁切或比例漂移。
-  async function rasterizeExportSvgs(root: HTMLElement) {
-    const svgs = [...root.querySelectorAll('svg')] as SVGSVGElement[]
-    await Promise.all(
-      svgs.map(
-        (svg) =>
-          new Promise<void>((resolve) => {
-            const rect = svg.getBoundingClientRect()
-            if (rect.width <= 0 || rect.height <= 0) {
-              resolve()
-              return
-            }
-            const source = new XMLSerializer().serializeToString(svg)
-            const url = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml;charset=utf-8' }))
-            const image = new Image()
-            image.onload = () => {
-              const scale = 2
-              const canvas = document.createElement('canvas')
-              canvas.width = Math.ceil(rect.width * scale)
-              canvas.height = Math.ceil(rect.height * scale)
-              const ctx = canvas.getContext('2d')
-              if (ctx) {
-                ctx.scale(scale, scale)
-                ctx.drawImage(image, 0, 0, rect.width, rect.height)
-                const replacement = document.createElement('img')
-                replacement.src = canvas.toDataURL('image/png')
-                replacement.alt = ''
-                replacement.style.display = 'block'
-                replacement.style.width = `${rect.width}px`
-                replacement.style.height = `${rect.height}px`
-                replacement.style.maxWidth = '100%'
-                replacement.style.margin = getComputedStyle(svg).margin
-                svg.replaceWith(replacement)
-              }
-              URL.revokeObjectURL(url)
-              resolve()
-            }
-            image.onerror = () => {
-              URL.revokeObjectURL(url)
-              resolve() // 保留原 SVG，讓 html2canvas 作為後備處理
-            }
-            image.src = url
-          }),
-      ),
-    )
-  }
-
-  // #3 下載 PDF：用固定桌面版寬度的離屏副本輸出，不改動使用者正在看的報告。
+  // rasterizeExportSvgs / downloadReportPdf 已抽到 lib/exportPdf，與學員版報告共用。
   async function downloadClientPdf() {
     const source = document.getElementById('cv-print-area')
     if (!source) return
-
-    const exportRoot = source.cloneNode(true) as HTMLElement
-    exportRoot.removeAttribute('id')
-    exportRoot.classList.add('cv-pdf-export')
-    // 定位放在外層 host，而不是 exportRoot 本身；html2pdf 再複製 exportRoot 時才不會
-    // 把 left:-100000px 一起複製進 PDF 畫布。
-    const exportHost = document.createElement('div')
-    exportHost.style.cssText = 'position:fixed;left:-100000px;top:0;width:720px;z-index:-1'
-    exportHost.appendChild(exportRoot)
-    document.body.appendChild(exportHost)
-
-    try {
-      // 等字型完成後再量尺寸，避免中文字型替換造成換行點在匯出途中改變。
-      await document.fonts?.ready
-      await rasterizeExportSvgs(exportRoot)
-
-      await html2pdf()
-        .set({
-          margin: [12, 12, 14, 12],
-          filename: 'Personal-Well-being-Review.pdf', // 純 ASCII，避免檔名特殊字元讓下載失效
-          image: { type: 'png', quality: 1 },
-          // width/windowWidth 同時固定 html2pdf 容器與 media query 的計算，手機與桌面輸出一致。
-          width: 720,
-          windowWidth: 720,
-          html2canvas: {
-            scale: 2,
-            useCORS: true,
-            backgroundColor: '#ffffff',
-            logging: false,
-            foreignObjectRendering: false,
-            windowWidth: 720,
-          },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
-          pagebreak: {
-            mode: ['css', 'legacy'],
-            avoid: [
-              '.cv-doc-head',
-              '.cv-doc h2',
-              '.cv-doc h3',
-              '.cv-doc p',
-              '.cv-doc li',
-              '.cv-doc-sign',
-              '.cv-doc-chart',
-              '.cv-rdelta',
-              '.cv-stats',
-              '.cv-wcloud',
-            ],
-          },
-        })
-        .from(exportRoot)
-        .save()
-    } finally {
-      exportHost.remove()
-    }
+    await downloadReportPdf(source, 'Personal-Well-being-Review.pdf')
   }
 
   // 客戶版行內編輯：進入編輯 → 改文字 → 存回 client_text

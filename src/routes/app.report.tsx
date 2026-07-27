@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useLanguage } from '../lib/i18n/context'
 import { mdToHtml } from '../lib/mdToHtml'
 import { COACH_VIZ_CSS } from '../lib/coachVizCss'
+import { downloadReportPdf } from '../lib/exportPdf'
 import { CHART_DEFS, ReportChart, type BaselineScores } from '../components/ReportChart'
 import type { SessionScore } from '../lib/coachViz'
 
@@ -30,6 +31,18 @@ function ReportPage() {
   const [reports, setReports] = useState<MemberReport[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [displayName, setDisplayName] = useState('')
+  const [downloading, setDownloading] = useState(false)
+
+  const handleDownload = async () => {
+    const el = document.getElementById('member-report-doc')
+    if (!el) return
+    setDownloading(true)
+    try {
+      await downloadReportPdf(el, 'PERMA-Review.pdf')
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -118,7 +131,19 @@ function ReportPage() {
       )}
 
       {selected && (
-        <div className="cv-doc">
+        <div className="mb-4 flex justify-end">
+          <button
+            onClick={() => void handleDownload()}
+            disabled={downloading}
+            className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground-soft transition hover:bg-muted disabled:opacity-50"
+          >
+            {downloading ? t('產生中…') : t('下載 PDF')}
+          </button>
+        </div>
+      )}
+
+      {selected && (
+        <div className="cv-doc" id="member-report-doc">
           <div className="cv-doc-head">
             <div className="cv-doc-title">{t('個人福祉回顧')}</div>
             <div className="cv-doc-meta">
