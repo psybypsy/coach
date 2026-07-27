@@ -28,9 +28,12 @@ alter table journal_posts
 ## 其他更新
 
 ### 登入流程改進
-- 改為 OTP（一次性驗證碼）模式
+- 寄出的信同時包含 magic link 與 6 位數驗證碼，兩種方式都可登入
 - 系統會記憶最近使用的 email，方便下次登入
-- 首次登入需要驗證碼，後續登入只需 email（已驗證）
+- 登入一次後 session 會保留在該瀏覽器，之後直接開網站即可進入，不必再驗證
+
+> ⚠️ 驗證碼與 session 長度需要在 Supabase 後台設定才會生效，
+> 詳見 [`docs/persistent-login.md`](docs/persistent-login.md)。
 
 ### UI/UX 改進
 - 導航欄改為橫排顯示（Ipsen Taiwan、PERMA Self-Reflection、Community）

@@ -13,9 +13,17 @@ export const login: Record<string, Translation> = {
   '確認驗證碼': { en: 'Verify code' },
   '只有邀請名單內的 email 才能登入': { en: 'Only invited emails can sign in' },
   '連結已寄出': { en: 'Link sent' },
+  '信件已寄出': { en: 'Email sent' },
   '已寄送登入連結至': { en: 'A login link was sent to' },
   '沒收到嗎？請確認垃圾郵件夾，或稍後再試一次。': {
     en: "Didn't get it? Check your spam folder, or try again in a moment.",
+  },
+  '輸入信中的 6 位數驗證碼': { en: 'Enter the 6-digit code from the email' },
+  '用驗證碼登入，之後直接開網站就會自動保持登入，不必再收信。': {
+    en: 'Signing in with the code keeps you signed in on this browser — no more emails needed.',
+  },
+  '也可以直接點信中的登入連結。沒收到嗎？請確認垃圾郵件夾，或稍後再試一次。': {
+    en: "You can also just tap the login link in the email. Didn't get it? Check your spam folder, or try again in a moment.",
   },
   '重新輸入 email': { en: 'Re-enter email' },
   '驗證碼有誤，請確認後重試。': { en: 'Incorrect code. Please try again.' },

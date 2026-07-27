@@ -11,5 +11,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     // 點 email 登入連結導回時，自動從網址擷取 token 建立 session。
     detectSessionInUrl: true,
+    // 明確指定 implicit：PKCE 會把 code_verifier 存在「發出登入請求的那個瀏覽器」，
+    // 使用者若在 Gmail App 內建瀏覽器點連結就會驗證失敗。implicit 沒有這個限制，
+    // 也避免日後 supabase-js 改預設值時無聲破壞既有的 email 登入連結。
+    flowType: 'implicit',
+    // 註：storageKey 刻意不自訂——改掉會讓現有已登入的使用者讀不到舊 key 而被登出。
   },
 })

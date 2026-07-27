@@ -45,6 +45,8 @@ function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedEmails] = useState(getSavedEmails())
+  const [code, setCode] = useState('')
+  const [verifying, setVerifying] = useState(false)
 
   useEffect(() => {
     const description = readAuthErrorFromUrl()
@@ -95,7 +97,33 @@ function LoginPage() {
       return
     }
     saveEmailToHistory(trimmed)
+    setCode('')
     setStep('sent')
+  }
+
+  // 輸入信中的 6 位數驗證碼登入。
+  // 這條路徑很重要：使用者在手機的 Gmail／Outlook App 裡點登入連結時，
+  // 會開在 App 的內建瀏覽器，session 就存進那個 webview，之後自己開
+  // Safari／Chrome 進網站當然沒有登入紀錄，於是「每次都要重點一次連結」。
+  // 改用驗證碼，登入就會完成在使用者現在這個瀏覽器，session 才留得住。
+  const verifyCode = async () => {
+    const token = code.trim()
+    if (token.length < 6 || !email.trim()) return
+    setVerifying(true)
+    setError(null)
+
+    const { error } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token,
+      type: 'email',
+    })
+    setVerifying(false)
+    if (error) {
+      setError(t('驗證碼有誤，請確認後重試。'))
+      return
+    }
+    // 用整頁導轉而非 router navigate，確保 session 已寫入 storage 才進 app。
+    window.location.href = '/app/home'
   }
 
   function readAuthErrorFromUrl(): string | null {
@@ -173,19 +201,59 @@ function LoginPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-3 text-center">
-              <p className="font-heading text-lg text-foreground">{t('連結已寄出')}</p>
-              <p className="text-sm leading-relaxed text-foreground-soft">
-                {t('已寄送登入連結至')} <span className="font-semibold text-foreground">{email}</span>
-                <br />
-                {t('沒收到嗎？請確認垃圾郵件夾，或稍後再試一次。')}
-              </p>
+            <div className="space-y-4">
+              <div className="space-y-2 text-center">
+                <p className="font-heading text-lg text-foreground">{t('信件已寄出')}</p>
+                <p className="text-sm leading-relaxed text-foreground-soft">
+                  {t('已寄送登入連結至')} <span className="font-semibold text-foreground">{email}</span>
+                </p>
+              </div>
+
+              {/* 驗證碼優先：在目前這個瀏覽器完成登入，之後就會一直保持登入。 */}
+              <div className="space-y-2">
+                <label htmlFor="code" className="block text-sm font-semibold text-foreground">
+                  {t('輸入信中的 6 位數驗證碼')}
+                </label>
+                <input
+                  id="code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  placeholder="000000"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  onKeyDown={(e) => e.key === 'Enter' && void verifyCode()}
+                  autoFocus
+                  className="h-12 w-full rounded-lg border border-border bg-background px-4 text-center text-lg font-semibold tracking-[0.4em] text-foreground outline-none placeholder:tracking-[0.4em] placeholder:text-muted-foreground focus:border-primary"
+                />
+                <button
+                  onClick={() => void verifyCode()}
+                  disabled={verifying || code.length < 6}
+                  className="flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-soft transition hover:bg-primary-glow active:scale-[0.98] disabled:opacity-50"
+                >
+                  {verifying ? t('驗證中…') : t('確認驗證碼')}
+                </button>
+                <p className="text-center text-xs leading-relaxed text-muted-foreground">
+                  {t('用驗證碼登入，之後直接開網站就會自動保持登入，不必再收信。')}
+                </p>
+              </div>
+
+              <div className="border-t border-border pt-3">
+                <p className="text-center text-xs leading-relaxed text-muted-foreground">
+                  {t('也可以直接點信中的登入連結。沒收到嗎？請確認垃圾郵件夾，或稍後再試一次。')}
+                </p>
+              </div>
+
+              {error && <p className="text-center text-sm leading-relaxed text-rust">{error}</p>}
+
               <button
                 onClick={() => {
                   setStep('email')
                   setError(null)
+                  setCode('')
                 }}
-                className="text-xs font-semibold text-muted-foreground underline"
+                className="block w-full text-center text-xs font-semibold text-muted-foreground underline"
               >
                 {t('重新輸入 email')}
               </button>
