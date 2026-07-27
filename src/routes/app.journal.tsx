@@ -1,14 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { supabase } from '../lib/supabase'
 import { useLanguage } from '../lib/i18n/context'
 import { currentWeekStart } from '../lib/week'
 import { DIMENSION_ORDER, DIMENSION_CONFIGS } from '../lib/perma'
 import { loadDraft, saveDraft, clearDraft, emptyAnswers, type JournalAnswers } from '../lib/journalDraft'
+import { generateEnergyAlias } from '../lib/energyAlias'
 
 export const Route = createFileRoute('/app/journal')({
   component: JournalWizard,
 })
+
+type Visibility = 'public' | 'anonymous' | 'private'
+
+// 5 題問答結束後的「選擇發布方式」步驟。
+const PUBLISH_STEP = DIMENSION_ORDER.length
 
 // 依 DIMENSION_ORDER 找出第一個尚未填的題目，做為回來後接續的起點。
 function firstUnansweredStep(answers: JournalAnswers): number {
@@ -26,9 +32,12 @@ function JournalWizard() {
   const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [visibility, setVisibility] = useState<Visibility>('public')
+  const [anonAlias, setAnonAlias] = useState('')
 
   const weekStart = currentWeekStart()
-  const currentKey = DIMENSION_ORDER[step]
+  // step 到達 PUBLISH_STEP 時已經沒有對應題目，夾在最後一題避免 index 越界。
+  const currentKey = DIMENSION_ORDER[Math.min(step, DIMENSION_ORDER.length - 1)]
   const dim = DIMENSION_CONFIGS[currentKey]
 
   useEffect(() => {
@@ -58,16 +67,26 @@ function JournalWizard() {
   }
 
   const currentFilled = answers[currentKey].trim().length > 0
-  const isLast = step === DIMENSION_ORDER.length - 1
+  const isLastQuestion = step === DIMENSION_ORDER.length - 1
+  const isPublishStep = step === PUBLISH_STEP
 
   const handleNext = () => {
     if (!currentFilled) return
-    setStep((s) => Math.min(s + 1, DIMENSION_ORDER.length - 1))
+    setStep((s) => (s === DIMENSION_ORDER.length - 1 ? PUBLISH_STEP : s + 1))
   }
 
   const handleBack = () => {
-    setStep((s) => Math.max(s - 1, 0))
+    setStep((s) => (s === PUBLISH_STEP ? DIMENSION_ORDER.length - 1 : Math.max(s - 1, 0)))
   }
+
+  const selectVisibility = (v: Visibility) => {
+    setVisibility(v)
+    if (v === 'anonymous' && !anonAlias) {
+      setAnonAlias(generateEnergyAlias(language))
+    }
+  }
+
+  const rerollAlias = () => setAnonAlias(generateEnergyAlias(language))
 
   const handlePublish = async () => {
     if (!userId) return
@@ -80,12 +99,14 @@ function JournalWizard() {
     setError(null)
 
     try {
+      const isPublic = visibility !== 'private'
+
       // 1) 寫入 5 列 perma_entries（個人報告 / AI 週分析沿用）。
       const entries = DIMENSION_ORDER.map((k) => ({
         user_id: userId,
         dimension: k,
         content: answers[k].trim(),
-        is_public: true,
+        is_public: isPublic,
         input_method: 'text',
       }))
       const { error: entriesError } = await supabase.from('perma_entries').insert(entries)
@@ -102,7 +123,9 @@ function JournalWizard() {
         r_content: answers.R.trim(),
         m_content: answers.M.trim(),
         a_content: answers.A.trim(),
-        is_public: true,
+        is_public: isPublic,
+        visibility,
+        anon_alias: visibility === 'anonymous' ? anonAlias : null,
       })
       if (postError) {
         throw new Error(`Failed to save post: ${postError.message}`)
@@ -123,6 +146,81 @@ function JournalWizard() {
     return (
       <div className="mx-auto max-w-md px-6 py-10">
         <p className="text-sm text-muted-foreground">{t('載入中…')}</p>
+      </div>
+    )
+  }
+
+  if (isPublishStep) {
+    const publishLabel = submitting ? t('發布中…') : t('結束今天練習')
+
+    return (
+      <div className="bg-page min-h-screen px-6 py-10">
+        <div className="mx-auto max-w-md space-y-5">
+          <div>
+            <h1 className="font-heading text-xl text-foreground">{t('恭喜完成本次練習！')}</h1>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t('選擇發布方式')}</p>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <VisibilityOption
+              icon="🌤️"
+              selected={visibility === 'public'}
+              onClick={() => selectVisibility('public')}
+              title={t('發布到社群')}
+              description={t('你的名字會顯示在社群貼文上')}
+            />
+            <VisibilityOption
+              icon="🌿"
+              selected={visibility === 'anonymous'}
+              onClick={() => selectVisibility('anonymous')}
+              title={t('匿名發布到社群')}
+              description={t('會用一個自然系代號顯示，其他成員看不到你的真實姓名')}
+            >
+              {visibility === 'anonymous' && (
+                <div className="mt-3 flex items-center justify-between rounded-lg bg-muted px-3 py-2">
+                  <span className="text-sm font-semibold text-foreground">
+                    {t('你的能量代號')}：{anonAlias}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      rerollAlias()
+                    }}
+                    className="text-xs font-semibold text-primary hover:underline"
+                  >
+                    {t('換一個')}
+                  </button>
+                </div>
+              )}
+            </VisibilityOption>
+            <VisibilityOption
+              icon="🔒"
+              selected={visibility === 'private'}
+              onClick={() => selectVisibility('private')}
+              title={t('僅自己可見')}
+              description={t('不會出現在社群動態，只有你自己看得到')}
+            />
+          </div>
+
+          {error && <p className="text-sm leading-relaxed text-rust">{error}</p>}
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleBack}
+              className="flex h-12 flex-1 items-center justify-center rounded-lg border border-border bg-card text-base font-semibold text-foreground-soft transition hover:bg-muted active:scale-[0.98]"
+            >
+              {t('上一題')}
+            </button>
+            <button
+              onClick={() => void handlePublish()}
+              disabled={submitting}
+              className="flex h-12 flex-[2] items-center justify-center rounded-lg bg-primary text-base font-semibold text-primary-foreground shadow-soft transition hover:bg-primary-glow active:scale-[0.98] disabled:opacity-50"
+            >
+              {publishLabel}
+            </button>
+          </div>
+        </div>
       </div>
     )
   }
@@ -167,27 +265,67 @@ function JournalWizard() {
               {t('上一題')}
             </button>
           )}
-          {isLast ? (
-            <button
-              onClick={() => void handlePublish()}
-              disabled={submitting || !currentFilled}
-              className="flex h-12 flex-[2] items-center justify-center rounded-lg bg-primary text-base font-semibold text-primary-foreground shadow-soft transition hover:bg-primary-glow active:scale-[0.98] disabled:opacity-50"
-            >
-              {submitting ? t('發布中…') : t('發布到社群')}
-            </button>
-          ) : (
-            <button
-              onClick={handleNext}
-              disabled={!currentFilled}
-              className="flex h-12 flex-[2] items-center justify-center rounded-lg bg-primary text-base font-semibold text-primary-foreground shadow-soft transition hover:bg-primary-glow active:scale-[0.98] disabled:opacity-50"
-            >
-              {t('下一題')}
-            </button>
-          )}
+          <button
+            onClick={handleNext}
+            disabled={!currentFilled}
+            className="flex h-12 flex-[2] items-center justify-center rounded-lg bg-primary text-base font-semibold text-primary-foreground shadow-soft transition hover:bg-primary-glow active:scale-[0.98] disabled:opacity-50"
+          >
+            {isLastQuestion ? t('下一步') : t('下一題')}
+          </button>
         </div>
 
         <p className="text-center text-xs text-muted-foreground">{t('系統會自動保存草稿')}</p>
       </div>
+    </div>
+  )
+}
+
+function VisibilityOption({
+  icon,
+  title,
+  description,
+  selected,
+  onClick,
+  children,
+}: {
+  icon: string
+  title: string
+  description: string
+  selected: boolean
+  onClick: () => void
+  children?: ReactNode
+}) {
+  // 用 div 而非 button：內容裡（匿名選項）還有一顆「換一個」按鈕，button 不能巢狀 button。
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+      className={`w-full cursor-pointer rounded-xl border p-4 text-left transition ${
+        selected ? 'border-primary bg-primary-soft/40 shadow-soft' : 'border-border bg-card hover:bg-muted'
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <span className="text-xl leading-none">{icon}</span>
+        <div className="min-w-0 flex-1">
+          <p className="font-heading text-base text-foreground">{title}</p>
+          <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">{description}</p>
+        </div>
+        <span
+          className={`mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+            selected ? 'border-primary bg-primary' : 'border-border'
+          }`}
+        >
+          {selected && <span className="h-2 w-2 rounded-full bg-primary-foreground" />}
+        </span>
+      </div>
+      {children}
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useLanguage } from '../lib/i18n/context'
 import { programWeek, weekStreak } from '../lib/journalStats'
 import { DIMENSION_ORDER, DIMENSION_CONFIGS, type DimensionKey } from '../lib/perma'
+import { generateEnergyAlias } from '../lib/energyAlias'
 
 export const Route = createFileRoute('/app/community')({
   component: CommunityPage,
@@ -13,6 +14,8 @@ interface EntryProfile {
   display_name: string
   role: 'member' | 'coach'
 }
+
+type Visibility = 'public' | 'anonymous' | 'private'
 
 interface Post {
   id: string
@@ -24,6 +27,9 @@ interface Post {
   m_content: string
   a_content: string
   created_at: string
+  is_public: boolean
+  visibility: Visibility
+  anon_alias: string | null
   profiles: EntryProfile | null
 }
 
@@ -119,14 +125,14 @@ function CommunityPage() {
     const uid = userData.user?.id ?? null
     setUserId(uid)
 
-    const { data: postRows } = await supabase
+    // 公開/匿名貼文大家都看得到；僅自己可見的貼文只有作者自己在「我的貼文」看得到。
+    let postQuery = supabase
       .from('journal_posts')
       .select(
-        'id,user_id,week_start,p_content,e_content,r_content,m_content,a_content,created_at,profiles(display_name,role)',
+        'id,user_id,week_start,p_content,e_content,r_content,m_content,a_content,created_at,is_public,visibility,anon_alias,profiles(display_name,role)',
       )
-      .eq('is_public', true)
-      .order('created_at', { ascending: false })
-      .limit(50)
+    postQuery = uid ? postQuery.or(`is_public.eq.true,user_id.eq.${uid}`) : postQuery.eq('is_public', true)
+    const { data: postRows } = await postQuery.order('created_at', { ascending: false }).limit(50)
 
     const list = (postRows ?? []) as unknown as Post[]
     setPosts(list)
@@ -172,7 +178,8 @@ function CommunityPage() {
   }
 
   const visiblePosts = useMemo(() => {
-    const base = tab === 'mine' ? posts.filter((p) => p.user_id === userId) : posts
+    // 社群貼文：只顯示公開/匿名的貼文；我的貼文：不論公開與否都顯示自己的貼文。
+    const base = tab === 'mine' ? posts.filter((p) => p.user_id === userId) : posts.filter((p) => p.is_public)
     return [...base].sort((a, b) =>
       sort === 'newest' ? b.created_at.localeCompare(a.created_at) : a.created_at.localeCompare(b.created_at),
     )
@@ -241,6 +248,24 @@ function CommunityPage() {
     await load()
   }
 
+  // 貼文發布後仍可從「更多」選單改發布方式；沿用原本的能量代號（若之前沒有才臨時生成一個）。
+  async function changeVisibility(post: Post, next: Visibility) {
+    setMenuOpenId(null)
+    if (post.visibility === next) return
+    const anonAlias = next === 'anonymous' ? post.anon_alias || generateEnergyAlias(language) : post.anon_alias
+    await supabase
+      .from('journal_posts')
+      .update({ visibility: next, is_public: next !== 'private', anon_alias: anonAlias })
+      .eq('id', post.id)
+    await load()
+  }
+
+  const visibilityOptions: { value: Visibility; title: string; desc: string }[] = [
+    { value: 'public', title: t('發布到社群'), desc: t('你的名字會顯示在社群貼文上') },
+    { value: 'anonymous', title: t('匿名發布到社群'), desc: t('以能量代號匿名出現在社群動態') },
+    { value: 'private', title: t('僅自己可見'), desc: t('不會出現在社群動態，只有你自己看得到') },
+  ]
+
   return (
     <div className="mx-auto max-w-2xl px-5 py-8">
       <div className="mb-4 flex items-center justify-between">
@@ -283,22 +308,34 @@ function CommunityPage() {
         <div className="flex flex-col gap-5">
           {visiblePosts.map((post) => {
             const meta = computeMeta(post, hist)
-            const name = post.profiles?.display_name ?? '—'
             const isMine = post.user_id === userId
+            // 匿名貼文對其他人隱藏真實姓名/頭像，改用能量代號；作者自己仍看得到真實身分。
+            const isAnonymousToOthers = post.visibility === 'anonymous' && !isMine
+            const name = isAnonymousToOthers
+              ? post.anon_alias || t('神秘旅人')
+              : (post.profiles?.display_name ?? '—')
+            const avatarGlyph = isAnonymousToOthers ? '🌿' : name.trim().charAt(0).toUpperCase() || '—'
+            const visibilityLabel =
+              post.visibility === 'private' ? t('僅自己可見') : post.visibility === 'anonymous' ? t('匿名') : null
             const isEditing = editingId === post.id
             return (
               <article key={post.id} className="rounded-2xl border border-border bg-card p-5 shadow-soft">
                 <header className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold text-foreground-soft">
-                      {name.trim().charAt(0).toUpperCase() || '—'}
+                      {avatarGlyph}
                     </div>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="text-sm font-semibold text-foreground">{name}</span>
-                        {post.profiles?.role === 'coach' && (
+                        {post.profiles?.role === 'coach' && !isAnonymousToOthers && (
                           <span className="rounded-md bg-primary-soft px-1.5 py-0.5 text-[11px] font-semibold text-primary">
                             {t('教練')}
+                          </span>
+                        )}
+                        {isMine && visibilityLabel && (
+                          <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-foreground-soft">
+                            {visibilityLabel}
                           </span>
                         )}
                         <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-foreground-soft">
@@ -332,7 +369,26 @@ function CommunityPage() {
                               className="fixed inset-0 z-40 cursor-default"
                               onClick={() => setMenuOpenId(null)}
                             />
-                            <div className="absolute right-0 top-full z-50 mt-1 w-32 rounded-xl border border-border bg-card p-1 shadow-lg">
+                            <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-xl border border-border bg-card p-1 shadow-lg">
+                              <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                {t('隱私設定')}
+                              </p>
+                              {visibilityOptions.map((opt) => (
+                                <button
+                                  key={opt.value}
+                                  onClick={() => void changeVisibility(post, opt.value)}
+                                  className="flex w-full items-start justify-between gap-2 rounded-lg px-3 py-2 text-left transition hover:bg-muted"
+                                >
+                                  <span>
+                                    <span className="block text-sm font-medium text-foreground">{opt.title}</span>
+                                    <span className="block text-xs text-muted-foreground">{opt.desc}</span>
+                                  </span>
+                                  {post.visibility === opt.value && (
+                                    <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                                  )}
+                                </button>
+                              ))}
+                              <div className="my-1 border-t border-border" />
                               <button
                                 onClick={() => startEdit(post)}
                                 className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-foreground transition hover:bg-muted"
@@ -343,7 +399,7 @@ function CommunityPage() {
                                 onClick={() => void deletePost(post.id)}
                                 className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-rust transition hover:bg-muted"
                               >
-                                {t('刪除')}
+                                {t('刪除貼文')}
                               </button>
                             </div>
                           </>
@@ -478,6 +534,14 @@ function HeartIcon({ filled }: { filled: boolean }) {
       strokeLinejoin="round"
     >
       <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" />
+    </svg>
+  )
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 6 9 17l-5-5" />
     </svg>
   )
 }

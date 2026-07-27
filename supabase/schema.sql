@@ -37,6 +37,8 @@ create index on perma_entries (is_public, created_at desc);
 -- ── 3b. 週記合併貼文（社群牆單位：內含 PERMA 五答案，同一週可多則）──
 -- 每次填完 5 題會同時寫入這裡（社群牆讀取）＋ 5 列 perma_entries（報告/AI 沿用）。
 -- week_start = 該篇所屬日曆週（週一起算），用來算「第幾週之幾次」。
+-- visibility：public 公開 / anonymous 匿名（顯示能量代號，教練仍看得到真實身分）/
+--   private 僅自己可見。見遷移 006。is_public 與 visibility 同步（private → false）供既有 RLS 沿用。
 create table journal_posts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
@@ -47,6 +49,8 @@ create table journal_posts (
   m_content text not null default '',
   a_content text not null default '',
   is_public boolean not null default true,
+  visibility text not null default 'public' check (visibility in ('public', 'anonymous', 'private')),
+  anon_alias text,
   created_at timestamptz not null default now()
 );
 create index on journal_posts (is_public, created_at desc);
