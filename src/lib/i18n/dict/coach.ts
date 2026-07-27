@@ -50,6 +50,16 @@ export const coach: Record<string, Translation> = {
   },
   '正向（往上）': { en: 'Positive (up)' },
   '負向（往下）': { en: 'Negative (down)' },
+  '每週 PERMA 報告': { en: 'Weekly PERMA Reports' },
+  '每份報告只根據該週的 P／E／R／M／A 內容分析，並與 T0 基準比較。': {
+    en: 'Each report analyzes only that week’s P/E/R/M/A content and compares it with the T0 baseline.',
+  },
+  '已寄送': { en: 'Emailed' },
+  '等待寄送': { en: 'Awaiting email' },
+  '面向': { en: 'Dimension' },
+  'T0 基準': { en: 'T0 baseline' },
+  '本週': { en: 'This week' },
+  '變化': { en: 'Change' },
 
   // 客戶交付版
   '客戶交付版': { en: 'Client Deliverable' },
@@ -59,6 +69,8 @@ export const coach: Record<string, Translation> = {
   '目前納入客戶版的區塊：': { en: 'Blocks included in client version: ' },
   '生成客戶交付版': { en: 'Generate client deliverable' },
   '重新生成客戶版': { en: 'Regenerate client version' },
+  '客戶版已生成，PDF 已寄送給成員。': { en: 'Client version generated and PDF emailed to the member.' },
+  '客戶版已生成，但 PDF 尚未寄出：': { en: 'Client version generated, but the PDF was not emailed: ' },
   '生成中…': { en: 'Generating…' },
   '列印 / 匯出 PDF': { en: 'Print / Export PDF' },
   '個人福祉回顧': { en: 'Personal Well-being Review' },

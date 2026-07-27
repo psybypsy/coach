@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import io
+import base64
+import hashlib
+import html
+import hmac
 import json
 import logging
 import os
@@ -32,6 +36,10 @@ SUPABASE_SERVICE_ROLE_KEY: str = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 ANTHROPIC_API_KEY: str = os.environ["ANTHROPIC_API_KEY"]
 PORT: int = int(os.environ.get("PORT", 8000))
 ALLOWED_ORIGINS: list[str] = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",")]
+RESEND_API_KEY: str = os.environ.get("RESEND_API_KEY", "")
+REPORT_EMAIL_FROM: str = os.environ.get("REPORT_EMAIL_FROM", "")
+REPORT_EMAIL_REPLY_TO: str = os.environ.get("REPORT_EMAIL_REPLY_TO", "")
+REPORT_WEBHOOK_SECRET: str = os.environ.get("REPORT_WEBHOOK_SECRET", "")
 
 SUPABASE_REST = f"{SUPABASE_URL}/rest/v1"
 SUPABASE_HEADERS = {
@@ -346,17 +354,12 @@ _PERMA_DIM = {
     "M": "Meaning", "A": "Accomplishment",
 }
 _TOPIC_KEYS = ["work", "relationships", "health", "rest", "growth", "other"]
-_REMOVED_BLOCK_TITLES = {
-    "cross-cutting themes & patterns", "橫向主題與模式",
-    "the unsaid", "未言之事",
-    "coaching hypotheses", "教練假設",
-    "worth watching", "值得關注",
-    "session preparation", "會談準備",
+_ALLOWED_BLOCK_TITLES = {
+    "perma five-dimension profile", "perma 五面向剖析",
 }
-# 客戶交付版預設納入的圖表（教練可在前端調整）。
+# 報告只保留四個量化圖表。
 _CLIENT_CHART_DEFAULTS = {
-    "summary": True, "trend": True, "dims": True,
-    "topics": True, "radar": True, "affect": False, "cloud": False,
+    "dims": True, "topics": True, "radar": True, "cloud": True,
 }
 
 
@@ -402,23 +405,13 @@ Intelligence-brief rules: stay evidence-based, quote the person's words and cite
 
 FORMATTING — keep every block skimmable: write in short paragraphs and - bullet points, prefer bullets over dense prose, and keep sentences short.
 
-Include these blocks in exactly this order:
-[[BLOCK]] Overall Emotional & Well-being Trajectory
+Include only this block. Do not create any other brief block:
 [[BLOCK]] PERMA Five-Dimension Profile
-[[BLOCK]] Strengths & Inner Resources
-[[BLOCK]] Self-Determination Motivation
-[[BLOCK]] Linguistic Fingerprint
-[[BLOCK]] Actions for the Next Four Weeks
 
-The three theory columns — "PERMA Five-Dimension Profile", "Strengths & Inner Resources", "Self-Determination Motivation" — must each: (a) stay tied to this person's specific quotes with week citations; (b) end with a "**References**" sub-heading listing 2-3 APA-format references (journal or book titles in * italics *) relevant only to that column.
+This block must: (a) stay tied to this person's specific quotes with week citations; (b) end with a "**References**" sub-heading listing 2-3 APA-format references (journal or book titles in * italics *).
 
 Per-block requirements:
 - PERMA Five-Dimension Profile: analyze P/E/R/M/A one by one, noting fullness (abundant / stable / thin / absent), change over time and key quotes, then integrate the overall pattern through a PERMA lens. References may draw from: Seligman, M. E. P. (2011). *Flourish: A visionary new understanding of happiness and well-being*. Free Press.; Fredrickson, B. L. (2001). The role of positive emotions in positive psychology: The broaden-and-build theory of positive emotions. *American Psychologist, 56*(3), 218-226.; Csikszentmihalyi, M. (1990). *Flow: The psychology of optimal experience*. Harper & Row.
-- Strengths & Inner Resources: identify character strengths and reusable inner resources, each tied to quotes. References may draw from: Peterson, C., & Seligman, M. E. P. (2004). *Character strengths and virtues: A handbook and classification*. Oxford University Press.; Linley, P. A., Nielsen, K. M., Gillett, R., & Biswas-Diener, R. (2010). Using signature strengths in pursuit of goals. *International Coaching Psychology Review, 5*(1), 6-15.; Niemiec, R. M. (2013). VIA character strengths: Research and practice. In *Well-being and cultures* (pp. 11-29). Springer.
-- Self-Determination Motivation: assess the three basic psychological needs — autonomy, competence, relatedness — as satisfied or frustrated, and read the resulting motivation quality (toward intrinsic vs controlled). References may draw from: Deci, E. L., & Ryan, R. M. (2000). The 'what' and 'why' of goal pursuits. *Psychological Inquiry, 11*(4), 227-268.; Ryan, R. M., & Deci, E. L. (2017). *Self-determination theory: Basic psychological needs in motivation, development, and wellness*. Guilford Press.; Gagné, M., & Deci, E. L. (2005). Self-determination theory and work motivation. *Journal of Organizational Behavior, 26*(4), 331-362.
-- Linguistic Fingerprint: agency (active vs passive voice), connectedness (I / we / they balance), time orientation, energy vs depletion words, certainty vs hesitation.
-- Actions for the Next Four Weeks: propose 2-3 small, client-safe experiments grounded in this person's evidence. For each action include **Action**, **Why this fits**, **Cadence**, and **Success signal**. Keep the actions observable and achievable; do not diagnose, prescribe treatment, or claim causality.
-
 Language: English. No emoji anywhere. Tone: professional, precise, theoretically grounded — like a senior coach's clinical notes."""
 
 
@@ -452,23 +445,13 @@ def _coach_analysis_system(week_count: int, language: str = "en") -> str:
 
 排版（教練要能快速掃讀）：內文用簡短段落與 - 條列呈現，多用條列、少用長段落、句子精簡。逐一分析多個項目（例如 P/E/R/M/A 五面向、SDT 三需求）時，每個項目先用一行「- **項目名稱**」當作該項目的粗體標籤，再用縮排兩格的子條列「  - 證據 / 引文」列出其下的具體證據，形成有層級的巢狀條列，不要把標籤與證據全部擠在同一層。
 
-務必依序包含這些區塊：
-[[BLOCK]] 整體情緒與福祉軌跡
+務必只包含以下一個區塊，不得產生其他情報簡報區塊：
 [[BLOCK]] PERMA 五面向剖析
-[[BLOCK]] 優勢與內在資源
-[[BLOCK]] 自我決定論動機
-[[BLOCK]] 語言指紋
-[[BLOCK]] 未來四週行動
 
-其中「PERMA 五面向剖析」「優勢與內在資源」「自我決定論動機」是三個各自獨立的理論專欄，每一欄都必須：(a) 全程扣合此人的具體引文並註明第幾次；(b) 在該欄內文最後另起一行、以「**參考文獻**」為小標，再用 - 條列 2 至 3 筆 APA 格式文獻（期刊名或書名以 * 斜體 * 標示），且只列與該欄主題直接相關者，不得跨欄混用。
+此區塊必須：(a) 全程扣合此人的具體引文並註明第幾次；(b) 在內文最後另起一行、以「**參考文獻**」為小標，再用 - 條列 2 至 3 筆 APA 格式文獻（期刊名或書名以 * 斜體 * 標示）。
 
 各區塊要求：
 - PERMA 五面向剖析：逐一分析 P/E/R/M/A 五面向，標飽滿度（充沛／穩定／稀薄／缺席）、變化與關鍵引文，並以 PERMA 觀點整合此人整體樣態。參考文獻可從下列擇要引用：Seligman, M. E. P. (2011). *Flourish: A visionary new understanding of happiness and well-being*. Free Press.；Fredrickson, B. L. (2001). The role of positive emotions in positive psychology: The broaden-and-build theory of positive emotions. *American Psychologist, 56*(3), 218–226.；Csikszentmihalyi, M. (1990). *Flow: The psychology of optimal experience*. Harper & Row.
-- 優勢與內在資源：辨識此人的性格優勢與可再運用的內在資源，逐一扣合引文。參考文獻可從下列擇要引用：Peterson, C., & Seligman, M. E. P. (2004). *Character strengths and virtues: A handbook and classification*. Oxford University Press.；Linley, P. A., Nielsen, K. M., Gillett, R., & Biswas-Diener, R. (2010). Using signature strengths in pursuit of goals. *International Coaching Psychology Review, 5*(1), 6–15.；Niemiec, R. M. (2013). VIA character strengths: Research and practice. In *Well-being and cultures* (pp. 11–29). Springer.
-- 自我決定論動機：以自我決定論的三項基本心理需求——自主（Autonomy）、勝任（Competence）、關聯（Relatedness）——分別評估其滿足或受挫，並據此判讀其動機品質（趨近內在動機或受控動機）。參考文獻可從下列擇要引用：Deci, E. L., & Ryan, R. M. (2000). The 'what' and 'why' of goal pursuits: Human needs and the self-determination of behavior. *Psychological Inquiry, 11*(4), 227–268.；Ryan, R. M., & Deci, E. L. (2017). *Self-determination theory: Basic psychological needs in motivation, development, and wellness*. Guilford Press.；Gagné, M., & Deci, E. L. (2005). Self-determination theory and work motivation. *Journal of Organizational Behavior, 26*(4), 331–362.
-- 語言指紋：能動性（主動 vs 被動語態）、連結性（我／我們／他們的比重）、時間定向、能量詞 vs 耗竭詞、確定 vs 遲疑。
-- 未來四週行動：提出 2 至 3 個根據此人文字證據、適合交付給客戶的小型行動實驗。每項包含 **行動**、**為何適合**、**執行頻率**、**成功訊號**；必須具體可觀察且容易執行，不得診斷、提供治療處方或宣稱因果。
-
 語言：繁體中文（台灣）。全篇不得使用任何 emoji。語氣專業、精確，兼具實證理論素養，如資深教練結合學理的臨床筆記。"""
 
 
@@ -560,8 +543,7 @@ Requirements:
 - Preserve and lightly quote the client's own words.
 - Use Markdown, with ## sections; keep paragraphs short and clear, and use - bullets (not numbered lists) where they aid readability — prefer bullets over long paragraphs.
 - Bold (**...**) the key insight or takeaway phrase in each paragraph — 1 short bolded phrase per paragraph, not whole sentences — so a reader skimming just the bold text gets the gist.
-- Include a final client-facing section named "Actions for the Next Four Weeks" with 2-3 small experiments. Address the client directly. Each action must state the action, why it fits this client based on the supplied evidence, cadence, and an observable success signal; keep it empowering and avoid diagnostic or treatment language.
-- End with 1 to 2 warm, forward-looking invitations after the action section.
+- End with 1 to 2 warm, forward-looking invitations.
 - Entirely in English. No emoji.
 - Do not repeat the title page or signature (the system adds them)."""
 
@@ -573,8 +555,7 @@ _CLIENT_REPORT_SYSTEM_ZH = """你是教練 陳郁敏 的寫作助理。以下是
 - 保留並適度引用客戶自己的語言。
 - 用 Markdown，以 ## 分節，段落清晰、專業；多用 - 條列（不要用數字條列），少用長段落。
 - 每段用 **粗體** 標出這段的重點短語（一段一個重點、標短語即可，不要整句加粗），讓人快速掃過粗體就能抓到重點。
-- 加入最後一節「未來四週行動」，以直接對客戶說話的方式提出 2 至 3 個小型行動實驗；每項都要包含行動、根據提供證據說明為何適合這位客戶、執行頻率與可觀察的成功訊號。語氣應溫暖賦能，不得使用診斷或治療語言。
-- 在行動區塊之後，以 1 至 2 個溫暖的前瞻邀請作結。
+- 最後以 1 至 2 個溫暖的前瞻邀請作結。
 - 全篇繁體中文（台灣），不得使用任何 emoji。
 - 不要重複標題頁與署名（系統會自動加上）。"""
 
@@ -583,9 +564,222 @@ def _client_report_system(language: str = "en") -> str:
     return _CLIENT_REPORT_SYSTEM_ZH if language == "zh-TW" else _CLIENT_REPORT_SYSTEM_EN
 
 
-_TRANSLATE_SYSTEM = """You translate an executive-coaching analysis from English into Traditional Chinese (Taiwan, 繁體中文).
+def _plain_markdown(value: str) -> str:
+    """ReportLab 內文使用的輕量 Markdown 清理。"""
+    text = re.sub(r"^#{1,3}\s+", "", value, flags=re.MULTILINE)
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"(?<!\*)\*(.+?)\*(?!\*)", r"\1", text)
+    return text.strip()
 
-You will receive a JSON object with "blocks" and "sessions". Return ONLY a JSON object with the exact same structure, keys, and array lengths, translating these human-readable text fields into natural, professional Traditional Chinese:
+
+def _build_report_pdf(member_name: str, analysis: dict, client_text: str) -> bytes:
+    """產生可直接附加於電子郵件的繁中 PDF；只含四個量化圖表與 PERMA 分析。"""
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    font_name = "NotoSansTC"
+    font_path = os.path.join(os.path.dirname(__file__), "assets", "fonts", "NotoSansTC-Variable.ttf")
+    try:
+        pdfmetrics.getFont(font_name)
+    except KeyError:
+        pdfmetrics.registerFont(TTFont(font_name, font_path))
+
+    out = io.BytesIO()
+    doc = SimpleDocTemplate(
+        out,
+        pagesize=A4,
+        rightMargin=16 * mm,
+        leftMargin=16 * mm,
+        topMargin=16 * mm,
+        bottomMargin=16 * mm,
+        title=f"{member_name} 的八週幸福感回顧",
+    )
+    styles = getSampleStyleSheet()
+    title = ParagraphStyle(
+        "TitleZH", parent=styles["Title"], fontName=font_name, fontSize=22,
+        leading=30, alignment=TA_CENTER, textColor=colors.HexColor("#1F3A5C"),
+    )
+    heading = ParagraphStyle(
+        "HeadingZH", parent=styles["Heading2"], fontName=font_name, fontSize=14,
+        leading=20, spaceBefore=10, spaceAfter=7, textColor=colors.HexColor("#1F3A5C"),
+    )
+    body = ParagraphStyle(
+        "BodyZH", parent=styles["BodyText"], fontName=font_name, fontSize=10,
+        leading=16, spaceAfter=6, textColor=colors.HexColor("#283444"),
+    )
+    small = ParagraphStyle(
+        "SmallZH", parent=body, fontSize=8, leading=11, textColor=colors.HexColor("#5A6676"),
+    )
+
+    story = [
+        Spacer(1, 24 * mm),
+        Paragraph("八週幸福感回顧", title),
+        Spacer(1, 5 * mm),
+        Paragraph(html.escape(member_name), ParagraphStyle("NameZH", parent=body, alignment=TA_CENTER, fontSize=13)),
+        Spacer(1, 4 * mm),
+        Paragraph("這份報告整理你八週書寫中的情緒變化、主題重心與可持續運用的內在資源。內容不是診斷或評分，而是一份理解近期經驗的回顧。", body),
+        PageBreak(),
+    ]
+
+    sessions = analysis.get("sessions") or []
+    dim_labels = {"P": "正向情緒", "E": "投入", "R": "關係", "M": "意義", "A": "成就"}
+    story.append(Paragraph("1. 五面向情緒效價", heading))
+    dim_rows = [["週次", *[f"{key} {dim_labels[key]}" for key in _PERMA_KEYS]]]
+    for index, session in enumerate(sessions):
+        dims = session.get("dims") or {}
+        dim_rows.append([f"第 {index + 1} 週", *[str((dims.get(key) or {}).get("v", 0)) for key in _PERMA_KEYS]])
+    dim_table = Table(dim_rows, repeatRows=1, colWidths=[24 * mm] + [28 * mm] * 5)
+    dim_table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), font_name),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E9EEF4")),
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CAD2DC")),
+        ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.extend([dim_table, Spacer(1, 5 * mm)])
+
+    story.append(Paragraph("2. 每週主題占比", heading))
+    topic_labels = {
+        "work": "工作／學業", "relationships": "關係", "health": "健康",
+        "rest": "休息恢復", "growth": "自我成長", "other": "其他",
+    }
+    topic_rows = [["週次", *topic_labels.values()]]
+    for index, session in enumerate(sessions):
+        topics = session.get("topics") or {}
+        topic_rows.append([f"第 {index + 1} 週", *[f"{topics.get(key, 0)}%" for key in topic_labels]])
+    topic_table = Table(topic_rows, repeatRows=1, colWidths=[20 * mm] + [25 * mm] * 6)
+    topic_table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), font_name),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E9EEF4")),
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CAD2DC")),
+        ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.extend([topic_table, Spacer(1, 5 * mm)])
+
+    story.append(Paragraph("3. 五面向情緒效價剖面", heading))
+    if sessions:
+        first_dims = sessions[0].get("dims") or {}
+        last_dims = sessions[-1].get("dims") or {}
+        profile_rows = [["面向", "第一週", "最近一週", "變化"]]
+        for key in _PERMA_KEYS:
+            first = int((first_dims.get(key) or {}).get("v", 0))
+            latest = int((last_dims.get(key) or {}).get("v", 0))
+            profile_rows.append([f"{key} {dim_labels[key]}", str(first), str(latest), f"{latest - first:+d}"])
+        profile_table = Table(profile_rows, colWidths=[55 * mm, 35 * mm, 35 * mm, 35 * mm])
+        profile_table.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, -1), font_name),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E9EEF4")),
+            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CAD2DC")),
+            ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ]))
+        story.append(profile_table)
+
+    story.append(Paragraph("4. 情緒詞雲", heading))
+    emotion_counts: dict[str, int] = {}
+    for session in sessions:
+        for emotion in session.get("emotions") or []:
+            word = str(emotion.get("word") or "").strip()
+            if word:
+                emotion_counts[word] = emotion_counts.get(word, 0) + int(emotion.get("intensity") or 1)
+    words = sorted(emotion_counts.items(), key=lambda item: (-item[1], item[0]))[:30]
+    story.append(Paragraph("　".join(f"{html.escape(word)}（{weight}）" for word, weight in words) or "目前沒有足夠的情緒詞資料。", body))
+
+    story.append(PageBreak())
+    story.append(Paragraph("5. PERMA 五面向剖析", heading))
+    for paragraph in _plain_markdown(client_text).split("\n"):
+        line = paragraph.strip()
+        if line:
+            story.append(Paragraph(html.escape(line), body if not line.startswith("- ") else small))
+
+    doc.build(story)
+    return out.getvalue()
+
+
+async def _member_identity(member_id: str) -> tuple[str, str]:
+    """用 service role 讀取會員 email；profiles 只存顯示名稱。"""
+    auth_resp = await db().get(
+        f"{SUPABASE_URL}/auth/v1/admin/users/{member_id}",
+        headers={"apikey": SUPABASE_SERVICE_ROLE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"},
+    )
+    email = str((auth_resp.json() if auth_resp.status_code == 200 else {}).get("email") or "").strip()
+    profile_resp = await db().get(
+        f"{SUPABASE_REST}/profiles",
+        headers=SUPABASE_HEADERS,
+        params=[("id", f"eq.{member_id}"), ("select", "display_name"), ("limit", "1")],
+    )
+    profiles = profile_resp.json() if profile_resp.status_code == 200 else []
+    name = str((profiles[0] if profiles else {}).get("display_name") or "你好").strip()
+    return name, email
+
+
+async def _send_completed_report(member_id: str, analysis: dict, client_text: str) -> dict:
+    """寄出八週完成報告。相同內容雜湊只寄一次。"""
+    content_hash = hashlib.sha256(client_text.encode("utf-8")).hexdigest()
+    if analysis.get("report_email_content_hash") == content_hash and analysis.get("report_emailed_at"):
+        return {"status": "already_sent"}
+    if not RESEND_API_KEY or not REPORT_EMAIL_FROM:
+        return {"status": "not_configured", "detail": "缺少 RESEND_API_KEY 或 REPORT_EMAIL_FROM"}
+
+    name, email = await _member_identity(member_id)
+    if not email:
+        return {"status": "missing_email", "detail": "找不到會員 email"}
+
+    pdf_bytes = _build_report_pdf(name, analysis, client_text)
+    greeting_name = html.escape(name)
+    email_html = f"""
+    <p>{greeting_name}，你好：</p>
+    <p>謝謝你完成這 8 週的 PERMA 幸福感書寫。這段期間留下的內容，讓你可以重新看見自己的情緒變化、關注重心、內在優勢，以及不同生活面向之間的連結。</p>
+    <p>我們已將你的回顧整理成 PDF，隨信附上。報告包含：</p>
+    <ul>
+      <li>五面向情緒效價趨勢</li><li>每週主題占比</li><li>五面向情緒效價剖面</li>
+      <li>情緒詞彙</li><li>PERMA 五面向分析</li>
+    </ul>
+    <p>這份報告不是診斷或評分，而是一份幫助你理解近期經驗的整理。建議你找一段不被打擾的時間閱讀，並標記最有共鳴、最想進一步探索的內容。</p>
+    <p>若有任何疑問，或希望在教練會談中一起討論，歡迎直接回覆這封信。</p>
+    <p>祝福你，<br>陳郁敏 教練</p>
+    """
+    payload: dict = {
+        "from": REPORT_EMAIL_FROM,
+        "to": [email],
+        "subject": "你的 8 週幸福感回顧已完成",
+        "html": email_html,
+        "attachments": [{
+            "filename": "八週幸福感回顧.pdf",
+            "content": base64.b64encode(pdf_bytes).decode("ascii"),
+        }],
+    }
+    if REPORT_EMAIL_REPLY_TO:
+        payload["reply_to"] = REPORT_EMAIL_REPLY_TO
+    send_resp = await db().post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+        json=payload,
+    )
+    if send_resp.status_code not in (200, 201):
+        raise RuntimeError(f"Resend {send_resp.status_code}: {send_resp.text[:300]}")
+    return {
+        "status": "sent",
+        "email": email,
+        "content_hash": content_hash,
+        "provider_id": str(send_resp.json().get("id") or ""),
+    }
+
+
+_TRANSLATE_SYSTEM_EN = """You translate an executive-coaching analysis from Traditional Chinese (Taiwan) into English.
+
+You will receive a JSON object with "blocks" and "sessions". Return ONLY a JSON object with the exact same structure, keys, and array lengths, translating these human-readable text fields into natural, professional English:
 - blocks[].title, blocks[].body
 - sessions[].overallReason, sessions[].dims.P/E/R/M/A.reason, sessions[].emotions[].word
 
@@ -594,6 +788,22 @@ Rules:
 - Keep academic citations / APA references and *italic* work titles in their original language — do NOT translate author names, journal names, or book titles.
 - Do NOT change any numbers, any "valence" values (positive/negative/neutral), "intensity", "v", "include", or any JSON keys.
 - No emoji. Output valid JSON only — no commentary, no code fences."""
+
+_TRANSLATE_SYSTEM_ZH = """You translate an executive-coaching analysis from English into Traditional Chinese (Taiwan, 繁體中文).
+
+You will receive a JSON object with "blocks" and "sessions". Return ONLY a JSON object with the exact same structure, keys, and array lengths, translating these human-readable text fields into natural, professional Traditional Chinese:
+- blocks[].title, blocks[].body
+- sessions[].overallReason, sessions[].dims.P/E/R/M/A.reason, sessions[].emotions[].word
+
+Rules:
+- Preserve ALL Markdown syntax in bodies (##, **, *, -) exactly.
+- Keep academic citations / APA references and *italic* work titles in their original language.
+- Do NOT change numbers, valence values, intensity, v, include, or JSON keys.
+- No emoji. Output valid JSON only — no commentary, no code fences."""
+
+
+def _translate_system(target: str) -> str:
+    return _TRANSLATE_SYSTEM_EN if target == "en" else _TRANSLATE_SYSTEM_ZH
 
 
 def _clamp_v(v) -> int:
@@ -662,26 +872,17 @@ def _parse_analysis(out: str) -> tuple[list, list]:
             "emotions": emotions,
         })
 
-    # 前 4 塊（軌跡／PERMA／優勢／SDT）與最後的未來行動預設納入客戶版；
-    # 語言指紋保留在教練分析。用順序判斷才能同時支援中英文標題。
+    # 新版只產生 PERMA 五面向剖析，並預設納入客戶版。
     parts = [p.strip() for p in brief_part.split("[[BLOCK]]") if p.strip()]
     blocks = []
     for idx, part in enumerate(parts):
         nl = part.find("\n")
         title = (part[:nl] if nl >= 0 else part).strip()
         body = (part[nl + 1:] if nl >= 0 else "").strip()
-        # 目前保留的六個標準區塊全部預設納入客戶版。
-        blocks.append({"title": title, "body": body, "include": idx < 6})
+        if title.lower() in _ALLOWED_BLOCK_TITLES:
+            blocks.append({"title": title, "body": body, "include": True})
 
     return sessions, blocks
-
-
-def _detect_lang(text: str) -> str:
-    """依內容裡中文字 vs 拉丁字母的多寡，判斷學員書寫語言；判斷不出來預設英文。
-    政策：分析與客戶回顧都跟隨「學員書寫的語言」，而非教練介面語言。"""
-    cjk = sum(1 for ch in text if 0x4E00 <= ord(ch) <= 0x9FFF)
-    latin = sum(1 for ch in text if "a" <= ch.lower() <= "z")
-    return "zh-TW" if cjk > latin else "en"
 
 
 async def _fetch_member_posts(member_id: str) -> list[dict]:
@@ -690,16 +891,452 @@ async def _fetch_member_posts(member_id: str) -> list[dict]:
         headers=SUPABASE_HEADERS,
         params=[
             ("user_id", f"eq.{member_id}"),
-            ("select", "week_start,p_content,e_content,r_content,m_content,a_content"),
-            ("order", "week_start.asc"),
+            ("select", "id,week_start,p_content,e_content,r_content,m_content,a_content,created_at"),
+            ("order", "week_start.asc,created_at.asc"),
         ],
     )
     return resp.json() if resp.status_code == 200 else []
 
 
+def _posts_dump(posts: list[dict]) -> str:
+    dump_parts = []
+    for i, post in enumerate(posts):
+        lines = [f"── 第 {i + 1} 次（{post.get('week_start', '')}）"]
+        for key in _PERMA_KEYS:
+            answer = (post.get(f"{key.lower()}_content") or "").strip() or "（未填）"
+            lines.append(f"[{key}] {_PERMA_DIM[key]}：{answer}")
+        dump_parts.append("\n".join(lines))
+    return "\n\n".join(dump_parts)
+
+
+async def _analyze_completed_posts(posts: list[dict], coach_id: str) -> tuple[list, list]:
+    """自動完成 webhook 與 coach API 共用的繁中分析核心。"""
+    msg = await claude().messages.create(
+        model=_COACH_ANALYSIS_MODEL,
+        max_tokens=8000,
+        thinking={"type": "disabled"},
+        system=_coach_analysis_system(len(posts), "zh-TW"),
+        messages=[{"role": "user", "content": f"成員資料：\n\n{_posts_dump(posts)}"}],
+    )
+    meter_claude("coach-auto-complete-analysis", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)
+    return _parse_analysis(_msg_text(msg))
+
+
+async def _client_text_from_blocks(blocks: list[dict], coach_id: str) -> str:
+    included = [
+        block for block in blocks
+        if block.get("include")
+        and str(block.get("title") or "").strip().lower() in _ALLOWED_BLOCK_TITLES
+    ]
+    if not included:
+        raise ValueError("沒有可納入客戶版的分析區塊")
+    material = "\n\n".join(f"## {block['title']}\n{block['body']}" for block in included)
+    msg = await claude().messages.create(
+        model=_COACH_ANALYSIS_MODEL,
+        max_tokens=3000,
+        thinking={"type": "disabled"},
+        system=_client_report_system("zh-TW"),
+        messages=[{"role": "user", "content": material}],
+    )
+    meter_claude("coach-auto-complete-client-report", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)
+    return _msg_text(msg).strip()
+
+
+def _baseline_valence(value: object) -> int:
+    try:
+        score = max(0.0, min(10.0, float(value)))
+    except (TypeError, ValueError):
+        score = 5.0
+    return round((score - 5) * 20)
+
+
+def _build_weekly_report_pdf(
+    member_name: str,
+    week_number: int,
+    week_start: str,
+    baseline: dict,
+    session: dict,
+    block: dict,
+) -> bytes:
+    """產生只根據單週書寫、並與 T0 比較的繁中 PDF。"""
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    font_name = "NotoSansTC"
+    font_path = os.path.join(os.path.dirname(__file__), "assets", "fonts", "NotoSansTC-Variable.ttf")
+    try:
+        pdfmetrics.getFont(font_name)
+    except KeyError:
+        pdfmetrics.registerFont(TTFont(font_name, font_path))
+
+    out = io.BytesIO()
+    doc = SimpleDocTemplate(
+        out,
+        pagesize=A4,
+        rightMargin=18 * mm,
+        leftMargin=18 * mm,
+        topMargin=18 * mm,
+        bottomMargin=18 * mm,
+        title=f"{member_name} 第 {week_number} 週 PERMA 幸福感回顧",
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "WeeklyTitleZH", parent=styles["Title"], fontName=font_name, fontSize=20,
+        leading=28, alignment=TA_CENTER, textColor=colors.HexColor("#1F3A5C"),
+    )
+    heading = ParagraphStyle(
+        "WeeklyHeadingZH", parent=styles["Heading2"], fontName=font_name, fontSize=14,
+        leading=20, spaceBefore=10, spaceAfter=7, textColor=colors.HexColor("#1F3A5C"),
+    )
+    body = ParagraphStyle(
+        "WeeklyBodyZH", parent=styles["BodyText"], fontName=font_name, fontSize=10,
+        leading=17, spaceAfter=7, textColor=colors.HexColor("#283444"),
+    )
+
+    dims = session.get("dims") or {}
+    dim_labels = {"P": "正向情緒", "E": "投入", "R": "關係", "M": "意義", "A": "成就"}
+    rows = [["面向", "T0", f"第 {week_number} 週", "變化"]]
+    for key in _PERMA_KEYS:
+        t0 = _baseline_valence(baseline.get(key))
+        current = int((dims.get(key) or {}).get("v", 0))
+        rows.append([f"{key} {dim_labels[key]}", str(t0), str(current), f"{current - t0:+d}"])
+    comparison = Table(rows, colWidths=[58 * mm, 34 * mm, 34 * mm, 34 * mm])
+    comparison.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), font_name),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E9EEF4")),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CAD2DC")),
+        ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+
+    story = [
+        Paragraph(f"第 {week_number} 週 PERMA 幸福感回顧", title_style),
+        Paragraph(f"{html.escape(member_name)}　｜　週起始日 {html.escape(week_start)}", ParagraphStyle(
+            "WeeklyMetaZH", parent=body, alignment=TA_CENTER, textColor=colors.HexColor("#6A7685"),
+        )),
+        Spacer(1, 7 * mm),
+        Paragraph("本週與 T0 比較", heading),
+        comparison,
+        Spacer(1, 6 * mm),
+        Paragraph("本週 PERMA 五面向分析", heading),
+    ]
+    for raw_line in _plain_markdown(str(block.get("body") or "")).split("\n"):
+        line = raw_line.strip()
+        if line:
+            story.append(Paragraph(html.escape(line), body))
+    story.extend([
+        Spacer(1, 5 * mm),
+        Paragraph(
+            "這份報告只根據本週書寫與 T0 起始狀態整理，不使用其他週內容；它不是診斷或好壞評分。",
+            body,
+        ),
+    ])
+    doc.build(story)
+    return out.getvalue()
+
+
+async def _send_weekly_report(
+    member_id: str,
+    week_number: int,
+    week_start: str,
+    baseline: dict,
+    session: dict,
+    block: dict,
+    content_hash: str,
+) -> dict:
+    if not RESEND_API_KEY or not REPORT_EMAIL_FROM:
+        return {"status": "not_configured", "detail": "缺少 RESEND_API_KEY 或 REPORT_EMAIL_FROM"}
+    name, email = await _member_identity(member_id)
+    if not email:
+        return {"status": "missing_email", "detail": "找不到會員 email"}
+
+    pdf_bytes = _build_weekly_report_pdf(name, week_number, week_start, baseline, session, block)
+    email_html = f"""
+    <p>{html.escape(name)}，你好：</p>
+    <p>謝謝你完成第 {week_number} 週的 PERMA 書寫。</p>
+    <p>附件是本週幸福感回顧，只根據你這一週留下的內容進行分析，並與開始計畫時的 T0 狀態比較。報告中的變化不是好壞評分，而是幫助你看見這一週哪些面向有所移動。</p>
+    <p>閱讀時可以留意：哪一個變化最符合你的實際感受？哪一段文字是你接下來想繼續探索的？</p>
+    <p>若希望在教練會談中一起討論，歡迎直接回覆這封信。</p>
+    <p>祝福你，<br>陳郁敏 教練</p>
+    """
+    payload: dict = {
+        "from": REPORT_EMAIL_FROM,
+        "to": [email],
+        "subject": f"你的第 {week_number} 週 PERMA 幸福感回顧",
+        "html": email_html,
+        "attachments": [{
+            "filename": f"第{week_number}週-PERMA幸福感回顧.pdf",
+            "content": base64.b64encode(pdf_bytes).decode("ascii"),
+        }],
+    }
+    if REPORT_EMAIL_REPLY_TO:
+        payload["reply_to"] = REPORT_EMAIL_REPLY_TO
+    send_resp = await db().post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+        json=payload,
+    )
+    if send_resp.status_code not in (200, 201):
+        raise RuntimeError(f"Resend {send_resp.status_code}: {send_resp.text[:300]}")
+    return {
+        "status": "sent",
+        "email": email,
+        "content_hash": content_hash,
+        "provider_id": str(send_resp.json().get("id") or ""),
+    }
+
+
+async def _generate_and_send_weekly_report(
+    member_id: str,
+    post: dict,
+    week_number: int,
+    baseline: dict,
+    coach_id: str,
+) -> dict:
+    """為一個完整週次產生 PERMA-only 報告；內容或 T0 未變時不重複寄送。"""
+    week_start = str(post.get("week_start") or "")
+    fingerprint_source = {
+        "post": {key: post.get(key) for key in ["p_content", "e_content", "r_content", "m_content", "a_content"]},
+        "baseline": baseline,
+    }
+    content_hash = hashlib.sha256(
+        json.dumps(fingerprint_source, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    existing_resp = await db().get(
+        f"{SUPABASE_REST}/perma_weekly_reports",
+        headers=SUPABASE_HEADERS,
+        params=[
+            ("member_id", f"eq.{member_id}"),
+            ("week_start", f"eq.{week_start}"),
+            ("select", "*"),
+            ("limit", "1"),
+        ],
+    )
+    existing_rows = existing_resp.json() if existing_resp.status_code == 200 else []
+    existing = existing_rows[0] if existing_rows else {}
+    if existing.get("report_emailed_at") and existing.get("report_email_content_hash") == content_hash:
+        return {"status": "already_sent", "week_number": week_number}
+
+    sessions, blocks = await _analyze_completed_posts([post], coach_id)
+    if not sessions or not blocks:
+        raise RuntimeError("單週 PERMA 分析沒有回傳完整內容")
+    session, block = sessions[0], blocks[0]
+    content = {
+        "v": 1,
+        "baseline": baseline,
+        "session": session,
+        "block": block,
+        "scope": "single_week_only",
+    }
+    saved = {
+        "member_id": member_id,
+        "week_start": week_start,
+        "post_id": post.get("id"),
+        "week_number": week_number,
+        "content": content,
+        "updated_at": datetime.now(TW_TZ).isoformat(),
+    }
+    save_resp = await db().post(
+        f"{SUPABASE_REST}/perma_weekly_reports",
+        headers={**SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates,return=representation"},
+        json=saved,
+    )
+    if save_resp.status_code not in (200, 201):
+        raise RuntimeError(f"單週報告儲存失敗：{save_resp.text[:300]}")
+
+    delivery = await _send_weekly_report(
+        member_id, week_number, week_start, baseline, session, block, content_hash
+    )
+    email_patch = {
+        "report_email_error": None if delivery.get("status") == "sent" else delivery.get("detail"),
+    }
+    if delivery.get("status") == "sent":
+        email_patch.update({
+            "report_emailed_at": datetime.now(TW_TZ).isoformat(),
+            "report_email_recipient": delivery.get("email"),
+            "report_email_content_hash": content_hash,
+            "report_email_provider_id": delivery.get("provider_id"),
+        })
+    await db().patch(
+        f"{SUPABASE_REST}/perma_weekly_reports",
+        headers=SUPABASE_HEADERS,
+        params=[("member_id", f"eq.{member_id}"), ("week_start", f"eq.{week_start}")],
+        json=email_patch,
+    )
+    return {**delivery, "week_number": week_number, "week_start": week_start}
+
+
 class CoachMemberRequest(BaseModel):
     member_id: str
-    language: str = "en"  # 分析與客戶報告的語言，跟隨教練介面（預設英文）
+    language: str = "zh-TW"
+
+
+@app.post("/api/coach/report-completed-webhook")
+async def coach_report_completed_webhook(
+    request: Request,
+    x_report_webhook_secret: str = Header(default="", alias="X-Report-Webhook-Secret"),
+):
+    """Supabase Database Webhook：每週完整提交即寄單週報告；第 8 週另寄總結。"""
+    if not REPORT_WEBHOOK_SECRET or not hmac.compare_digest(x_report_webhook_secret, REPORT_WEBHOOK_SECRET):
+        raise HTTPException(status_code=401, detail="Webhook 驗證失敗")
+
+    payload = await request.json()
+    record = payload.get("record") or payload.get("new") or {}
+    member_id = str(record.get("user_id") or "").strip()
+    if not member_id:
+        raise HTTPException(status_code=400, detail="Webhook 缺少 record.user_id")
+
+    posts = await _fetch_member_posts(member_id)
+    completed_posts_all = [
+        post for post in posts
+        if all(str(post.get(f"{key.lower()}_content") or "").strip() for key in _PERMA_KEYS)
+    ]
+    # 同一週若有多次提交，以最後一筆完整內容為該週報告來源。
+    by_week: dict[str, dict] = {}
+    for post in completed_posts_all:
+        by_week[str(post.get("week_start") or "")] = post
+    completed_posts = [by_week[key] for key in sorted(by_week)]
+    current_week_start = str(record.get("week_start") or "")
+    current_post = by_week.get(current_week_start)
+    if not current_post:
+        return {
+            "status": "waiting_for_complete_week",
+            "completed_weeks": len(completed_posts),
+            "detail": "本週 P／E／R／M／A 尚未全部完成",
+        }
+
+    existing_resp = await db().get(
+        f"{SUPABASE_REST}/coach_analyses",
+        headers=SUPABASE_HEADERS,
+        params=[("member_id", f"eq.{member_id}"), ("select", "*"), ("limit", "1")],
+    )
+    existing_rows = existing_resp.json() if existing_resp.status_code == 200 else []
+    existing = existing_rows[0] if existing_rows else {}
+    baseline = existing.get("baseline") if isinstance(existing.get("baseline"), dict) else None
+    if not baseline or not all(key in baseline for key in _PERMA_KEYS):
+        return {
+            "status": "waiting_for_t0",
+            "detail": "請先由 coach 填寫完整 T0，系統才會生成單週比較報告",
+        }
+
+    coach_id = str(existing.get("coach_id") or "")
+    if not coach_id:
+        coach_resp = await db().get(
+            f"{SUPABASE_REST}/profiles",
+            headers=SUPABASE_HEADERS,
+            params=[("role", "eq.coach"), ("select", "id"), ("limit", "1")],
+        )
+        coach_rows = coach_resp.json() if coach_resp.status_code == 200 else []
+        coach_id = str((coach_rows[0] if coach_rows else {}).get("id") or "")
+    if not coach_id:
+        raise HTTPException(status_code=409, detail="找不到可歸屬的 coach 帳號")
+
+    week_number = next(
+        index + 1 for index, post in enumerate(completed_posts)
+        if str(post.get("week_start") or "") == current_week_start
+    )
+    try:
+        weekly_delivery = await _generate_and_send_weekly_report(
+            member_id, current_post, week_number, baseline, coach_id
+        )
+    except Exception as exc:
+        logger.exception("automatic weekly report failed for member %s", member_id)
+        raise HTTPException(status_code=502, detail=f"單週報告生成或寄送失敗：{str(exc)[:180]}")
+
+    if len(completed_posts) < 8:
+        return {
+            "status": "weekly_report_processed",
+            "weekly": weekly_delivery,
+            "completed_weeks": len(completed_posts),
+            "eight_week_summary": "waiting",
+        }
+
+    if existing.get("report_emailed_at") and int(existing.get("based_on") or 0) >= 8:
+        return {
+            "status": "weekly_report_processed",
+            "weekly": weekly_delivery,
+            "eight_week_summary": "already_sent",
+        }
+    report_posts = completed_posts[-8:]
+
+    try:
+        sessions, blocks = await _analyze_completed_posts(report_posts, coach_id)
+        client_text = await _client_text_from_blocks(blocks, coach_id)
+    except Exception as exc:
+        logger.exception("automatic completed report generation failed for member %s", member_id)
+        raise HTTPException(status_code=502, detail=f"自動報告生成失敗：{str(exc)[:180]}")
+
+    client_date = datetime.now(TW_TZ).date().isoformat()
+    analysis = {
+        **existing,
+        "member_id": member_id,
+        "based_on": 8,
+        "sessions": sessions,
+        "blocks": blocks,
+        "client_charts": _CLIENT_CHART_DEFAULTS,
+        "client_text": client_text,
+        "client_date": client_date,
+        "translations": {},
+        "coach_id": coach_id,
+        "updated_at": datetime.now(TW_TZ).isoformat(),
+    }
+    save_resp = await db().post(
+        f"{SUPABASE_REST}/coach_analyses",
+        headers={**SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates,return=representation"},
+        json=analysis,
+    )
+    if save_resp.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail="自動報告儲存失敗")
+    if save_resp.json():
+        analysis = save_resp.json()[0]
+
+    try:
+        delivery = await _send_completed_report(member_id, analysis, client_text)
+    except Exception as exc:
+        logger.exception("automatic completed report email failed for member %s", member_id)
+        await db().patch(
+            f"{SUPABASE_REST}/coach_analyses",
+            headers=SUPABASE_HEADERS,
+            params=[("member_id", f"eq.{member_id}")],
+            json={"report_email_error": str(exc)[:500]},
+        )
+        raise HTTPException(status_code=502, detail="報告已產生，但寄信失敗")
+
+    if delivery.get("status") != "sent":
+        return {
+            "status": delivery.get("status"),
+            "detail": delivery.get("detail"),
+            "weekly": weekly_delivery,
+        }
+
+    email_patch = {
+        "report_emailed_at": datetime.now(TW_TZ).isoformat(),
+        "report_email_recipient": delivery.get("email"),
+        "report_email_content_hash": delivery.get("content_hash"),
+        "report_email_provider_id": delivery.get("provider_id"),
+        "report_email_error": None,
+    }
+    await db().patch(
+        f"{SUPABASE_REST}/coach_analyses",
+        headers=SUPABASE_HEADERS,
+        params=[("member_id", f"eq.{member_id}")],
+        json=email_patch,
+    )
+    return {
+        "status": "sent",
+        "member_id": member_id,
+        "recipient": delivery.get("email"),
+        "weekly": weekly_delivery,
+        "eight_week_summary": "sent",
+    }
 
 
 @app.post("/api/coach/analyze")
@@ -711,9 +1348,8 @@ async def coach_analyze(req: CoachMemberRequest, authorization: str = Header(...
     if len(posts) < 1:
         raise HTTPException(status_code=409, detail="這位成員還沒有任何週記")
 
-    # 教練深度分析一律以英文生成（教練工作語言預設英文）；中文由前端點「中文」時
-    # 呼叫 /api/coach/translate 即時翻譯並快取，見遷移 003。
-    lang = "en"
+    # 報告原生語言固定為繁中；英文由教練選取後才翻譯並快取。
+    lang = "zh-TW"
 
     dump_parts = []
     for i, p in enumerate(posts):
@@ -912,18 +1548,15 @@ async def coach_client_report(req: CoachMemberRequest, authorization: str = Head
 
     included = [
         b for b in (analysis.get("blocks") or [])
-        if (
-            b.get("include")
-            or str(b.get("title") or "").strip().lower() in {"linguistic fingerprint", "語言指紋"}
-        )
-        and str(b.get("title") or "").strip().lower() not in _REMOVED_BLOCK_TITLES
+        if b.get("include")
+        and str(b.get("title") or "").strip().lower() in _ALLOWED_BLOCK_TITLES
     ]
     if not included:
         raise HTTPException(status_code=409, detail="請先在教練分析勾選要納入客戶版的區塊")
 
     material = "\n\n".join(f"## {b['title']}\n{b['body']}" for b in included)
-    # 客戶回顧同樣跟隨學員書寫語言（分析區塊已是該語言，直接由內容判斷）
-    lang = _detect_lang(material)
+    # 客戶版同樣以繁中為預設；英文只由介面明確選擇後查看。
+    lang = "zh-TW"
     msg = await claude().messages.create(
         model=_COACH_ANALYSIS_MODEL,
         max_tokens=3000,
@@ -941,19 +1574,55 @@ async def coach_client_report(req: CoachMemberRequest, authorization: str = Head
         params=[("member_id", f"eq.{req.member_id}")],
         json={"client_text": client_text, "client_date": client_date},
     )
-    if update_resp.status_code in (200, 201) and update_resp.json():
-        return update_resp.json()[0]
-    return {**analysis, "client_text": client_text, "client_date": client_date}
+    result = (
+        update_resp.json()[0]
+        if update_resp.status_code in (200, 201) and update_resp.json()
+        else {**analysis, "client_text": client_text, "client_date": client_date}
+    )
+
+    # 8 週內容完成後寄送一次；同一份 client_text 以內容雜湊防止重複寄件。
+    if int(result.get("based_on") or 0) >= 8:
+        try:
+            delivery = await _send_completed_report(req.member_id, result, client_text)
+            if delivery.get("status") == "sent":
+                email_patch = {
+                    "report_emailed_at": datetime.now(TW_TZ).isoformat(),
+                    "report_email_recipient": delivery.get("email"),
+                    "report_email_content_hash": delivery.get("content_hash"),
+                    "report_email_provider_id": delivery.get("provider_id"),
+                    "report_email_error": None,
+                }
+                await db().patch(
+                    f"{SUPABASE_REST}/coach_analyses",
+                    headers=SUPABASE_HEADERS,
+                    params=[("member_id", f"eq.{req.member_id}")],
+                    json=email_patch,
+                )
+                result.update(email_patch)
+            elif delivery.get("status") not in {"already_sent"}:
+                result["report_email_error"] = delivery.get("detail") or delivery.get("status")
+        except Exception as exc:
+            logger.exception("completed report email failed for member %s", req.member_id)
+            error_text = str(exc)[:500]
+            await db().patch(
+                f"{SUPABASE_REST}/coach_analyses",
+                headers=SUPABASE_HEADERS,
+                params=[("member_id", f"eq.{req.member_id}")],
+                json={"report_email_error": error_text},
+            )
+            result["report_email_error"] = error_text
+
+    return result
 
 
 class CoachTranslateRequest(BaseModel):
     member_id: str
-    target: str = "zh-TW"  # 目前只支援翻成繁體中文；英文為原生生成語言
+    target: str = "en"
 
 
 @app.post("/api/coach/translate")
 async def coach_translate(req: CoachTranslateRequest, authorization: str = Header(...)):
-    """把已生成的英文分析（blocks + sessions 的文字欄位）翻成目標語言並快取。
+    """把繁中原生分析（blocks + sessions 的文字欄位）翻成英文並快取。
     已快取則直接回傳，不重複呼叫模型。"""
     token = authorization.removeprefix("Bearer ").strip()
     coach_id = await require_coach(token)
@@ -967,6 +1636,8 @@ async def coach_translate(req: CoachTranslateRequest, authorization: str = Heade
     if not rows:
         raise HTTPException(status_code=409, detail="請先生成教練分析")
     analysis = rows[0]
+    if req.target not in {"en", "zh-TW"}:
+        raise HTTPException(status_code=400, detail="只支援繁中與英文")
 
     translations = analysis.get("translations") or {}
     if req.target in translations:  # 已快取，直接回傳
@@ -977,7 +1648,7 @@ async def coach_translate(req: CoachTranslateRequest, authorization: str = Heade
         model=_COACH_ANALYSIS_MODEL,
         max_tokens=8000,
         thinking={"type": "disabled"},
-        system=_TRANSLATE_SYSTEM,
+        system=_translate_system(req.target),
         messages=[{"role": "user", "content": json.dumps(source, ensure_ascii=False)}],
     )
     meter_claude("coach-translate", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)

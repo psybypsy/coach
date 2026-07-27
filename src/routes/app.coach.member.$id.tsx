@@ -9,11 +9,9 @@ import {
   DIM,
   DIMCOLOR,
   vColor,
-  vLabel,
   valLine,
   valRadar,
   radarDelta,
-  affectBalance,
   topicShareStacked,
   emotionWordCloud,
   type SessionScore,
@@ -43,22 +41,6 @@ interface BriefBlock {
   title: string
   body: string
   include: boolean
-  custom?: boolean // 由教練自訂框架生成的區塊
-}
-
-interface FwDimension {
-  name: string
-  look_for: string
-  evidence_rule: string
-}
-
-interface Framework {
-  name: string
-  basis: string
-  lens: string
-  dimensions: FwDimension[]
-  references: string[]
-  note: string
 }
 
 // T0 基準點：教練手填的五面向幸福感分數（0–10），作為所有圖表的起點（見遷移 005）
@@ -72,10 +54,27 @@ interface CoachAnalysis {
   client_charts: Record<string, boolean>
   client_text: string | null
   client_date: string | null
-  // 英文分析的翻譯快取（見遷移 003）：預設英文，教練點「中文」時即時翻譯並存這裡
+  // 繁中為原生分析；教練選擇英文時才即時翻譯並快取。
   translations?: Record<string, { blocks: BriefBlock[]; sessions: SessionScore[] }>
   baseline?: BaselineScores | null
+  report_emailed_at?: string | null
+  report_email_recipient?: string | null
+  report_email_error?: string | null
   updated_at: string
+}
+
+interface WeeklyPermaReport {
+  member_id: string
+  week_start: string
+  week_number: number
+  content: {
+    baseline: BaselineScores
+    session: SessionScore
+    block: BriefBlock
+    scope: 'single_week_only'
+  }
+  report_emailed_at?: string | null
+  report_email_recipient?: string | null
 }
 
 // T0 分數尺度：0–10 → valence −100~+100（5=0 中性、10=+100、0=−100）
@@ -94,48 +93,29 @@ function makeBaselineSession(b: BaselineScores | null | undefined): SessionScore
   return { overall, overallReason: '', dims, emotions: [] }
 }
 
-// #2 情報簡報區塊標題一律用「固定的 canonical 標題」（依區塊順序）並走 t()，
-// 預設英文、跟隨介面語言 —— 這樣即使某成員的分析是舊版用中文生成、標題存成中文，
-// 教練介面也不會出現「中文標題混英文框架」。後端固定依此順序產出 10 個區塊。
-const BLOCK_TITLES = [
-  '整體情緒與福祉軌跡',
-  'PERMA 五面向剖析',
-  '優勢與內在資源',
-  '自我決定論動機',
-  '語言指紋',
-  '未來四週行動',
-]
-
-// 已從產品移除的舊情報模組。舊資料庫列可能仍保留這些 block，
-// 因此前端需同步過濾，避免它們再次出現在畫面或 Client Version。
-const REMOVED_BLOCK_TITLES = new Set([
-  'cross-cutting themes & patterns',
-  '橫向主題與模式',
-  'the unsaid',
-  '未言之事',
-  'coaching hypotheses',
-  '教練假設',
-  'worth watching',
-  '值得關注',
-  'session preparation',
-  '會談準備',
+const ALLOWED_BLOCK_TITLES = new Set([
+  'perma five-dimension profile',
+  'perma 五面向剖析',
 ])
 
-function isRemovedBlock(block: BriefBlock): boolean {
-  return REMOVED_BLOCK_TITLES.has(String(block.title || '').trim().toLowerCase())
+function isAllowedBlock(block: BriefBlock): boolean {
+  return ALLOWED_BLOCK_TITLES.has(String(block.title || '').trim().toLowerCase())
 }
 
-function isLinguisticFingerprint(block: BriefBlock): boolean {
-  return ['linguistic fingerprint', '語言指紋'].includes(String(block.title || '').trim().toLowerCase())
+function isLegacyClientText(text: string | null | undefined): boolean {
+  return /(linguistic fingerprint|actions for the next four weeks|self-determination motivation|語言指紋|未來四週行動|自我決定論動機)/i.test(
+    String(text || ''),
+  )
+}
+
+function blockTitleForLanguage(_block: BriefBlock, language: 'en' | 'zh-TW'): string {
+  return language === 'zh-TW' ? 'PERMA 五面向剖析' : 'PERMA Five-Dimension Profile'
 }
 
 const CHART_DEFS: { key: string; title: string }[] = [
-  { key: 'summary', title: '情緒 valence 摘要' },
-  { key: 'trend', title: '整體情緒 valence 趨勢' },
   { key: 'dims', title: '五面向 valence 趨勢' },
   { key: 'topics', title: '每週主題占比' },
   { key: 'radar', title: '五面向 valence 剖面' },
-  { key: 'affect', title: '正負情緒平衡' },
   { key: 'cloud', title: '情緒詞雲' },
 ]
 
@@ -277,17 +257,13 @@ function MemberDetailPage() {
   const [entries, setEntries] = useState<EntryRow[]>([])
   const [posts, setPosts] = useState<JournalPost[]>([])
   const [analysis, setAnalysis] = useState<CoachAnalysis | null>(null)
+  const [weeklyReports, setWeeklyReports] = useState<WeeklyPermaReport[]>([])
   const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState<'analyze' | 'client' | 'translate' | 'framework' | null>(null)
-  // 自訂分析框架：描述 → AI 生成可編輯的框架草稿 → 用它分析
-  const [fwDesc, setFwDesc] = useState('')
-  const [fwDraft, setFwDraft] = useState<Framework | null>(null)
-  // 教練簡報內文顯示語言：預設英文（原生生成語言）；中文為即時翻譯的快取版
-  const [briefLang, setBriefLang] = useState<'en' | 'zh-TW'>('en')
-  // 子項目預設全收起（外層三大區塊維持展開）：記的是「明確展開」的項目，空陣列＝全部收起
-  const [openRows, setOpenRows] = useState<number[]>([])
+  const [busy, setBusy] = useState<'analyze' | 'client' | 'translate' | null>(null)
+  const [briefLang, setBriefLang] = useState<'en' | 'zh-TW'>('zh-TW')
+  const [autoTranslationAttempted, setAutoTranslationAttempted] = useState(false)
   const [openBlocks, setOpenBlocks] = useState<number[]>([])
-  const [openActionPreview, setOpenActionPreview] = useState(false)
+  const [openWeeklyReports, setOpenWeeklyReports] = useState<number[]>([])
   // 圖表模塊預設收起；展開的 key 記在這裡（#6：所有模塊都可展開／收合）
   const [openCharts, setOpenCharts] = useState<string[]>([])
   // #6 最外層三個大 section 也可展開／收合，預設全展開
@@ -317,8 +293,20 @@ function MemberDetailPage() {
   }, [baselineDraft])
 
   useEffect(() => {
+    setAutoTranslationAttempted(false)
     void guardAndLoad()
   }, [id])
+
+  useEffect(() => {
+    if (!analysis || briefLang !== 'zh-TW' || autoTranslationAttempted) return
+    const canonicalIsChinese = analysis.blocks.some((block) =>
+      String(block.title || '').trim().toLowerCase() === 'perma 五面向剖析',
+    )
+    if (!canonicalIsChinese && !analysis.translations?.['zh-TW']) {
+      setAutoTranslationAttempted(true)
+      void switchBriefLang('zh-TW')
+    }
+  }, [analysis, briefLang, autoTranslationAttempted])
 
   const hasDeepAnalysis = !!analysis && analysis.sessions.length > 0
   const navItems = useMemo(() => {
@@ -329,12 +317,14 @@ function MemberDetailPage() {
     if (hasDeepAnalysis) {
       items.push({ id: 'sec-charts', label: t('圖表'), indent: true })
       items.push({ id: 'sec-blocks', label: t('教練情報簡報'), indent: true })
-      items.push({ id: 'sec-framework', label: t('自訂分析框架'), indent: true })
       items.push({ id: 'sec-client', label: t('客戶交付版') })
+    }
+    if (weeklyReports.length > 0) {
+      items.push({ id: 'sec-weekly-reports', label: t('每週 PERMA 報告') })
     }
     items.push({ id: 'sec-timeline', label: t('書寫時間軸') })
     return items
-  }, [hasDeepAnalysis, t])
+  }, [hasDeepAnalysis, weeklyReports.length, t])
 
   // 依捲動位置自動高亮側欄目前章節（進入視窗上方 35% 區帶即視為目前章節）
   useEffect(() => {
@@ -369,7 +359,13 @@ function MemberDetailPage() {
 
   async function load() {
     setLoading(true)
-    const [{ data: profile }, { data: entryRows }, { data: postRows }, { data: analysisRow }] =
+    const [
+      { data: profile },
+      { data: entryRows },
+      { data: postRows },
+      { data: analysisRow },
+      { data: weeklyReportRows },
+    ] =
       await Promise.all([
         supabase.from('profiles').select('display_name').eq('id', id).single(),
         supabase
@@ -383,12 +379,18 @@ function MemberDetailPage() {
           .eq('user_id', id)
           .order('week_start', { ascending: true }),
         supabase.from('coach_analyses').select('*').eq('member_id', id).maybeSingle(),
+        supabase
+          .from('perma_weekly_reports')
+          .select('*')
+          .eq('member_id', id)
+          .order('week_number', { ascending: true }),
       ])
     setName(profile?.display_name ?? '')
     setEntries((entryRows as unknown as EntryRow[]) ?? [])
     setPosts((postRows as unknown as JournalPost[]) ?? [])
     const row = (analysisRow as unknown as CoachAnalysis) ?? null
     setAnalysis(row)
+    setWeeklyReports((weeklyReportRows as unknown as WeeklyPermaReport[]) ?? [])
     const b = row?.baseline
     setBaselineDraft(
       b ? (Object.fromEntries(KEYS.map((k) => [k, String(b[k] ?? '')])) as Record<DimKey, string>) : emptyBaselineDraft,
@@ -436,7 +438,7 @@ function MemberDetailPage() {
       const resp = await authFetch('/api/coach/analyze')
       if (resp.ok) {
         setAnalysis((await resp.json()) as CoachAnalysis)
-        setBriefLang('en') // 新內容、翻譯已作廢，回到英文
+        setBriefLang('zh-TW')
       } else {
         const body = (await resp.json().catch(() => ({}))) as { detail?: string }
         setMessage(body.detail || t('發布失敗，請再試一次。'))
@@ -448,23 +450,26 @@ function MemberDetailPage() {
     }
   }
 
-  // 切換教練簡報內文語言：英文即時切；中文若無快取則呼叫後端翻譯一次
+  // 繁中為原文；英文只在教練選擇後翻譯一次並快取。
   async function switchBriefLang(target: 'en' | 'zh-TW') {
-    if (target === 'en') {
-      setBriefLang('en')
+    const canonicalIsChinese = analysis?.blocks.some((block) =>
+      String(block.title || '').trim().toLowerCase() === 'perma 五面向剖析',
+    )
+    if ((target === 'zh-TW' && canonicalIsChinese) || (target === 'en' && !canonicalIsChinese)) {
+      setBriefLang(target)
       return
     }
-    if (analysis?.translations?.['zh-TW']) {
-      setBriefLang('zh-TW')
+    if (analysis?.translations?.[target]) {
+      setBriefLang(target)
       return
     }
     setBusy('translate')
     setMessage(null)
     try {
-      const resp = await authFetch('/api/coach/translate', { member_id: id, target: 'zh-TW' })
+      const resp = await authFetch('/api/coach/translate', { member_id: id, target })
       if (resp.ok) {
         setAnalysis((await resp.json()) as CoachAnalysis)
-        setBriefLang('zh-TW')
+        setBriefLang(target)
       } else {
         const body = (await resp.json().catch(() => ({}))) as { detail?: string }
         setMessage(body.detail || t('發布失敗，請再試一次。'))
@@ -482,7 +487,13 @@ function MemberDetailPage() {
     try {
       const resp = await authFetch('/api/coach/client-report')
       if (resp.ok) {
-        setAnalysis((await resp.json()) as CoachAnalysis)
+        const next = (await resp.json()) as CoachAnalysis
+        setAnalysis(next)
+        if (next.report_emailed_at) {
+          setMessage(t('客戶版已生成，PDF 已寄送給成員。'))
+        } else if (next.report_email_error) {
+          setMessage(`${t('客戶版已生成，但 PDF 尚未寄出：')}${next.report_email_error}`)
+        }
       } else {
         const body = (await resp.json().catch(() => ({}))) as { detail?: string }
         setMessage(body.detail || t('發布失敗，請再試一次。'))
@@ -492,97 +503,6 @@ function MemberDetailPage() {
     } finally {
       setBusy(null)
     }
-  }
-
-  // 教練描述想分析什麼 → AI 上網找對應理論 → 生成可編輯的框架草稿
-  async function genFramework() {
-    const description = fwDesc.trim()
-    if (description.length < 4) {
-      setMessage(t('請先描述你想分析什麼'))
-      return
-    }
-    setBusy('framework')
-    setMessage(null)
-    try {
-      const resp = await authFetch('/api/coach/framework/generate', { description, language })
-      if (resp.ok) {
-        const fw = (await resp.json()) as Partial<Framework>
-        setFwDraft({
-          name: fw.name ?? '',
-          basis: fw.basis ?? '',
-          lens: fw.lens ?? '',
-          dimensions: (fw.dimensions ?? []).map((d) => ({
-            name: d?.name ?? '',
-            look_for: d?.look_for ?? '',
-            evidence_rule: d?.evidence_rule ?? '',
-          })),
-          references: fw.references ?? [],
-          note: fw.note ?? '',
-        })
-      } else {
-        const body = (await resp.json().catch(() => ({}))) as { detail?: string }
-        setMessage(body.detail || t('發布失敗，請再試一次。'))
-      }
-    } catch {
-      setMessage(t('發布失敗，請再試一次。'))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  // 用教練確認後的框架，對成員週記生成一個情報簡報區塊，append 進既有分析
-  async function runFrameworkAnalysis() {
-    if (!fwDraft) return
-    const dims = fwDraft.dimensions.filter((d) => d.name.trim())
-    if (dims.length === 0) {
-      setMessage(t('請至少保留一個維度'))
-      return
-    }
-    setBusy('framework')
-    setMessage(null)
-    try {
-      const resp = await authFetch('/api/coach/analyze-framework', {
-        member_id: id,
-        framework: { ...fwDraft, dimensions: dims },
-        language,
-      })
-      if (resp.ok) {
-        setAnalysis((await resp.json()) as CoachAnalysis)
-        setBriefLang('en') // 新增區塊、翻譯快取已作廢，回到英文
-        setFwDraft(null)
-        setFwDesc('')
-      } else {
-        const body = (await resp.json().catch(() => ({}))) as { detail?: string }
-        setMessage(body.detail || t('發布失敗，請再試一次。'))
-      }
-    } catch {
-      setMessage(t('發布失敗，請再試一次。'))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  function updateFwDim(i: number, key: keyof FwDimension, val: string) {
-    setFwDraft((prev) =>
-      prev
-        ? { ...prev, dimensions: prev.dimensions.map((d, j) => (j === i ? { ...d, [key]: val } : d)) }
-        : prev,
-    )
-  }
-  function addFwDim() {
-    setFwDraft((prev) =>
-      prev ? { ...prev, dimensions: [...prev.dimensions, { name: '', look_for: '', evidence_rule: '' }] } : prev,
-    )
-  }
-  function removeFwDim(i: number) {
-    setFwDraft((prev) => (prev ? { ...prev, dimensions: prev.dimensions.filter((_, j) => j !== i) } : prev))
-  }
-
-  function deleteBlock(i: number) {
-    if (!analysis) return
-    if (!window.confirm(t('確定要刪除這個區塊嗎？此動作無法復原。'))) return
-    const blocks = analysis.blocks.filter((_, j) => j !== i)
-    void persist({ blocks })
   }
 
   // 更新 coach_analyses（教練 RLS 允許）並同步本地狀態
@@ -1087,16 +1007,6 @@ function MemberDetailPage() {
             <div dangerouslySetInnerHTML={{ __html: radarDelta(cd.firstDim, cd.lastDim) }} />
           </>
         )
-      case 'affect':
-        return (
-          <>
-            <div className="cv-legend" style={{ justifyContent: 'center' }}>
-              {legendItem('#2E7057', t('正向（往上）'))}
-              {legendItem('#B0542C', t('負向（往下）'))}
-            </div>
-            <div className="cv-chart-wrap" dangerouslySetInnerHTML={{ __html: affectBalance(analysis.sessions) }} />
-          </>
-        )
       case 'cloud':
         return <div dangerouslySetInnerHTML={{ __html: emotionWordCloud(analysis.sessions) }} />
     }
@@ -1108,18 +1018,21 @@ function MemberDetailPage() {
   const visibleBlocks =
     analysis?.blocks
       .map((block, index) => ({ block, index }))
-      .filter(({ block }) => !isRemovedBlock(block)) ?? []
-  const includedBlocks = visibleBlocks
-    .filter(({ block }) => block.include || isLinguisticFingerprint(block))
-    .map(({ block }) => block)
-  const hasFutureActionsBlock =
+      .filter(({ block }) => isAllowedBlock(block)) ?? []
+  const includedBlocks = visibleBlocks.filter(({ block }) => block.include).map(({ block }) => block)
+  const canonicalIsChinese =
     analysis?.blocks.some((block) =>
-      ['actions for the next four weeks', '未來四週行動'].includes(String(block.title || '').trim().toLowerCase()),
+      String(block.title || '').trim().toLowerCase() === 'perma 五面向剖析',
     ) ?? false
-  // 內文顯示語言：中文且有快取則用翻譯版，否則用原生英文（依 index 對齊 canonical）
-  const briefTr = briefLang === 'zh-TW' ? analysis?.translations?.['zh-TW'] : undefined
+  // 新資料繁中是 canonical；舊資料仍可使用既有 zh-TW 翻譯快取。
+  const briefTr =
+    briefLang === 'en' && canonicalIsChinese
+      ? analysis?.translations?.en
+      : briefLang === 'zh-TW' && !canonicalIsChinese
+        ? analysis?.translations?.['zh-TW']
+        : undefined
   const viewBlocks = briefTr?.blocks ?? analysis?.blocks ?? []
-  const viewSessions = briefTr?.sessions ?? analysis?.sessions ?? []
+  const hasCurrentClientText = !!analysis?.client_text && !isLegacyClientText(analysis.client_text)
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-8">
@@ -1214,11 +1127,11 @@ function MemberDetailPage() {
 
             {analysis && analysis.sessions.length > 0 && (
               <>
-                {/* 內文語言切換：預設英文；點「中文」即時翻譯一次並快取，之後切換即時 */}
+                {/* 內文預設繁中；只有選取英文時才翻譯並快取。 */}
                 <div className="mb-4 flex items-center justify-end gap-2">
                   <span className="text-xs text-muted-foreground">{t('內文語言')}</span>
                   <div className="inline-flex overflow-hidden rounded-md border border-border">
-                    {(['en', 'zh-TW'] as const).map((lng) => (
+                    {(['zh-TW', 'en'] as const).map((lng) => (
                       <button
                         key={lng}
                         onClick={() => switchBriefLang(lng)}
@@ -1229,7 +1142,7 @@ function MemberDetailPage() {
                             : 'text-foreground-soft hover:bg-muted'
                         }`}
                       >
-                        {lng === 'en' ? 'EN' : busy === 'translate' ? t('翻譯中…') : '中文'}
+                        {lng === 'zh-TW' ? '中文' : busy === 'translate' ? t('翻譯中…') : 'EN'}
                       </button>
                     ))}
                   </div>
@@ -1263,83 +1176,6 @@ function MemberDetailPage() {
                   </div>
                   )
                 })}
-                {/* 每次 valence 與評分理由：併入圖表清單，整塊當成清單裡的一項，預設收起 */}
-                <div className="mb-4">
-                  <div className="cv-slbl">
-                    <span
-                      style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}
-                      onClick={() => toggleChartOpen('sessions')}
-                    >
-                      <span
-                        className="cv-caret"
-                        style={{ transform: openCharts.includes('sessions') ? 'rotate(90deg)' : 'none' }}
-                      >
-                        ▶
-                      </span>
-                      {t('每次 valence 與評分理由')}
-                    </span>
-                  </div>
-                  {openCharts.includes('sessions') &&
-                    analysis.sessions.map((s, i) => {
-                      const vs = viewSessions[i] ?? s // 數字用 canonical，文字用顯示語言版
-                      const rowOpen = openRows.includes(i)
-                      return (
-                      <div key={i} className={`cv-vrow ${rowOpen ? 'open' : ''}`}>
-                        <div
-                          className="cv-vrow-hd"
-                          onClick={() =>
-                            setOpenRows((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]))
-                          }
-                        >
-                          <span className="cv-caret">▶</span>
-                          <span className="cv-vrow-n">
-                            {t('第')} {i + 1} {t('次')}
-                          </span>
-                          <span className="cv-vrow-date">{posts[i]?.week_start ?? ''}</span>
-                          <span
-                            className="cv-vbadge"
-                            style={{ background: vColor(s.overall) + '20', color: vColor(s.overall) }}
-                          >
-                            {t('整體')} {s.overall > 0 ? '+' : ''}
-                            {s.overall} · {vLabel(s.overall)}
-                          </span>
-                        </div>
-                        {rowOpen && (
-                          <div className="cv-vrow-body">
-                            <div className="cv-vreason">
-                              <strong>{t('整體評分理由。')}</strong>
-                              {vs.overallReason}
-                            </div>
-                            {KEYS.map((k) => {
-                              const dv = s.dims[k] || { v: 0, reason: '' }
-                              const reason = vs.dims[k]?.reason ?? dv.reason
-                              return (
-                                <div key={k} className="cv-vdim">
-                                  <span className="cv-vdim-key" style={{ background: DIMCOLOR[k] }}>
-                                    {k}
-                                  </span>
-                                  <span className="cv-vdim-name">{DIM[k]}</span>
-                                  <span className="cv-vdim-v" style={{ color: vColor(dv.v || 0) }}>
-                                    {(dv.v || 0) > 0 ? '+' : ''}
-                                    {dv.v || 0}
-                                  </span>
-                                  <span className="cv-vdim-reason">{reason || '—'}</span>
-                                </div>
-                              )
-                            })}
-                            <div className="cv-emos">
-                              {(vs.emotions || []).map((e, j) => (
-                                <span key={j} className={`cv-emo ${e.valence}`}>
-                                  {e.word}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      )
-                    })}
-                </div>
                 </div>
 
                 {/* 情報簡報區塊 */}
@@ -1359,11 +1195,8 @@ function MemberDetailPage() {
                       <span className="cv-caret" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>
                         ▶
                       </span>
-                      <span className="cv-block-title">{t(BLOCK_TITLES[i] ?? view.title)}</span>
-                      {b.custom && <span className="cv-block-tag ai">{t('AI 框架')}</span>}
-                      {(b.include || isLinguisticFingerprint(b)) && (
-                        <span className="cv-block-tag inc">{t('納入客戶版')}</span>
-                      )}
+                      <span className="cv-block-title">{blockTitleForLanguage(b, briefLang)}</span>
+                      {b.include && <span className="cv-block-tag inc">{t('納入客戶版')}</span>}
                     </div>
                     {open && (
                     <div className="cv-block-body">
@@ -1396,24 +1229,18 @@ function MemberDetailPage() {
                             <label className="cv-inc">
                               <input
                                 type="checkbox"
-                                checked={b.include || isLinguisticFingerprint(b)}
+                                checked={b.include}
                                 onChange={(e) => toggleBlock(i, e.target.checked)}
-                                disabled={isLinguisticFingerprint(b)}
                               />
                               {t('納入客戶交付版')}
                             </label>
                             <span style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-                              {b.custom && (
-                                <span className="cv-block-del" onClick={() => deleteBlock(i)}>
-                                  {t('刪除')}
-                                </span>
-                              )}
-                              {briefLang === 'en' ? (
+                              {briefLang === 'zh-TW' ? (
                                 <span className="cv-block-edit" onClick={() => startEdit(i)}>
                                   {t('編輯')}
                                 </span>
                               ) : (
-                                <span className="cv-block-edit" style={{ opacity: 0.5 }} title={t('請切回 EN 編輯原文')}>
+                                <span className="cv-block-edit" style={{ opacity: 0.5 }} title={t('請切回中文編輯原文')}>
                                   {t('編輯')}
                                 </span>
                               )}
@@ -1426,172 +1253,90 @@ function MemberDetailPage() {
                   </div>
                   )
                 })}
-                {import.meta.env.DEV && !hasFutureActionsBlock && (
-                  <div className="cv-block cv-action-preview">
-                    <div
-                      className="cv-block-hd"
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => setOpenActionPreview((open) => !open)}
-                    >
-                      <span
-                        className="cv-caret"
-                        style={{ transform: openActionPreview ? 'rotate(90deg)' : 'none' }}
-                      >
-                        ▶
-                      </span>
-                      <span className="cv-block-title">{t('未來四週行動')}</span>
-                      <span className="cv-block-tags">
-                        <span className="cv-block-tag preview">{t('本機預覽')}</span>
-                        <span className="cv-block-tag inc">{t('納入客戶版')}</span>
-                      </span>
-                    </div>
-                    {openActionPreview && <div className="cv-block-body">
-                      <div className="cv-preview-note">
-                        {t('以下僅供版面預覽；重新生成分析後會依日記證據產生個人化行動。')}
-                      </div>
-                      <div className="cv-md">
-                        <ul>
-                          <li>
-                            <strong>{t('每週恢復檢視')}</strong>
-                            <ul>
-                              <li><strong>{t('為何適合')}</strong> — {t('幫助你辨認哪些情境消耗能量，以及哪些方法確實能讓自己恢復。')}</li>
-                              <li><strong>{t('執行頻率')}</strong> — {t('每週安排 20 分鐘。')}</li>
-                              <li><strong>{t('成功訊號')}</strong> — {t('四週內至少完成三次，並找出一項可重複使用的恢復方式。')}</li>
-                            </ul>
-                          </li>
-                          <li>
-                            <strong>{t('一個價值導向行動')}</strong>
-                            <ul>
-                              <li><strong>{t('為何適合')}</strong> — {t('將你在意的價值轉成小而具體的行動，降低只停留在思考中的壓力。')}</li>
-                              <li><strong>{t('執行頻率')}</strong> — {t('每週完成一項 30 分鐘內可完成的小行動。')}</li>
-                              <li><strong>{t('成功訊號')}</strong> — {t('完成後能清楚說出這項行動和哪個重要價值相連。')}</li>
-                            </ul>
-                          </li>
-                          <li>
-                            <strong>{t('一次支持性連結')}</strong>
-                            <ul>
-                              <li><strong>{t('為何適合')}</strong> — {t('把支持性關係當作可主動運用的資源，而不是等到壓力累積後才求助。')}</li>
-                              <li><strong>{t('執行頻率')}</strong> — {t('每週主動與一位可信任的人對話一次。')}</li>
-                              <li><strong>{t('成功訊號')}</strong> — {t('對話後能更清楚說出自己的需要或下一步。')}</li>
-                            </ul>
-                          </li>
-                        </ul>
-                      </div>
-                    </div>}
-                  </div>
-                )}
-
-                {/* ── 自訂分析框架：教練描述 → AI 依文獻生成框架 → 產生新的簡報區塊 ── */}
-                <div className="cv-slbl" style={{ marginTop: 26 }} id="sec-framework">
-                  <span>{t('自訂分析框架')}</span>
-                </div>
-                <div className="cv-fw-intro">
-                  <p className="mb-3 text-xs text-muted-foreground">
-                    {t('用自己的話描述你想分析什麼，AI 會依心理學文獻生成一個有理論依據的框架；你可以編輯後用它產生一個新的情報簡報區塊。')}
-                  </p>
-                  <textarea
-                    className="cv-textarea"
-                    style={{ minHeight: 64 }}
-                    placeholder={t('例如：看這位成員面對轉變時的能動性 / 情緒調節的方式 / 自我批評 vs 自我疼惜')}
-                    value={fwDesc}
-                    onChange={(e) => setFwDesc(e.target.value)}
-                  />
-                  <div className="mt-2 flex flex-wrap gap-3">
-                    <button
-                      onClick={genFramework}
-                      disabled={busy !== null || fwDesc.trim().length < 4}
-                      className="rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary disabled:opacity-50"
-                    >
-                      {busy === 'framework' && !fwDraft ? t('生成中…') : t('AI 生成分析框架')}
-                    </button>
-                  </div>
-                </div>
-
-                {fwDraft && (
-                  <div className="cv-fw">
-                    <div className="cv-fw-hd">{t('生成的分析框架（可編輯）')}</div>
-                    <label className="cv-fw-lab">{t('框架名稱')}</label>
-                    <input
-                      className="cv-fw-in"
-                      value={fwDraft.name}
-                      onChange={(e) => setFwDraft({ ...fwDraft, name: e.target.value })}
-                    />
-                    <label className="cv-fw-lab">{t('理論依據 / 出處')}</label>
-                    <input
-                      className="cv-fw-in"
-                      value={fwDraft.basis}
-                      onChange={(e) => setFwDraft({ ...fwDraft, basis: e.target.value })}
-                    />
-                    <label className="cv-fw-lab">{t('分析視角')}</label>
-                    <input
-                      className="cv-fw-in"
-                      value={fwDraft.lens}
-                      onChange={(e) => setFwDraft({ ...fwDraft, lens: e.target.value })}
-                    />
-                    <label className="cv-fw-lab">{t('分析維度')}</label>
-                    {fwDraft.dimensions.map((d, i) => (
-                      <div key={i} className="cv-fw-dim">
-                        <input
-                          className="cv-fw-in"
-                          placeholder={t('維度名')}
-                          value={d.name}
-                          onChange={(e) => updateFwDim(i, 'name', e.target.value)}
-                        />
-                        <input
-                          className="cv-fw-in"
-                          placeholder={t('要留意的語言／行為線索')}
-                          value={d.look_for}
-                          onChange={(e) => updateFwDim(i, 'look_for', e.target.value)}
-                        />
-                        <input
-                          className="cv-fw-in"
-                          placeholder={t('證據規則（引用原話）')}
-                          value={d.evidence_rule}
-                          onChange={(e) => updateFwDim(i, 'evidence_rule', e.target.value)}
-                        />
-                        <button className="cv-fw-del" onClick={() => removeFwDim(i)} title={t('移除維度')}>
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    <button className="cv-fw-add" onClick={addFwDim}>
-                      ＋ {t('新增維度')}
-                    </button>
-                    {fwDraft.references.length > 0 && (
-                      <div className="cv-fw-refs">
-                        <div className="cv-fw-lab" style={{ margin: '0 0 2px' }}>
-                          {t('參考文獻')}
-                        </div>
-                        <ul>
-                          {fwDraft.references.map((r, i) => (
-                            <li key={i}>{r}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {fwDraft.note && <div className="cv-fw-note">{fwDraft.note}</div>}
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        onClick={runFrameworkAnalysis}
-                        disabled={busy !== null}
-                        className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
-                      >
-                        {busy === 'framework' ? t('分析中…') : t('用這個框架分析')}
-                      </button>
-                      <button
-                        onClick={() => setFwDraft(null)}
-                        className="rounded-lg border border-border px-4 py-2 text-sm text-foreground-soft"
-                      >
-                        {t('取消')}
-                      </button>
-                    </div>
-                  </div>
-                )}
               </>
             )}
             </>
             )}
           </section>
+
+          {/* ── 每週 PERMA 報告：每一份只使用該週內容，並與 T0 比較 ── */}
+          {weeklyReports.length > 0 && (
+            <section className="mb-8" id="sec-weekly-reports">
+              <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('每週 PERMA 報告')}</h2>
+              <p className="mb-3 text-xs text-muted-foreground">
+                {t('每份報告只根據該週的 P／E／R／M／A 內容分析，並與 T0 基準比較。')}
+              </p>
+              <div className="flex flex-col gap-3">
+                {weeklyReports.map((report) => {
+                  const open = openWeeklyReports.includes(report.week_number)
+                  const session = report.content?.session
+                  const reportBaseline = report.content?.baseline
+                  const block = report.content?.block
+                  return (
+                    <article key={`${report.week_start}-${report.week_number}`} className="cv-block">
+                      <button
+                        type="button"
+                        className="cv-block-hd w-full text-left"
+                        onClick={() =>
+                          setOpenWeeklyReports((current) =>
+                            current.includes(report.week_number)
+                              ? current.filter((week) => week !== report.week_number)
+                              : [...current, report.week_number],
+                          )
+                        }
+                      >
+                        <span className="cv-caret" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>
+                          ▶
+                        </span>
+                        <span className="cv-block-title">
+                          {t('第')} {report.week_number} {t('週')} · {report.week_start}
+                        </span>
+                        <span className={`cv-block-tag ${report.report_emailed_at ? 'inc' : ''}`}>
+                          {report.report_emailed_at ? t('已寄送') : t('等待寄送')}
+                        </span>
+                      </button>
+                      {open && session && reportBaseline && block && (
+                        <div className="cv-block-body">
+                          <div className="mb-4 overflow-x-auto">
+                            <table className="w-full border-collapse text-sm">
+                              <thead>
+                                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                                  <th className="px-2 py-2">{t('面向')}</th>
+                                  <th className="px-2 py-2">{t('T0 基準')}</th>
+                                  <th className="px-2 py-2">{t('本週')}</th>
+                                  <th className="px-2 py-2">{t('變化')}</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {KEYS.map((key) => {
+                                  const t0 = baselineToValence(reportBaseline[key])
+                                  const current = session.dims?.[key]?.v ?? 0
+                                  const delta = current - t0
+                                  return (
+                                    <tr key={key} className="border-b border-border/70">
+                                      <td className="px-2 py-2 font-semibold" style={{ color: DIMCOLOR[key] }}>
+                                        {key} · {DIM[key]}
+                                      </td>
+                                      <td className="px-2 py-2">{t0 > 0 ? `+${t0}` : t0}</td>
+                                      <td className="px-2 py-2">{current > 0 ? `+${current}` : current}</td>
+                                      <td className="px-2 py-2 font-semibold" style={{ color: vColor(delta) }}>
+                                        {delta > 0 ? `+${delta}` : delta}
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                          <div className="cv-md" dangerouslySetInnerHTML={{ __html: mdToHtml(block.body) }} />
+                        </div>
+                      )}
+                    </article>
+                  )
+                })}
+              </div>
+            </section>
+          )}
 
           {/* ── 客戶交付版 ── */}
           {analysis && analysis.sessions.length > 0 && (
@@ -1623,11 +1368,11 @@ function MemberDetailPage() {
                 >
                   {busy === 'client'
                     ? t('生成中…')
-                    : analysis.client_text
+                    : hasCurrentClientText
                       ? t('重新生成客戶版')
                       : t('生成客戶交付版')}
                 </button>
-                {analysis.client_text && !editClient && (
+                {hasCurrentClientText && !editClient && (
                   <>
                     <button
                       onClick={startClientEdit}
@@ -1650,7 +1395,7 @@ function MemberDetailPage() {
                   </>
                 )}
               </div>
-              {analysis.client_text && editClient && (
+              {hasCurrentClientText && editClient && (
                 <div>
                   <p className="mb-2 text-xs text-muted-foreground">
                     {t('直接編輯客戶版文字（Markdown：## 標題、** 粗體、- 條列），儲存後即更新交付文件。')}
@@ -1677,7 +1422,7 @@ function MemberDetailPage() {
                   </div>
                 </div>
               )}
-              {analysis.client_text && !editClient && (
+              {hasCurrentClientText && !editClient && (
                 <div className="cv-doc" id="cv-print-area">
                   <div className="cv-doc-head">
                     <div className="cv-doc-title">{t('個人福祉回顧')}</div>
@@ -1685,7 +1430,7 @@ function MemberDetailPage() {
                       {name}　·　{analysis.client_date}
                     </div>
                   </div>
-                  <div dangerouslySetInnerHTML={{ __html: mdToHtml(analysis.client_text) }} />
+                  <div dangerouslySetInnerHTML={{ __html: mdToHtml(analysis.client_text || '') }} />
                   {CHART_DEFS.some((c) => analysis.client_charts?.[c.key]) && (
                     <div className="cv-doc-charts">
                       {CHART_DEFS.filter((c) => analysis.client_charts?.[c.key]).map((c, idx) => (
