@@ -47,6 +47,25 @@ export const perma: Record<string, Translation> = {
   '系統會自動保存草稿': { en: 'Your draft is saved automatically' },
   '請先完成全部 5 題再發布。': { en: 'Please answer all 5 questions before posting.' },
 
+  // ── 起始分數（baseline，首次登入時填一次）──
+  '開始之前，先回想一下': { en: 'Before you begin, think back' },
+  '請回想{date}的那一天，當時你在這五個面向的感受大概各是幾分？': {
+    en: 'Think back to {date}. How would you rate each of these five dimensions on that day?',
+  },
+  '這是你的起點。之後每一週的記錄都會跟它對照，讓你看見自己的變化。': {
+    en: 'This is your starting point. Each week from here is measured against it, so you can see how you change.',
+  },
+  '當天你感受到的正向情緒有多少？': { en: 'How much positive emotion did you feel that day?' },
+  '當天你有多投入在正在做的事情裡？': { en: 'How absorbed were you in what you were doing that day?' },
+  '當天你和身邊的人連結得有多緊密？': { en: 'How connected did you feel to the people around you that day?' },
+  '當天你有多感覺到自己做的事是有意義的？': { en: 'How meaningful did what you were doing feel that day?' },
+  '當天你有多感覺到自己完成了什麼？': { en: 'How much of a sense of accomplishment did you have that day?' },
+  '儲存並開始第一次記錄': { en: 'Save and start my first entry' },
+  '送出後就不能修改了，憑當時的印象填就好，不用太精準。': {
+    en: "You can't change this later — go with your impression, it doesn't need to be precise.",
+  },
+  '儲存失敗，請稍後再試一次。': { en: 'Could not save. Please try again in a moment.' },
+
   // ── 發布方式選擇（journal 最後一步）──
   '恭喜完成本次練習！': { en: 'Nice work — you’ve completed this session!' },
   '選擇發布方式': { en: 'Choose how to share' },
@@ -59,6 +78,10 @@ export const perma: Record<string, Translation> = {
   '換一個': { en: 'Shuffle' },
   '不會出現在社群動態，只有你自己看得到': { en: "Won't appear in the community feed — only you can see it" },
   '結束今天練習': { en: 'Finish today’s practice' },
+  '推薦': { en: 'Recommended' },
+  '鼓勵你把這週的感受分享到社群。你寫下的一段話，可能正好是夥伴今天需要的鼓勵；也歡迎到社群為別人留下回饋。': {
+    en: 'We encourage you to share this week with the community. What you wrote may be exactly the encouragement a teammate needs today — and you’re just as welcome to leave feedback for others.',
+  },
 
   // ── 歡迎設定名字（welcome）與個人設定（settings）──
   '歡迎！先設定你的名字': { en: 'Welcome! First, set your name' },

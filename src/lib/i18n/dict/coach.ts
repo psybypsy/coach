@@ -1,6 +1,21 @@
 import type { Translation } from '../dictionary'
 
 export const coach: Record<string, Translation> = {
+  // ── 學員版報告的審核與發布（見遷移 008）──
+  '學員版報告': { en: 'Member reports' },
+  '{n} 份待確認': { en: '{n} awaiting review' },
+  '第 4、8 週的報告不會自動給學員，請你確認內容後再發布；其他週次會自動發布。': {
+    en: 'Week 4 and 8 reports are not sent automatically — review them, then publish. All other weeks publish on their own.',
+  },
+  '待你確認，學員看不到': { en: 'Awaiting your review — not visible to the member' },
+  '已發布給學員': { en: 'Published to member' },
+  '編輯內容': { en: 'Edit content' },
+  '發布給學員': { en: 'Publish to member' },
+  '已儲存報告內容': { en: 'Report content saved' },
+  '儲存失敗，請確認已在 Supabase 執行遷移 008': {
+    en: 'Save failed — check that migration 008 has been run in Supabase',
+  },
+
   '教練儀表板': { en: 'Coach Dashboard' },
   '教練後台': { en: 'Coach Dashboard' },
   '本週全群書寫': { en: 'Entries this week' },

@@ -6,6 +6,7 @@ import { currentWeekStart } from '../lib/week'
 import { DIMENSION_ORDER, DIMENSION_CONFIGS } from '../lib/perma'
 import { loadDraft, saveDraft, clearDraft, emptyAnswers, type JournalAnswers } from '../lib/journalDraft'
 import { generateEnergyAlias } from '../lib/energyAlias'
+import { requestWeeklyReport } from '../lib/memberReport'
 
 export const Route = createFileRoute('/app/journal')({
   component: JournalWizard,
@@ -132,6 +133,9 @@ function JournalWizard() {
       }
 
       clearDraft(userId, weekStart)
+      // 觸發本週報告生成後就先去社群（分析要跑約半分鐘，不讓使用者空等）。
+      // 失敗不影響發布本身——使用者之後開「我的報告」時會再試一次。
+      void requestWeeklyReport(weekStart)
       void navigate({ to: '/app/community' })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
@@ -167,7 +171,12 @@ function JournalWizard() {
               selected={visibility === 'public'}
               onClick={() => selectVisibility('public')}
               title={t('發布到社群')}
-              description={t('你的名字會顯示在社群貼文上')}
+              // Nudge：鼓勵文案 + 發光光暈 + 推薦標籤，鼓勵大家公開分享、彼此回饋。
+              description={t(
+                '鼓勵你把這週的感受分享到社群。你寫下的一段話，可能正好是夥伴今天需要的鼓勵；也歡迎到社群為別人留下回饋。',
+              )}
+              recommended
+              badge={t('推薦')}
             />
             <VisibilityOption
               icon="🌿"
@@ -287,6 +296,8 @@ function VisibilityOption({
   selected,
   onClick,
   children,
+  recommended = false,
+  badge,
 }: {
   icon: string
   title: string
@@ -294,6 +305,9 @@ function VisibilityOption({
   selected: boolean
   onClick: () => void
   children?: ReactNode
+  // recommended：我們想鼓勵的選項，加上持續的柔和光暈讓它在三張卡中先被看到。
+  recommended?: boolean
+  badge?: string
 }) {
   // 用 div 而非 button：內容裡（匿名選項）還有一顆「換一個」按鈕，button 不能巢狀 button。
   return (
@@ -308,13 +322,26 @@ function VisibilityOption({
         }
       }}
       className={`w-full cursor-pointer rounded-xl border p-4 text-left transition ${
-        selected ? 'border-primary bg-primary-soft/40 shadow-soft' : 'border-border bg-card hover:bg-muted'
+        recommended ? 'animate-nudge-glow' : ''
+      } ${
+        selected
+          ? 'border-primary bg-primary-soft/40 shadow-soft'
+          : recommended
+            ? 'border-gold/50 bg-card hover:bg-muted'
+            : 'border-border bg-card hover:bg-muted'
       }`}
     >
       <div className="flex items-start gap-3">
         <span className="text-xl leading-none">{icon}</span>
         <div className="min-w-0 flex-1">
-          <p className="font-heading text-base text-foreground">{title}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-heading text-base text-foreground">{title}</p>
+            {badge && (
+              <span className="rounded-full bg-gold/15 px-2 py-0.5 text-[11px] font-semibold text-gold-deep">
+                ✨ {badge}
+              </span>
+            )}
+          </div>
           <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">{description}</p>
         </div>
         <span

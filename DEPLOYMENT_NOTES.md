@@ -25,12 +25,42 @@ alter table journal_posts
 
 ---
 
+### Migration 007 - 學員自填起始分數（T0）
+
+新增 `baseline_scores` 表：學員首次登入時回想 2026/07/17（五）在台東當天的
+五面向分數（0–10），填完才能開始第一次打卡。寫入後會由 trigger 自動同步到
+`coach_analyses.baseline`，教練後台的 T0 欄位就會自動有值。
+
+**必須在 Supabase 執行 `supabase/migrations/007_member_baseline.sql`**，
+否則學員會卡在起始分數頁面無法送出。
+
+### Migration 008 - 學員版 PERMA 報告
+
+新增 `member_reports` 表：學員每次填完五題後，後端跑分析並產生學員版報告，
+排版與圖表沿用教練後台的「客戶交付版」。
+
+週次規則（week 1 = 2026/07/27 那一週）：
+- week 1、2、3、5、6、7 → 自動發布，學員立刻看得到
+- week 4、8 → 產生草稿但學員看不到，教練在成員頁「學員版報告」區塊
+  編輯確認後按「發布給學員」才會出現
+
+**必須在 Supabase 執行 `supabase/migrations/008_member_reports.sql`**，
+否則學員的「我的報告」頁會是空的。
+
+> 若之後要調整週次起點，前後端各有一份設定要一起改：
+> `src/lib/week.ts` 的 `PROGRAM_WEEK_1_START` 與 `backend/app.py` 的同名常數。
+
+---
+
 ## 其他更新
 
 ### 登入流程改進
-- 改為 OTP（一次性驗證碼）模式
+- 寄出的信同時包含 magic link 與 6 位數驗證碼，兩種方式都可登入
 - 系統會記憶最近使用的 email，方便下次登入
-- 首次登入需要驗證碼，後續登入只需 email（已驗證）
+- 登入一次後 session 會保留在該瀏覽器，之後直接開網站即可進入，不必再驗證
+
+> ⚠️ 驗證碼與 session 長度需要在 Supabase 後台設定才會生效，
+> 詳見 [`docs/persistent-login.md`](docs/persistent-login.md)。
 
 ### UI/UX 改進
 - 導航欄改為橫排顯示（Ipsen Taiwan、PERMA Self-Reflection、Community）

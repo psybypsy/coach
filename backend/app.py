@@ -358,6 +358,20 @@ _CLIENT_CHART_DEFAULTS = {
     "summary": True, "trend": True, "dims": True,
     "topics": True, "radar": True, "affect": False, "cloud": False,
 }
+# 學員版報告的圖表：比教練的客戶交付版多一張情緒詞雲。
+_MEMBER_CHART_DEFAULTS = {**_CLIENT_CHART_DEFAULTS, "cloud": True}
+
+# ── 課程週次（week 1 = 2026/07/27 那一週）──
+# 同一組設定也寫在前端 src/lib/week.ts，兩邊要一起改。
+PROGRAM_WEEK_1_START = "2026-07-27"
+COACH_REVIEW_WEEKS = {4, 8}
+
+
+def _program_week_number(week_start: str) -> int:
+    """由該週的週一日期換算成課程第幾週。"""
+    start = datetime.strptime(PROGRAM_WEEK_1_START, "%Y-%m-%d").date()
+    target = datetime.strptime(week_start, "%Y-%m-%d").date()
+    return (target - start).days // 7 + 1
 
 
 async def require_coach(token: str) -> str:
@@ -702,16 +716,21 @@ class CoachMemberRequest(BaseModel):
     language: str = "en"  # 分析與客戶報告的語言，跟隨教練介面（預設英文）
 
 
-@app.post("/api/coach/analyze")
-async def coach_analyze(req: CoachMemberRequest, authorization: str = Header(...)):
-    token = authorization.removeprefix("Bearer ").strip()
-    coach_id = await require_coach(token)
+async def _analyze_member(
+    member_id: str, actor_id: str, source: str, coach_id: str | None = None
+) -> dict:
+    """跑一次完整的縱向分析並 upsert 進 coach_analyses，回傳該列。
 
-    posts = await _fetch_member_posts(req.member_id)
+    教練後台與學員版報告共用這條路徑，確保兩邊看到的分析結果一致。
+    actor_id 只用於 AI 用量歸戶；source 用於區分呼叫來源。
+    coach_id 只有教練親自觸發時才帶入——學員自己觸發時保持原值不動，
+    否則會把 coach_analyses.coach_id 蓋成學員自己的 id。
+    """
+    posts = await _fetch_member_posts(member_id)
     if len(posts) < 1:
         raise HTTPException(status_code=409, detail="這位成員還沒有任何週記")
 
-    # 教練深度分析一律以英文生成（教練工作語言預設英文）；中文由前端點「中文」時
+    # 深度分析一律以英文生成（教練工作語言預設英文）；中文由前端點「中文」時
     # 呼叫 /api/coach/translate 即時翻譯並快取，見遷移 003。
     lang = "en"
 
@@ -731,24 +750,25 @@ async def coach_analyze(req: CoachMemberRequest, authorization: str = Header(...
         system=_coach_analysis_system(len(posts), lang),
         messages=[{"role": "user", "content": f"成員資料：\n\n{dump}"}],
     )
-    meter_claude("coach-analyze", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)
+    meter_claude(source, _COACH_ANALYSIS_MODEL, msg.usage, actor_id)
 
     try:
         sessions, blocks = _parse_analysis(_msg_text(msg))
     except Exception as exc:
-        logger.warning("coach_analyze parse failed [%s]: %s", type(exc).__name__, exc)
+        logger.warning("%s parse failed [%s]: %s", source, type(exc).__name__, exc)
         raise HTTPException(status_code=502, detail="分析解析失敗，請重新生成")
 
     row = {
-        "member_id": req.member_id,
+        "member_id": member_id,
         "based_on": len(posts),
         "sessions": sessions,
         "blocks": blocks,
         "client_charts": _CLIENT_CHART_DEFAULTS,
         "translations": {},  # 重新生成 → 舊翻譯作廢
-        "coach_id": coach_id,
         "updated_at": datetime.now(TW_TZ).isoformat(),
     }
+    if coach_id:
+        row["coach_id"] = coach_id
     upsert_resp = await db().post(
         f"{SUPABASE_REST}/coach_analyses",
         headers={**SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates,return=representation"},
@@ -760,6 +780,13 @@ async def coach_analyze(req: CoachMemberRequest, authorization: str = Header(...
             return rows[0]
     logger.warning("coach_analyses upsert failed: %s", upsert_resp.text)
     return row
+
+
+@app.post("/api/coach/analyze")
+async def coach_analyze(req: CoachMemberRequest, authorization: str = Header(...)):
+    token = authorization.removeprefix("Bearer ").strip()
+    coach_id = await require_coach(token)
+    return await _analyze_member(req.member_id, coach_id, "coach-analyze", coach_id=coach_id)
 
 
 class CoachFrameworkGenerateRequest(BaseModel):
@@ -895,6 +922,43 @@ async def coach_analyze_framework(
     return {**analysis, "blocks": blocks, "translations": {}}
 
 
+def _included_blocks(analysis: dict) -> list[dict]:
+    """教練勾選要納入交付版的區塊（語言指紋一律納入、已淘汰的區塊一律排除）。"""
+    return [
+        b for b in (analysis.get("blocks") or [])
+        if (
+            b.get("include")
+            or str(b.get("title") or "").strip().lower() in {"linguistic fingerprint", "語言指紋"}
+        )
+        and str(b.get("title") or "").strip().lower() not in _REMOVED_BLOCK_TITLES
+    ]
+
+
+async def _write_client_report(
+    analysis: dict, actor_id: str, source: str, language: str | None = None
+) -> str:
+    """把勾選的分析區塊改寫成給本人閱讀的回顧文件（Markdown）。
+
+    language 留空時沿用原本行為：由分析內容自動判斷語言。
+    學員版報告會明確指定 zh-TW，因為分析本身是英文生成、但學員要讀中文。
+    """
+    included = _included_blocks(analysis)
+    if not included:
+        raise HTTPException(status_code=409, detail="請先在教練分析勾選要納入客戶版的區塊")
+
+    material = "\n\n".join(f"## {b['title']}\n{b['body']}" for b in included)
+    lang = language or _detect_lang(material)
+    msg = await claude().messages.create(
+        model=_COACH_ANALYSIS_MODEL,
+        max_tokens=3000,
+        thinking={"type": "disabled"},
+        system=_client_report_system(lang),
+        messages=[{"role": "user", "content": material}],
+    )
+    meter_claude(source, _COACH_ANALYSIS_MODEL, msg.usage, actor_id)
+    return _msg_text(msg).strip()
+
+
 @app.post("/api/coach/client-report")
 async def coach_client_report(req: CoachMemberRequest, authorization: str = Header(...)):
     token = authorization.removeprefix("Bearer ").strip()
@@ -910,30 +974,7 @@ async def coach_client_report(req: CoachMemberRequest, authorization: str = Head
         raise HTTPException(status_code=409, detail="請先生成教練分析")
     analysis = rows[0]
 
-    included = [
-        b for b in (analysis.get("blocks") or [])
-        if (
-            b.get("include")
-            or str(b.get("title") or "").strip().lower() in {"linguistic fingerprint", "語言指紋"}
-        )
-        and str(b.get("title") or "").strip().lower() not in _REMOVED_BLOCK_TITLES
-    ]
-    if not included:
-        raise HTTPException(status_code=409, detail="請先在教練分析勾選要納入客戶版的區塊")
-
-    material = "\n\n".join(f"## {b['title']}\n{b['body']}" for b in included)
-    # 客戶回顧同樣跟隨學員書寫語言（分析區塊已是該語言，直接由內容判斷）
-    lang = _detect_lang(material)
-    msg = await claude().messages.create(
-        model=_COACH_ANALYSIS_MODEL,
-        max_tokens=3000,
-        thinking={"type": "disabled"},
-        system=_client_report_system(lang),
-        messages=[{"role": "user", "content": material}],
-    )
-    meter_claude("coach-client-report", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)
-
-    client_text = _msg_text(msg).strip()
+    client_text = await _write_client_report(analysis, coach_id, "coach-client-report")
     client_date = datetime.now(TW_TZ).date().isoformat()
     update_resp = await db().patch(
         f"{SUPABASE_REST}/coach_analyses",
@@ -1005,6 +1046,89 @@ async def coach_translate(req: CoachTranslateRequest, authorization: str = Heade
     if update_resp.status_code in (200, 201) and update_resp.json():
         return update_resp.json()[0]
     return {**analysis, "translations": translations}
+
+
+class MemberReportRequest(BaseModel):
+    week_start: str  # 該週的週一（YYYY-MM-DD）
+
+
+@app.post("/api/member/report")
+@limiter.limit("6/hour")
+async def member_report(
+    request: Request, req: MemberReportRequest, authorization: str = Header(...)
+):
+    """學員填完當週五題後產生自己的 PERMA 報告。
+
+    內容與排版沿用教練後台的「客戶交付版」，確保學員看到的與教練手上的一致：
+    先跑一次完整縱向分析（同一支 prompt），再改寫成給本人閱讀的回顧。
+
+    第 4、8 週產生的是草稿（pending_coach）——學員看不到，也不寄信，
+    等教練在後台親自編輯確認後按「發布」才轉成 published。
+    """
+    token = authorization.removeprefix("Bearer ").strip()
+    user_id = await get_user_id(token)
+
+    try:
+        week_number = _program_week_number(req.week_start)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="週次日期格式錯誤")
+    if week_number < 1:
+        raise HTTPException(status_code=400, detail="這一週在課程開始之前")
+
+    # 已經有這週的報告就直接回傳，不重複花錢跑分析。
+    existing_resp = await db().get(
+        f"{SUPABASE_REST}/member_reports",
+        headers=SUPABASE_HEADERS,
+        params=[
+            ("user_id", f"eq.{user_id}"),
+            ("week_start", f"eq.{req.week_start}"),
+            ("select", "*"),
+            ("limit", "1"),
+        ],
+    )
+    existing = existing_resp.json() if existing_resp.status_code == 200 else []
+    if existing:
+        return existing[0]
+
+    analysis = await _analyze_member(user_id, user_id, "member-report")
+    # 學員讀的是中文；分析本身是英文生成，這裡明確指定改寫成繁中。
+    body_md = await _write_client_report(analysis, user_id, "member-report-text", language="zh-TW")
+
+    baseline_resp = await db().get(
+        f"{SUPABASE_REST}/baseline_scores",
+        headers=SUPABASE_HEADERS,
+        params=[("user_id", f"eq.{user_id}"), ("select", "p,e,r,m,a"), ("limit", "1")],
+    )
+    baseline_rows = baseline_resp.json() if baseline_resp.status_code == 200 else []
+    baseline = None
+    if baseline_rows:
+        b = baseline_rows[0]
+        baseline = {k: b[k.lower()] for k in _PERMA_KEYS}
+
+    needs_review = week_number in COACH_REVIEW_WEEKS
+    now = datetime.now(TW_TZ).isoformat()
+    row = {
+        "user_id": user_id,
+        "week_start": req.week_start,
+        "week_number": week_number,
+        "status": "pending_coach" if needs_review else "published",
+        "body_md": body_md,
+        "charts": _MEMBER_CHART_DEFAULTS,
+        "sessions": analysis.get("sessions") or [],
+        "baseline": baseline,
+        "published_at": None if needs_review else now,
+    }
+    insert_resp = await db().post(
+        f"{SUPABASE_REST}/member_reports",
+        headers={**SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates,return=representation"},
+        json=row,
+    )
+    if insert_resp.status_code in (200, 201):
+        rows = insert_resp.json()
+        if rows:
+            return rows[0]
+    logger.warning("member_reports insert failed: %s", insert_resp.text)
+    return row
 
 
 if __name__ == "__main__":
