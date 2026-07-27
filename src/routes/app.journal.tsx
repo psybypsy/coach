@@ -6,6 +6,7 @@ import { currentWeekStart } from '../lib/week'
 import { DIMENSION_ORDER, DIMENSION_CONFIGS } from '../lib/perma'
 import { loadDraft, saveDraft, clearDraft, emptyAnswers, type JournalAnswers } from '../lib/journalDraft'
 import { generateEnergyAlias } from '../lib/energyAlias'
+import { requestWeeklyReport } from '../lib/memberReport'
 
 export const Route = createFileRoute('/app/journal')({
   component: JournalWizard,
@@ -132,6 +133,9 @@ function JournalWizard() {
       }
 
       clearDraft(userId, weekStart)
+      // 觸發本週報告生成後就先去社群（分析要跑約半分鐘，不讓使用者空等）。
+      // 失敗不影響發布本身——使用者之後開「我的報告」時會再試一次。
+      void requestWeeklyReport(weekStart)
       void navigate({ to: '/app/community' })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'

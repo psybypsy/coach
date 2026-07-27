@@ -80,6 +80,7 @@ function AppShell() {
   const NAV_ITEMS = [
     { to: '/app/home' as const, label: t('PERMA Self-Reflection') },
     { to: '/app/community' as const, label: t('Community') },
+    { to: '/app/report' as const, label: t('我的報告') },
   ]
 
   return (

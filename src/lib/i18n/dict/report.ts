@@ -1,6 +1,15 @@
 import type { Translation } from '../dictionary'
 
 export const report: Record<string, Translation> = {
+  // ── 學員版 PERMA 報告（見遷移 008）──
+  '我的報告': { en: 'My Report' },
+  '每次完成記錄後，這裡會多一份屬於你的回顧。': {
+    en: 'Every time you complete an entry, a new review appears here.',
+  },
+  '完成本週的 PERMA 記錄後，這裡就會出現你的個人報告。': {
+    en: 'Finish this week’s PERMA entry and your personal report will appear here.',
+  },
+
   '本週個人幸福報告': { en: "This Week's Well-being Report" },
   '這週還沒有足夠的書寫': { en: "Not enough entries yet this week" },
   '至少寫滿 2 篇，本週日就能看到分析': { en: 'Write at least 2 entries — your report unlocks this Sunday.' },
