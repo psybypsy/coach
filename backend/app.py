@@ -22,7 +22,6 @@ import openai
 from dotenv import load_dotenv
 
 import usage_metering
-from report_email import build_report_email
 from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -41,12 +40,9 @@ SUPABASE_SERVICE_ROLE_KEY: str = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 ANTHROPIC_API_KEY: str = os.environ["ANTHROPIC_API_KEY"]
 PORT: int = int(os.environ.get("PORT", 8000))
 ALLOWED_ORIGINS: list[str] = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",")]
-RESEND_API_KEY: str = os.environ.get("RESEND_API_KEY", "")
-REPORT_EMAIL_FROM: str = os.environ.get("REPORT_EMAIL_FROM", "")
-REPORT_EMAIL_REPLY_TO: str = os.environ.get("REPORT_EMAIL_REPLY_TO", "")
 REPORT_WEBHOOK_SECRET: str = os.environ.get("REPORT_WEBHOOK_SECRET", "")
 
-# ── 學員報告 Email（Resend）──
+# ── 學員報告 Email ──
 # 用 Gmail 自己的 SMTP 寄信：不需要自有網域、不必設定 DNS。
 # GMAIL_APP_PASSWORD 是 Google 帳號的「應用程式密碼」（需先開啟兩步驟驗證），
 # 不是 Gmail 的登入密碼。沒設定時就完全不寄信，其餘功能照常運作。
@@ -371,6 +367,14 @@ _PERMA_DIM = {
     "M": "Meaning", "A": "Accomplishment",
 }
 _TOPIC_KEYS = ["work", "relationships", "health", "rest", "growth", "other"]
+# 已淘汰的情報簡報區塊：教練後台仍可能有舊資料，但一律不納入交付給客戶的版本。
+_REMOVED_BLOCK_TITLES = {
+    "cross-cutting themes & patterns", "橫向主題與模式",
+    "the unsaid", "未言之事",
+    "coaching hypotheses", "教練假設",
+    "worth watching", "值得關注",
+    "session preparation", "會談準備",
+}
 _ALLOWED_BLOCK_TITLES = {
     "perma five-dimension profile", "perma 五面向剖析",
     "strengths & inner resources", "優勢與內在資源",
@@ -496,7 +500,7 @@ def _coach_analysis_system(week_count: int, language: str = "zh-TW") -> str:
 def _weekly_client_analysis_system() -> str:
     """每週報告專用：內容會原文放進寄給客戶的 PDF，所以直接用「對客戶說話」的第二人稱書寫。
     量化欄位（valence／topics／emotions）規則與教練版完全一致，圖表才不會因版本不同而失準。"""
-    return """你是教練 陳郁敏 的寫作助理。你會收到一位成員「這一週」的 PERMA 反思原始回答（P=正向情緒、E=投入、R=人際關係、M=意義、A=成就）。請產出兩部分：這一週的情緒 valence 量化分析，與一份「直接寫給這位成員本人閱讀」的 PERMA 五面向回顧。
+    return """你是教練 Yee Ming Tan 的寫作助理。你會收到一位成員「這一週」的 PERMA 反思原始回答（P=正向情緒、E=投入、R=人際關係、M=意義、A=成就）。請產出兩部分：這一週的情緒 valence 量化分析，與一份「直接寫給這位成員本人閱讀」的 PERMA 五面向回顧。
 
 嚴格照此格式輸出，兩個標記都要出現：
 <<<SCORES>>>
@@ -642,147 +646,26 @@ def _client_report_system(language: str = "zh-TW") -> str:
     return _CLIENT_REPORT_SYSTEM_ZH if language == "zh-TW" else _CLIENT_REPORT_SYSTEM_EN
 
 
+def _font_missing_chars(font_name: str, text: str) -> set[str]:
+    """回傳 text 裡「這個字型沒有的字符」。查不到字型資訊時回空集合（不擋流程）。"""
+    try:
+        from reportlab.pdfbase import pdfmetrics
+
+        face = pdfmetrics.getFont(font_name).face
+        cmap = getattr(face, "charToGlyph", None)
+        if not cmap:
+            return set()
+        return {ch for ch in set(text) if ch.strip() and ord(ch) > 127 and ord(ch) not in cmap}
+    except Exception:
+        return set()
+
+
 def _plain_markdown(value: str) -> str:
     """ReportLab 內文使用的輕量 Markdown 清理。"""
     text = re.sub(r"^#{1,3}\s+", "", value, flags=re.MULTILINE)
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     text = re.sub(r"(?<!\*)\*(.+?)\*(?!\*)", r"\1", text)
     return text.strip()
-
-
-def _build_report_pdf(member_name: str, analysis: dict, client_text: str) -> bytes:
-    """產生可直接附加於電子郵件的繁中 PDF；只含四個量化圖表與 PERMA 分析。"""
-    from reportlab.lib import colors
-    from reportlab.lib.enums import TA_CENTER
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.lib.units import mm
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-
-    font_name = "NotoSansTC"
-    font_path = os.path.join(os.path.dirname(__file__), "assets", "fonts", "NotoSansTC-Regular.ttf")
-    try:
-        pdfmetrics.getFont(font_name)
-    except KeyError:
-        pdfmetrics.registerFont(TTFont(font_name, font_path))
-
-    out = io.BytesIO()
-    doc = SimpleDocTemplate(
-        out,
-        pagesize=A4,
-        rightMargin=16 * mm,
-        leftMargin=16 * mm,
-        topMargin=16 * mm,
-        bottomMargin=16 * mm,
-        title=f"{member_name} 的八週幸福感回顧",
-    )
-    styles = getSampleStyleSheet()
-    title = ParagraphStyle(
-        "TitleZH", parent=styles["Title"], fontName=font_name, fontSize=22,
-        leading=30, alignment=TA_CENTER, textColor=colors.HexColor("#1F3A5C"),
-    )
-    heading = ParagraphStyle(
-        "HeadingZH", parent=styles["Heading2"], fontName=font_name, fontSize=14,
-        leading=20, spaceBefore=10, spaceAfter=7, textColor=colors.HexColor("#1F3A5C"),
-    )
-    body = ParagraphStyle(
-        "BodyZH", parent=styles["BodyText"], fontName=font_name, fontSize=10,
-        leading=16, spaceAfter=6, textColor=colors.HexColor("#283444"),
-    )
-    small = ParagraphStyle(
-        "SmallZH", parent=body, fontSize=8, leading=11, textColor=colors.HexColor("#5A6676"),
-    )
-
-    story = [
-        Spacer(1, 24 * mm),
-        Paragraph("八週幸福感回顧", title),
-        Spacer(1, 5 * mm),
-        Paragraph(html.escape(member_name), ParagraphStyle("NameZH", parent=body, alignment=TA_CENTER, fontSize=13)),
-        Spacer(1, 4 * mm),
-        Paragraph("這份報告整理你八週書寫中的情緒變化、主題重心與可持續運用的內在資源。內容不是診斷或評分，而是一份理解近期經驗的回顧。", body),
-        PageBreak(),
-    ]
-
-    sessions = analysis.get("sessions") or []
-    dim_labels = {"P": "正向情緒", "E": "投入", "R": "關係", "M": "意義", "A": "成就"}
-    story.append(Paragraph("1. 五面向情緒效價", heading))
-    dim_rows = [["週次", *[f"{key} {dim_labels[key]}" for key in _PERMA_KEYS]]]
-    for index, session in enumerate(sessions):
-        dims = session.get("dims") or {}
-        dim_rows.append([f"第 {index + 1} 週", *[str((dims.get(key) or {}).get("v", 0)) for key in _PERMA_KEYS]])
-    dim_table = Table(dim_rows, repeatRows=1, colWidths=[24 * mm] + [28 * mm] * 5)
-    dim_table.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, -1), font_name),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E9EEF4")),
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CAD2DC")),
-        ("ALIGN", (1, 1), (-1, -1), "CENTER"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-    ]))
-    story.extend([dim_table, Spacer(1, 5 * mm)])
-
-    story.append(Paragraph("2. 每週主題占比", heading))
-    topic_labels = {
-        "work": "工作／學業", "relationships": "關係", "health": "健康",
-        "rest": "休息恢復", "growth": "自我成長", "other": "其他",
-    }
-    topic_rows = [["週次", *topic_labels.values()]]
-    for index, session in enumerate(sessions):
-        topics = session.get("topics") or {}
-        topic_rows.append([f"第 {index + 1} 週", *[f"{topics.get(key, 0)}%" for key in topic_labels]])
-    topic_table = Table(topic_rows, repeatRows=1, colWidths=[20 * mm] + [25 * mm] * 6)
-    topic_table.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, -1), font_name),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E9EEF4")),
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CAD2DC")),
-        ("ALIGN", (1, 1), (-1, -1), "CENTER"),
-        ("FONTSIZE", (0, 0), (-1, -1), 7),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    story.extend([topic_table, Spacer(1, 5 * mm)])
-
-    story.append(Paragraph("3. 五面向情緒效價剖面", heading))
-    if sessions:
-        first_dims = sessions[0].get("dims") or {}
-        last_dims = sessions[-1].get("dims") or {}
-        profile_rows = [["面向", "第一週", "最近一週", "變化"]]
-        for key in _PERMA_KEYS:
-            first = int((first_dims.get(key) or {}).get("v", 0))
-            latest = int((last_dims.get(key) or {}).get("v", 0))
-            profile_rows.append([f"{key} {dim_labels[key]}", str(first), str(latest), f"{latest - first:+d}"])
-        profile_table = Table(profile_rows, colWidths=[55 * mm, 35 * mm, 35 * mm, 35 * mm])
-        profile_table.setStyle(TableStyle([
-            ("FONTNAME", (0, 0), (-1, -1), font_name),
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E9EEF4")),
-            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CAD2DC")),
-            ("ALIGN", (1, 1), (-1, -1), "CENTER"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ]))
-        story.append(profile_table)
-
-    story.append(Paragraph("4. 情緒詞雲", heading))
-    emotion_counts: dict[str, int] = {}
-    for session in sessions:
-        for emotion in session.get("emotions") or []:
-            word = str(emotion.get("word") or "").strip()
-            if word:
-                emotion_counts[word] = emotion_counts.get(word, 0) + int(emotion.get("intensity") or 1)
-    words = sorted(emotion_counts.items(), key=lambda item: (-item[1], item[0]))[:30]
-    story.append(Paragraph("　".join(f"{html.escape(word)}（{weight}）" for word, weight in words) or "目前沒有足夠的情緒詞資料。", body))
-
-    story.append(PageBreak())
-    story.append(Paragraph("5. PERMA 五面向剖析", heading))
-    for paragraph in _plain_markdown(client_text).split("\n"):
-        line = paragraph.strip()
-        if line:
-            story.append(Paragraph(html.escape(line), body if not line.startswith("- ") else small))
-
-    doc.build(story)
-    return out.getvalue()
 
 
 async def _member_identity(member_id: str) -> tuple[str, str]:
@@ -800,59 +683,6 @@ async def _member_identity(member_id: str) -> tuple[str, str]:
     profiles = profile_resp.json() if profile_resp.status_code == 200 else []
     name = str((profiles[0] if profiles else {}).get("display_name") or "你好").strip()
     return name, email
-
-
-async def _send_completed_report(member_id: str, analysis: dict, client_text: str) -> dict:
-    """寄出八週完成報告。相同內容雜湊只寄一次。"""
-    content_hash = hashlib.sha256(client_text.encode("utf-8")).hexdigest()
-    if analysis.get("report_email_content_hash") == content_hash and analysis.get("report_emailed_at"):
-        return {"status": "already_sent"}
-    if not RESEND_API_KEY or not REPORT_EMAIL_FROM:
-        return {"status": "not_configured", "detail": "缺少 RESEND_API_KEY 或 REPORT_EMAIL_FROM"}
-
-    name, email = await _member_identity(member_id)
-    if not email:
-        return {"status": "missing_email", "detail": "找不到會員 email"}
-
-    pdf_bytes = _build_report_pdf(name, analysis, client_text)
-    greeting_name = html.escape(name)
-    email_html = f"""
-    <p>{greeting_name}，你好：</p>
-    <p>謝謝你完成這 8 週的 PERMA 幸福感書寫。這段期間留下的內容，讓你可以重新看見自己的情緒變化、關注重心、內在優勢，以及不同生活面向之間的連結。</p>
-    <p>我們已將你的回顧整理成 PDF，隨信附上。報告包含：</p>
-    <ul>
-      <li>五面向情緒效價趨勢</li><li>每週主題占比</li><li>五面向情緒效價剖面</li>
-      <li>情緒詞彙</li><li>PERMA 五面向分析</li>
-    </ul>
-    <p>這份報告不是診斷或評分，而是一份幫助你理解近期經驗的整理。建議你找一段不被打擾的時間閱讀，並標記最有共鳴、最想進一步探索的內容。</p>
-    <p>若有任何疑問，或希望在教練會談中一起討論，歡迎直接回覆這封信。</p>
-    <p>祝福你，<br>Yee Ming Tan 教練</p>
-    """
-    payload: dict = {
-        "from": REPORT_EMAIL_FROM,
-        "to": [email],
-        "subject": "你的 8 週幸福感回顧已完成",
-        "html": email_html,
-        "attachments": [{
-            "filename": "八週幸福感回顧.pdf",
-            "content": base64.b64encode(pdf_bytes).decode("ascii"),
-        }],
-    }
-    if REPORT_EMAIL_REPLY_TO:
-        payload["reply_to"] = REPORT_EMAIL_REPLY_TO
-    send_resp = await db().post(
-        "https://api.resend.com/emails",
-        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-        json=payload,
-    )
-    if send_resp.status_code not in (200, 201):
-        raise RuntimeError(f"Resend {send_resp.status_code}: {send_resp.text[:300]}")
-    return {
-        "status": "sent",
-        "email": email,
-        "content_hash": content_hash,
-        "provider_id": str(send_resp.json().get("id") or ""),
-    }
 
 
 _TRANSLATE_SYSTEM_EN = """You translate an executive-coaching analysis from Traditional Chinese (Taiwan) into English.
@@ -1020,26 +850,6 @@ async def _analyze_week_for_client(post: dict, coach_id: str) -> tuple[list, lis
     )
     meter_claude("coach-weekly-client-analysis", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)
     return _parse_analysis(_msg_text(msg))
-
-
-async def _client_text_from_blocks(blocks: list[dict], coach_id: str) -> str:
-    included = [
-        block for block in blocks
-        if block.get("include")
-        and str(block.get("title") or "").strip().lower() in _ALLOWED_BLOCK_TITLES
-    ]
-    if not included:
-        raise ValueError("沒有可納入客戶版的分析區塊")
-    material = "\n\n".join(f"## {block['title']}\n{block['body']}" for block in included)
-    msg = await claude().messages.create(
-        model=_COACH_ANALYSIS_MODEL,
-        max_tokens=3000,
-        thinking={"type": "disabled"},
-        system=_client_report_system("zh-TW"),
-        messages=[{"role": "user", "content": material}],
-    )
-    meter_claude("coach-auto-complete-client-report", _COACH_ANALYSIS_MODEL, msg.usage, coach_id)
-    return _msg_text(msg).strip()
 
 
 def _baseline_valence(value: object) -> int:
@@ -1289,6 +1099,16 @@ def _build_weekly_report_pdf(
     except KeyError:
         pdfmetrics.registerFont(TTFont(font_name, font_path))
 
+    # NotoSansTC 是繁中字型，少數「簡體專用」字（例：鹏 U+9E4F、陈 U+9648）不在字符集裡，
+    # reportlab 沒有字型 fallback，缺字會靜靜地畫成空白方框 ▯。這裡至少讓它留下紀錄，
+    # 不然學員名字變成方框也沒人會發現。要根治得換成同時涵蓋繁簡的 Noto Sans CJK。
+    missing = _font_missing_chars(font_name, member_name + _plain_markdown(str(block.get("body") or "")))
+    if missing:
+        logger.warning(
+            "PDF 缺字（NotoSansTC 沒有這些字符，會顯示為 ▯）第 %s 週: %s",
+            week_number, "".join(sorted(missing)),
+        )
+
     out = io.BytesIO()
     doc = SimpleDocTemplate(
         out,
@@ -1419,144 +1239,23 @@ def _weekly_email_subject(week_number: int) -> str:
     return f"你的第 {week_number} 週 PERMA 幸福感回顧"
 
 
-def _weekly_email_html(member_name: str) -> str:
+def _weekly_email_html(member_name: str, report_url: str = "") -> str:
     """每週報告的信件內文（教練提供的固定模板）。
-    預覽與實際寄送共用這個函式，確保教練看到的就是客戶收到的。"""
+    預覽與實際寄送共用這個函式，確保教練看到的就是學員收到的。"""
+    link = (
+        f'<p>也可以直接在網站上看：<a href="{html.escape(report_url)}">{html.escape(report_url)}</a></p>'
+        if report_url
+        else ""
+    )
     return f"""
     <p>{html.escape(member_name)}，你好：</p>
     <p>謝謝你完成本週的 PERMA 書寫，這是很扎實的開始。</p>
     <p>我們花了些時間讀完你這一週留下的紀錄，也從中看到了一些日常裡幸福感起伏的痕跡。</p>
     <p>我們也整理了這週幸福感的變化趨勢（見附件），供你參考。建議你自己重新翻閱時，可以帶著兩個問題去看：這一週最讓你有感的收穫是什麼？如果重來一次，有沒有哪個部分想試著調整？</p>
     <p>也提醒你，下週記得同步填寫 PERMA 的覺察練習，讓紀錄能更完整。</p>
+    {link}
     <p>一切安好，<br>Yee Ming Tan 教練</p>
     """
-
-
-async def _send_weekly_report(
-    member_id: str,
-    week_number: int,
-    week_start: str,
-    baseline: dict,
-    session: dict,
-    block: dict,
-    content_hash: str,
-) -> dict:
-    if not RESEND_API_KEY or not REPORT_EMAIL_FROM:
-        return {"status": "not_configured", "detail": "缺少 RESEND_API_KEY 或 REPORT_EMAIL_FROM"}
-    name, email = await _member_identity(member_id)
-    if not email:
-        return {"status": "missing_email", "detail": "找不到會員 email"}
-
-    strengths_body = await _fetch_strengths_body(member_id)
-    pdf_bytes = _build_weekly_report_pdf(
-        name, week_number, week_start, baseline, session, block, strengths_body
-    )
-    email_html = _weekly_email_html(name)
-    payload: dict = {
-        "from": REPORT_EMAIL_FROM,
-        "to": [email],
-        "subject": _weekly_email_subject(week_number),
-        "html": email_html,
-        "attachments": [{
-            "filename": f"第{week_number}週-PERMA幸福感回顧.pdf",
-            "content": base64.b64encode(pdf_bytes).decode("ascii"),
-        }],
-    }
-    if REPORT_EMAIL_REPLY_TO:
-        payload["reply_to"] = REPORT_EMAIL_REPLY_TO
-    send_resp = await db().post(
-        "https://api.resend.com/emails",
-        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-        json=payload,
-    )
-    if send_resp.status_code not in (200, 201):
-        raise RuntimeError(f"Resend {send_resp.status_code}: {send_resp.text[:300]}")
-    return {
-        "status": "sent",
-        "email": email,
-        "content_hash": content_hash,
-        "provider_id": str(send_resp.json().get("id") or ""),
-    }
-
-
-async def _generate_and_send_weekly_report(
-    member_id: str,
-    post: dict,
-    week_number: int,
-    baseline: dict,
-    coach_id: str,
-) -> dict:
-    """為一個完整週次產生 PERMA-only 報告；內容或 T0 未變時不重複寄送。"""
-    week_start = str(post.get("week_start") or "")
-    fingerprint_source = {
-        "post": {key: post.get(key) for key in ["p_content", "e_content", "r_content", "m_content", "a_content"]},
-        "baseline": baseline,
-    }
-    content_hash = hashlib.sha256(
-        json.dumps(fingerprint_source, ensure_ascii=False, sort_keys=True).encode("utf-8")
-    ).hexdigest()
-    existing_resp = await db().get(
-        f"{SUPABASE_REST}/perma_weekly_reports",
-        headers=SUPABASE_HEADERS,
-        params=[
-            ("member_id", f"eq.{member_id}"),
-            ("week_start", f"eq.{week_start}"),
-            ("select", "*"),
-            ("limit", "1"),
-        ],
-    )
-    existing_rows = existing_resp.json() if existing_resp.status_code == 200 else []
-    existing = existing_rows[0] if existing_rows else {}
-    if existing.get("report_emailed_at") and existing.get("report_email_content_hash") == content_hash:
-        return {"status": "already_sent", "week_number": week_number}
-
-    sessions, blocks = await _analyze_week_for_client(post, coach_id)
-    if not sessions or not blocks:
-        raise RuntimeError("單週 PERMA 分析沒有回傳完整內容")
-    session, block = sessions[0], blocks[0]
-    content = {
-        "v": 1,
-        "baseline": baseline,
-        "session": session,
-        "block": block,
-        "scope": "single_week_only",
-    }
-    saved = {
-        "member_id": member_id,
-        "week_start": week_start,
-        "post_id": post.get("id"),
-        "week_number": week_number,
-        "content": content,
-        "updated_at": datetime.now(TW_TZ).isoformat(),
-    }
-    save_resp = await db().post(
-        f"{SUPABASE_REST}/perma_weekly_reports",
-        headers={**SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates,return=representation"},
-        json=saved,
-    )
-    if save_resp.status_code not in (200, 201):
-        raise RuntimeError(f"單週報告儲存失敗：{save_resp.text[:300]}")
-
-    delivery = await _send_weekly_report(
-        member_id, week_number, week_start, baseline, session, block, content_hash
-    )
-    email_patch = {
-        "report_email_error": None if delivery.get("status") == "sent" else delivery.get("detail"),
-    }
-    if delivery.get("status") == "sent":
-        email_patch.update({
-            "report_emailed_at": datetime.now(TW_TZ).isoformat(),
-            "report_email_recipient": delivery.get("email"),
-            "report_email_content_hash": content_hash,
-            "report_email_provider_id": delivery.get("provider_id"),
-        })
-    await db().patch(
-        f"{SUPABASE_REST}/perma_weekly_reports",
-        headers=SUPABASE_HEADERS,
-        params=[("member_id", f"eq.{member_id}"), ("week_start", f"eq.{week_start}")],
-        json=email_patch,
-    )
-    return {**delivery, "week_number": week_number, "week_start": week_start}
 
 
 class CoachMemberRequest(BaseModel):
@@ -1569,203 +1268,76 @@ async def coach_report_completed_webhook(
     request: Request,
     x_report_webhook_secret: str = Header(default="", alias="X-Report-Webhook-Secret"),
 ):
-    """Supabase Database Webhook：每週完整提交即寄單週報告；第 8 週另寄總結。"""
+    """Supabase Database Webhook：學員把某一週的 P／E／R／M／A 全部寫完後自動產生報告。
+
+    這條路徑存在的理由是可靠性——前端呼叫 /api/member/report 是「射後不理」，
+    學員關掉分頁請求就斷了。webhook 在伺服器端跑，不受瀏覽器影響。
+    與前端呼叫共用 _ensure_member_report，兩邊都具冪等性，重複觸發不會產生兩份。
+    """
     if not REPORT_WEBHOOK_SECRET or not hmac.compare_digest(x_report_webhook_secret, REPORT_WEBHOOK_SECRET):
         raise HTTPException(status_code=401, detail="Webhook 驗證失敗")
 
     payload = await request.json()
     record = payload.get("record") or payload.get("new") or {}
     member_id = str(record.get("user_id") or "").strip()
-    if not member_id:
-        raise HTTPException(status_code=400, detail="Webhook 缺少 record.user_id")
-
-    posts = await _fetch_member_posts(member_id)
-    completed_posts_all = [
-        post for post in posts
-        if all(str(post.get(f"{key.lower()}_content") or "").strip() for key in _PERMA_KEYS)
-    ]
-    # 同一週若有多次提交，以最後一筆完整內容為該週報告來源。
-    by_week: dict[str, dict] = {}
-    for post in completed_posts_all:
-        by_week[str(post.get("week_start") or "")] = post
-    completed_posts = [by_week[key] for key in sorted(by_week)]
-    current_week_start = str(record.get("week_start") or "")
-    current_post = by_week.get(current_week_start)
-    if not current_post:
-        return {
-            "status": "waiting_for_complete_week",
-            "completed_weeks": len(completed_posts),
-            "detail": "本週 P／E／R／M／A 尚未全部完成",
-        }
-
-    existing_resp = await db().get(
-        f"{SUPABASE_REST}/coach_analyses",
-        headers=SUPABASE_HEADERS,
-        params=[("member_id", f"eq.{member_id}"), ("select", "*"), ("limit", "1")],
-    )
-    existing_rows = existing_resp.json() if existing_resp.status_code == 200 else []
-    existing = existing_rows[0] if existing_rows else {}
-    baseline = existing.get("baseline") if isinstance(existing.get("baseline"), dict) else None
-    if not baseline or not all(key in baseline for key in _PERMA_KEYS):
-        return {
-            "status": "waiting_for_t0",
-            "detail": "請先由 coach 填寫完整 T0，系統才會生成單週比較報告",
-        }
-
-    coach_id = str(existing.get("coach_id") or "")
-    if not coach_id:
-        coach_resp = await db().get(
-            f"{SUPABASE_REST}/profiles",
-            headers=SUPABASE_HEADERS,
-            params=[("role", "eq.coach"), ("select", "id"), ("limit", "1")],
-        )
-        coach_rows = coach_resp.json() if coach_resp.status_code == 200 else []
-        coach_id = str((coach_rows[0] if coach_rows else {}).get("id") or "")
-    if not coach_id:
-        raise HTTPException(status_code=409, detail="找不到可歸屬的 coach 帳號")
-
-    week_number = next(
-        index + 1 for index, post in enumerate(completed_posts)
-        if str(post.get("week_start") or "") == current_week_start
-    )
-    try:
-        weekly_delivery = await _generate_and_send_weekly_report(
-            member_id, current_post, week_number, baseline, coach_id
-        )
-    except Exception as exc:
-        logger.exception("automatic weekly report failed for member %s", member_id)
-        raise HTTPException(status_code=502, detail=f"單週報告生成或寄送失敗：{str(exc)[:180]}")
-
-    if len(completed_posts) < 8:
-        return {
-            "status": "weekly_report_processed",
-            "weekly": weekly_delivery,
-            "completed_weeks": len(completed_posts),
-            "eight_week_summary": "waiting",
-        }
-
-    if existing.get("report_emailed_at") and int(existing.get("based_on") or 0) >= 8:
-        return {
-            "status": "weekly_report_processed",
-            "weekly": weekly_delivery,
-            "eight_week_summary": "already_sent",
-        }
-    report_posts = completed_posts[-8:]
+    week_start = str(record.get("week_start") or "").strip()
+    if not member_id or not week_start:
+        raise HTTPException(status_code=400, detail="Webhook 缺少 record.user_id 或 record.week_start")
 
     try:
-        sessions, blocks = await _analyze_completed_posts(report_posts, coach_id)
-        client_text = await _client_text_from_blocks(blocks, coach_id)
+        report = await _ensure_member_report(member_id, week_start, member_id)
+    except HTTPException as exc:
+        # 這一週還沒寫滿五題是正常狀態，不是錯誤——回 200 讓 Supabase 不要重試。
+        if exc.status_code == 409:
+            return {"status": "waiting_for_complete_week", "detail": exc.detail}
+        raise
     except Exception as exc:
-        logger.exception("automatic completed report generation failed for member %s", member_id)
-        raise HTTPException(status_code=502, detail=f"自動報告生成失敗：{str(exc)[:180]}")
+        logger.exception("webhook 產生報告失敗 member=%s week=%s", member_id, week_start)
+        raise HTTPException(status_code=502, detail=f"報告生成失敗：{str(exc)[:180]}")
 
-    client_date = datetime.now(TW_TZ).date().isoformat()
-    analysis = {
-        **existing,
-        "member_id": member_id,
-        "based_on": 8,
-        "sessions": sessions,
-        "blocks": blocks,
-        "client_charts": _CLIENT_CHART_DEFAULTS,
-        "client_text": client_text,
-        "client_date": client_date,
-        "translations": {},
-        "coach_id": coach_id,
-        "updated_at": datetime.now(TW_TZ).isoformat(),
-    }
-    save_resp = await db().post(
-        f"{SUPABASE_REST}/coach_analyses",
-        headers={**SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates,return=representation"},
-        json=analysis,
-    )
-    if save_resp.status_code not in (200, 201):
-        raise HTTPException(status_code=502, detail="自動報告儲存失敗")
-    if save_resp.json():
-        analysis = save_resp.json()[0]
-
-    try:
-        delivery = await _send_completed_report(member_id, analysis, client_text)
-    except Exception as exc:
-        logger.exception("automatic completed report email failed for member %s", member_id)
-        await db().patch(
-            f"{SUPABASE_REST}/coach_analyses",
-            headers=SUPABASE_HEADERS,
-            params=[("member_id", f"eq.{member_id}")],
-            json={"report_email_error": str(exc)[:500]},
-        )
-        raise HTTPException(status_code=502, detail="報告已產生，但寄信失敗")
-
-    if delivery.get("status") != "sent":
-        return {
-            "status": delivery.get("status"),
-            "detail": delivery.get("detail"),
-            "weekly": weekly_delivery,
-        }
-
-    email_patch = {
-        "report_emailed_at": datetime.now(TW_TZ).isoformat(),
-        "report_email_recipient": delivery.get("email"),
-        "report_email_content_hash": delivery.get("content_hash"),
-        "report_email_provider_id": delivery.get("provider_id"),
-        "report_email_error": None,
-    }
-    await db().patch(
-        f"{SUPABASE_REST}/coach_analyses",
-        headers=SUPABASE_HEADERS,
-        params=[("member_id", f"eq.{member_id}")],
-        json=email_patch,
-    )
     return {
-        "status": "sent",
-        "member_id": member_id,
-        "recipient": delivery.get("email"),
-        "weekly": weekly_delivery,
-        "eight_week_summary": "sent",
+        "status": "report_ready",
+        "week_number": report.get("week_number"),
+        "report_status": report.get("status"),
+        "emailed": bool(report.get("emailed_at")),
     }
 
 
 @app.post("/api/coach/weekly-reports/generate")
 async def coach_weekly_reports_generate(req: CoachMemberRequest, authorization: str = Header(...)):
-    """教練手動生成成員的每週 PERMA 報告（單週分析＋T0 比較），存進 perma_weekly_reports。
-    每份只依該週內容分析、與 T0 比較；並依現有流程寄 PDF 給成員（未設 Resend 則只存不寄）。
-    內容或 T0 未變者不重複寄送（沿用 _generate_and_send_weekly_report 的去重）。"""
+    """教練替某位成員補產生所有缺漏的每週報告（存進 member_reports）。
+
+    每份只依該週內容分析、與 T0 比較。已存在的週次不重跑、不重複花錢；
+    第 4／8 週一樣是 pending_coach 草稿，不會直接寄給學員。
+    """
     token = authorization.removeprefix("Bearer ").strip()
-    coach_id = await require_coach(token)
+    await require_coach(token)
     member_id = req.member_id
 
     posts = await _fetch_member_posts(member_id)
     # 只處理「五面向都填寫」的完整週；同一週多次提交取最後一筆完整內容。
-    completed_all = [
-        post for post in posts
-        if all(str(post.get(f"{key.lower()}_content") or "").strip() for key in _PERMA_KEYS)
-    ]
     by_week: dict[str, dict] = {}
-    for post in completed_all:
-        by_week[str(post.get("week_start") or "")] = post
-    completed = [by_week[key] for key in sorted(by_week)]
-    if not completed:
+    for post in posts:
+        if all(str(post.get(f"{key.lower()}_content") or "").strip() for key in _PERMA_KEYS):
+            by_week[str(post.get("week_start") or "")] = post
+    if not by_week:
         raise HTTPException(status_code=409, detail="這位成員還沒有『五面向都填寫』的完整週")
 
-    resp = await db().get(
-        f"{SUPABASE_REST}/coach_analyses",
-        headers=SUPABASE_HEADERS,
-        params=[("member_id", f"eq.{member_id}"), ("select", "*"), ("limit", "1")],
-    )
-    rows = resp.json() if resp.status_code == 200 else []
-    existing = rows[0] if rows else {}
-    baseline = existing.get("baseline") if isinstance(existing.get("baseline"), dict) else None
-    if not baseline or not all(key in baseline for key in _PERMA_KEYS):
-        raise HTTPException(status_code=409, detail="請先在成員頁最上方填寫完整 T0 基準點（五面向），才能與 T0 比較")
-
     results = []
-    for index, post in enumerate(completed):
-        week_number = index + 1
+    for week_start in sorted(by_week):
         try:
-            delivery = await _generate_and_send_weekly_report(member_id, post, week_number, baseline, coach_id)
-        except Exception as exc:  # 單週失敗不影響其他週
-            logger.exception("coach weekly report failed member=%s week=%s", member_id, week_number)
-            delivery = {"status": "error", "detail": str(exc)[:180]}
-        results.append({"week_number": week_number, "week_start": str(post.get("week_start") or ""), **delivery})
+            report = await _ensure_member_report(member_id, week_start, member_id)
+            results.append({
+                "week_start": week_start,
+                "week_number": report.get("week_number"),
+                "status": report.get("status"),
+                "emailed": bool(report.get("emailed_at")),
+            })
+        except HTTPException as exc:  # 單週失敗不影響其他週
+            results.append({"week_start": week_start, "status": "error", "detail": str(exc.detail)[:180]})
+        except Exception as exc:
+            logger.exception("coach weekly report failed member=%s week=%s", member_id, week_start)
+            results.append({"week_start": week_start, "status": "error", "detail": str(exc)[:180]})
     return {"generated": len(results), "reports": results}
 
 
@@ -1935,18 +1507,20 @@ class CoachWeeklyPreviewRequest(BaseModel):
 
 @app.post("/api/coach/weekly-reports/preview")
 async def coach_weekly_report_preview(req: CoachWeeklyPreviewRequest, authorization: str = Header(...)):
-    """預覽某一週「客戶實際會收到」的信件內文與 PDF 附件。
+    """預覽某一週「學員實際會收到」的信件內文與 PDF 附件。
 
-    直接讀取 perma_weekly_reports 已存的分析內容重建，不重跑 AI、不寄信、不寫入資料；
-    信件內文與 PDF 都走與寄送相同的函式，所以教練看到的就是客戶收到的。"""
+    直接讀 member_reports 已存的內容重建，不重跑 AI、不寄信、不寫入資料；
+    信件內文與 PDF 都走與寄送相同的函式，所以教練看到的就是學員收到的。
+    第 4／8 週的 pending_coach 草稿也能預覽——那正是教練要先確認的東西。
+    """
     token = authorization.removeprefix("Bearer ").strip()
     await require_coach(token)
 
     resp = await db().get(
-        f"{SUPABASE_REST}/perma_weekly_reports",
+        f"{SUPABASE_REST}/member_reports",
         headers=SUPABASE_HEADERS,
         params=[
-            ("member_id", f"eq.{req.member_id}"),
+            ("user_id", f"eq.{req.member_id}"),
             ("week_start", f"eq.{req.week_start}"),
             ("select", "*"),
             ("limit", "1"),
@@ -1956,17 +1530,22 @@ async def coach_weekly_report_preview(req: CoachWeeklyPreviewRequest, authorizat
     if not rows:
         raise HTTPException(status_code=404, detail="找不到這一週的報告，請先生成每週報告")
     row = rows[0]
-    content = row.get("content") if isinstance(row.get("content"), dict) else {}
-    session, block = content.get("session"), content.get("block")
-    baseline = content.get("baseline")
-    if not session or not block or not baseline:
-        raise HTTPException(status_code=409, detail="這一週的報告內容不完整，請重新生成每週報告")
+    sessions = row.get("sessions") or []
+    if not sessions:
+        raise HTTPException(status_code=409, detail="這一週的報告沒有 session 資料，請重新生成")
 
     week_number = int(row.get("week_number") or 0)
     name, email = await _member_identity(req.member_id)
     strengths_body = await _fetch_strengths_body(req.member_id)
-    pdf_bytes = _build_weekly_report_pdf(
-        name, week_number, req.week_start, baseline, session, block, strengths_body
+    pdf_bytes = await asyncio.to_thread(
+        _build_weekly_report_pdf,
+        name,
+        week_number,
+        req.week_start,
+        row.get("baseline") or {},
+        sessions[-1],
+        {"title": "PERMA 五面向回顧", "body": row.get("body_md") or ""},
+        strengths_body,
     )
     return {
         "week_number": week_number,
@@ -1974,10 +1553,11 @@ async def coach_weekly_report_preview(req: CoachWeeklyPreviewRequest, authorizat
         "recipient_name": name,
         "recipient_email": email,
         "subject": _weekly_email_subject(week_number),
-        "email_html": _weekly_email_html(name),
+        "email_html": _weekly_email_html(name, f"{APP_BASE_URL}/app/report"),
         "pdf_filename": f"第{week_number}週-PERMA幸福感回顧.pdf",
         "pdf_base64": base64.b64encode(pdf_bytes).decode("ascii"),
-        "emailed_at": row.get("report_emailed_at"),
+        "emailed_at": row.get("emailed_at"),
+        "report_status": row.get("status"),
     }
 
 
@@ -2253,38 +1833,8 @@ async def coach_client_report(req: CoachMemberRequest, authorization: str = Head
         else {**analysis, "client_text": client_text, "client_date": client_date}
     )
 
-    # 8 週內容完成後寄送一次；同一份 client_text 以內容雜湊防止重複寄件。
-    if int(result.get("based_on") or 0) >= 8:
-        try:
-            delivery = await _send_completed_report(req.member_id, result, client_text)
-            if delivery.get("status") == "sent":
-                email_patch = {
-                    "report_emailed_at": datetime.now(TW_TZ).isoformat(),
-                    "report_email_recipient": delivery.get("email"),
-                    "report_email_content_hash": delivery.get("content_hash"),
-                    "report_email_provider_id": delivery.get("provider_id"),
-                    "report_email_error": None,
-                }
-                await db().patch(
-                    f"{SUPABASE_REST}/coach_analyses",
-                    headers=SUPABASE_HEADERS,
-                    params=[("member_id", f"eq.{req.member_id}")],
-                    json=email_patch,
-                )
-                result.update(email_patch)
-            elif delivery.get("status") not in {"already_sent"}:
-                result["report_email_error"] = delivery.get("detail") or delivery.get("status")
-        except Exception as exc:
-            logger.exception("completed report email failed for member %s", req.member_id)
-            error_text = str(exc)[:500]
-            await db().patch(
-                f"{SUPABASE_REST}/coach_analyses",
-                headers=SUPABASE_HEADERS,
-                params=[("member_id", f"eq.{req.member_id}")],
-                json={"report_email_error": error_text},
-            )
-            result["report_email_error"] = error_text
-
+    # 客戶交付版只產生文件，不寄信——寄給學員的一律是 member_reports 那條路
+    # （每週自動寄、第 4／8 週教練審核後寄），避免同一份內容從兩個地方寄出。
     return result
 
 
@@ -2358,25 +1908,14 @@ async def coach_translate(req: CoachTranslateRequest, authorization: str = Heade
     return {**analysis, "translations": translations}
 
 
-async def _get_user_email(user_id: str) -> str | None:
-    """用 service_role 讀 auth.users 拿 email（profiles 沒有存 email）。"""
-    resp = await db().get(
-        f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
-        headers={
-            "apikey": SUPABASE_SERVICE_ROLE_KEY,
-            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-        },
-    )
-    if resp.status_code != 200:
-        logger.warning("fetch user email failed: %s", resp.status_code)
-        return None
-    return resp.json().get("email")
-
-
-def _send_via_gmail(to_email: str, subject: str, html_body: str) -> None:
-    """透過 Gmail SMTP 寄出一封 HTML 信。阻塞式，呼叫端請用 to_thread 包起來。
-
-    用標準函式庫的 smtplib，不額外增加相依套件。
+def _send_via_gmail(
+    to_email: str,
+    subject: str,
+    html_body: str,
+    attachment: tuple[str, bytes] | None = None,
+) -> None:
+    """透過 Gmail SMTP 寄出一封 HTML 信，可選擇附加一份 PDF。
+    阻塞式，呼叫端請用 to_thread 包起來。用標準函式庫的 smtplib，不額外增加相依套件。
     """
     message = EmailMessage()
     message["Subject"] = subject
@@ -2387,8 +1926,13 @@ def _send_via_gmail(to_email: str, subject: str, html_body: str) -> None:
     # 純文字備援：不支援 HTML 的信件軟體至少看得到提示與連結。
     message.set_content("這封信包含你的 PERMA 個人回顧，請用支援 HTML 的信件軟體開啟。")
     message.add_alternative(html_body, subtype="html")
+    if attachment:
+        filename, payload = attachment
+        # add_attachment 必須在 add_alternative 之後呼叫，訊息才會變成
+        # multipart/mixed（內含 multipart/alternative + 附件）的正確結構。
+        message.add_attachment(payload, maintype="application", subtype="pdf", filename=filename)
 
-    with smtplib.SMTP_SSL(_GMAIL_SMTP_HOST, _GMAIL_SMTP_PORT, timeout=20) as smtp:
+    with smtplib.SMTP_SSL(_GMAIL_SMTP_HOST, _GMAIL_SMTP_PORT, timeout=30) as smtp:
         smtp.login(GMAIL_ADDRESS or "", GMAIL_APP_PASSWORD or "")
         smtp.send_message(message)
 
@@ -2396,9 +1940,12 @@ def _send_via_gmail(to_email: str, subject: str, html_body: str) -> None:
 async def _email_report(report: dict) -> bool:
     """把已發布的報告寄給學員。回傳是否真的寄出。
 
+    信件內文用教練提供的固定模板，報告本身以 reportlab 產生的 PDF 附件寄出
+    （雷達圖／主題占比圓餅圖／情緒詞雲皆在後端畫，不需要瀏覽器）。
+
     刻意設計成「失敗不影響主流程」：沒設定 Gmail 認證、拿不到 email、
-    或 SMTP 出錯，都只記 log 就算了——報告本身在網站上還是看得到。
-    已寄過（emailed_at 有值）就不重複寄。
+    或 SMTP 出錯，都只記 log 並把原因寫進 email_error 欄（見遷移 010）——
+    報告本身在網站上還是看得到。已寄過（emailed_at 有值）就不重複寄。
     """
     if not (GMAIL_ADDRESS and GMAIL_APP_PASSWORD):
         logger.info("GMAIL_ADDRESS / GMAIL_APP_PASSWORD 未設定，略過寄送報告 email")
@@ -2407,37 +1954,63 @@ async def _email_report(report: dict) -> bool:
         return False
 
     user_id = report["user_id"]
-    to_email = await _get_user_email(user_id)
-    if not to_email:
+    week_number = report["week_number"]
+
+    async def _fail(detail: str) -> bool:
+        logger.warning("報告 email 未寄出 [第 %s 週]: %s", week_number, detail)
+        await db().patch(
+            f"{SUPABASE_REST}/member_reports",
+            headers=SUPABASE_HEADERS,
+            params=[("id", f"eq.{report['id']}")],
+            json={"email_error": detail[:500]},
+        )
         return False
 
-    profile_resp = await db().get(
-        f"{SUPABASE_REST}/profiles",
-        headers=SUPABASE_HEADERS,
-        params=[("id", f"eq.{user_id}"), ("select", "display_name"), ("limit", "1")],
-    )
-    profile_rows = profile_resp.json() if profile_resp.status_code == 200 else []
-    display_name = profile_rows[0].get("display_name", "") if profile_rows else ""
+    display_name, to_email = await _member_identity(user_id)
+    if not to_email:
+        return await _fail("找不到學員 email")
 
-    subject, html_body = build_report_email(
-        display_name=display_name,
-        week_number=report["week_number"],
-        body_md=report.get("body_md") or "",
-        report_url=f"{APP_BASE_URL}/app/report",
-    )
+    sessions = report.get("sessions") or []
+    if not sessions:
+        return await _fail("報告沒有 session 資料，無法產生 PDF")
+
+    try:
+        strengths_body = await _fetch_strengths_body(user_id)
+        # PDF 只呈現這一週（sessions 最後一筆）與 T0 的比較。
+        pdf_bytes = await asyncio.to_thread(
+            _build_weekly_report_pdf,
+            display_name,
+            week_number,
+            str(report.get("week_start") or ""),
+            report.get("baseline") or {},
+            sessions[-1],
+            {"title": "PERMA 五面向回顧", "body": report.get("body_md") or ""},
+            strengths_body,
+        )
+    except Exception as exc:
+        return await _fail(f"PDF 產生失敗 [{type(exc).__name__}]: {exc}")
+
+    subject = _weekly_email_subject(week_number)
+    html_body = _weekly_email_html(display_name, f"{APP_BASE_URL}/app/report")
+    filename = f"第{week_number}週-PERMA幸福感回顧.pdf"
 
     try:
         # smtplib 是阻塞式的，丟到執行緒避免卡住 event loop。
-        await asyncio.to_thread(_send_via_gmail, to_email, subject, html_body)
+        await asyncio.to_thread(_send_via_gmail, to_email, subject, html_body, (filename, pdf_bytes))
     except Exception as exc:
-        logger.warning("Gmail SMTP 寄送失敗 [%s]: %s", type(exc).__name__, exc)
-        return False
+        return await _fail(f"Gmail SMTP 寄送失敗 [{type(exc).__name__}]: {exc}")
 
+    # 內容雜湊：教練改過內文再發布一次時，才需要重寄（見遷移 010）。
+    content_hash = hashlib.sha256((report.get("body_md") or "").encode("utf-8")).hexdigest()
     await db().patch(
         f"{SUPABASE_REST}/member_reports",
         headers=SUPABASE_HEADERS,
         params=[("id", f"eq.{report['id']}")],
-        json={"emailed_at": datetime.now(TW_TZ).isoformat()},
+        json={
+            "emailed_at": datetime.now(TW_TZ).isoformat(),
+            "email_content_hash": content_hash,
+            "email_error": None,
+        },
     )
     return True
 
@@ -2467,30 +2040,61 @@ async def coach_publish_report(req: CoachPublishReportRequest, authorization: st
     return {**report, "emailed": emailed}
 
 
-class MemberReportRequest(BaseModel):
-    week_start: str  # 該週的週一（YYYY-MM-DD）
+async def _member_baseline(user_id: str) -> dict | None:
+    """學員自填的 T0 起始分數（見遷移 007）。沒填過回 None。"""
+    resp = await db().get(
+        f"{SUPABASE_REST}/baseline_scores",
+        headers=SUPABASE_HEADERS,
+        params=[("user_id", f"eq.{user_id}"), ("select", "p,e,r,m,a"), ("limit", "1")],
+    )
+    rows = resp.json() if resp.status_code == 200 else []
+    if not rows:
+        return None
+    b = rows[0]
+    return {k: b[k.lower()] for k in _PERMA_KEYS}
 
 
-@app.post("/api/member/report")
-@limiter.limit("6/hour")
-async def member_report(
-    request: Request, req: MemberReportRequest, authorization: str = Header(...)
-):
-    """學員填完當週五題後產生自己的 PERMA 報告。
+async def _accumulated_sessions(user_id: str, upto_week_start: str) -> list[dict]:
+    """把這位學員先前各週報告已存下的 session 依序取出，供趨勢圖使用。
 
-    內容與排版沿用教練後台的「客戶交付版」，確保學員看到的與教練手上的一致：
-    先跑一次完整縱向分析（同一支 prompt），再改寫成給本人閱讀的回顧。
+    每份報告只分析「當週」（見 _weekly_client_analysis_system），所以趨勢是靠
+    累積歷史 session 得到，而不是每週重跑一次全期間的縱向分析——這樣既符合
+    「單週分析 + 與 T0 比較」的設計，也不會每週都付一次全期間分析的費用。
+    """
+    resp = await db().get(
+        f"{SUPABASE_REST}/member_reports",
+        headers=SUPABASE_HEADERS,
+        params=[
+            ("user_id", f"eq.{user_id}"),
+            ("week_start", f"lt.{upto_week_start}"),
+            ("select", "week_start,sessions"),
+            ("order", "week_start.asc"),
+        ],
+    )
+    rows = resp.json() if resp.status_code == 200 else []
+    out: list[dict] = []
+    for row in rows:
+        sessions = row.get("sessions") or []
+        # 每份報告存的是「到當週為止」的累積，取最後一筆才是那一週本身。
+        if sessions:
+            out.append(sessions[-1])
+    return out
+
+
+async def _ensure_member_report(user_id: str, week_start: str, actor_id: str) -> dict:
+    """產生（或取回）某位學員某一週的報告。三個觸發點共用這一支，且具冪等性：
+
+    1. 學員在前端填完五題後呼叫 /api/member/report
+    2. Supabase Database Webhook 在週記寫入後自動觸發（不依賴瀏覽器留著）
+    3. 學員在報告頁按「產生我的報告」補救先前失敗的週次
+
+    內容用 _weekly_client_analysis_system：只分析這一週、直接用第二人稱寫給
+    學員本人（含優勢與內在資源、金句），因此不需要再跑一次改寫，一週只花一次 AI 呼叫。
 
     第 4、8 週產生的是草稿（pending_coach）——學員看不到，也不寄信，
     等教練在後台親自編輯確認後按「發布」才轉成 published。
     """
-    token = authorization.removeprefix("Bearer ").strip()
-    user_id = await get_user_id(token)
-
-    try:
-        week_number = _program_week_number(req.week_start)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="週次日期格式錯誤")
+    week_number = _program_week_number(week_start)
     if week_number < 1:
         raise HTTPException(status_code=400, detail="這一週在課程開始之前")
 
@@ -2500,7 +2104,7 @@ async def member_report(
         headers=SUPABASE_HEADERS,
         params=[
             ("user_id", f"eq.{user_id}"),
-            ("week_start", f"eq.{req.week_start}"),
+            ("week_start", f"eq.{week_start}"),
             ("select", "*"),
             ("limit", "1"),
         ],
@@ -2509,31 +2113,34 @@ async def member_report(
     if existing:
         return existing[0]
 
-    analysis = await _analyze_member(user_id, user_id, "member-report")
-    # 學員讀的是中文；分析本身已是繁中生成，這裡仍明確指定，避免學員用英文書寫時被判成英文。
-    body_md = await _write_client_report(analysis, user_id, "member-report-text", language="zh-TW")
+    posts = await _fetch_member_posts(user_id)
+    post = next((p for p in posts if str(p.get("week_start") or "") == week_start), None)
+    if not post:
+        raise HTTPException(status_code=409, detail="這一週還沒有週記")
+    if not all(str(post.get(f"{k.lower()}_content") or "").strip() for k in _PERMA_KEYS):
+        raise HTTPException(status_code=409, detail="這一週的 P／E／R／M／A 還沒全部完成")
 
-    baseline_resp = await db().get(
-        f"{SUPABASE_REST}/baseline_scores",
-        headers=SUPABASE_HEADERS,
-        params=[("user_id", f"eq.{user_id}"), ("select", "p,e,r,m,a"), ("limit", "1")],
-    )
-    baseline_rows = baseline_resp.json() if baseline_resp.status_code == 200 else []
-    baseline = None
-    if baseline_rows:
-        b = baseline_rows[0]
-        baseline = {k: b[k.lower()] for k in _PERMA_KEYS}
+    sessions, blocks = await _analyze_week_for_client(post, actor_id)
+    if not sessions or not blocks:
+        raise HTTPException(status_code=502, detail="單週 PERMA 分析沒有回傳完整內容")
+    body_md = str(blocks[0].get("body") or "").strip()
+    if not body_md:
+        raise HTTPException(status_code=502, detail="單週 PERMA 分析內容為空")
+
+    baseline = await _member_baseline(user_id)
+    history = await _accumulated_sessions(user_id, week_start)
 
     needs_review = week_number in COACH_REVIEW_WEEKS
     now = datetime.now(TW_TZ).isoformat()
     row = {
         "user_id": user_id,
-        "week_start": req.week_start,
+        "week_start": week_start,
+        "post_id": post.get("id"),
         "week_number": week_number,
         "status": "pending_coach" if needs_review else "published",
         "body_md": body_md,
         "charts": _MEMBER_CHART_DEFAULTS,
-        "sessions": analysis.get("sessions") or [],
+        "sessions": [*history, sessions[0]],
         "baseline": baseline,
         "published_at": None if needs_review else now,
     }
@@ -2542,16 +2149,34 @@ async def member_report(
         headers={**SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates,return=representation"},
         json=row,
     )
-    if insert_resp.status_code in (200, 201):
-        rows = insert_resp.json()
-        if rows:
-            saved = rows[0]
-            # 自動發布的週次才寄信；第 4／8 週等教練按「發布給學員」時才寄。
-            if saved.get("status") == "published":
-                await _email_report(saved)
-            return saved
-    logger.warning("member_reports insert failed: %s", insert_resp.text)
-    return row
+    if insert_resp.status_code not in (200, 201) or not insert_resp.json():
+        logger.warning("member_reports insert failed: %s", insert_resp.text[:300])
+        return row
+
+    saved = insert_resp.json()[0]
+    # 自動發布的週次才寄信；第 4／8 週等教練按「發布給學員」時才寄。
+    if saved.get("status") == "published":
+        await _email_report(saved)
+    return saved
+
+
+class MemberReportRequest(BaseModel):
+    week_start: str  # 該週的週一（YYYY-MM-DD）
+
+
+@app.post("/api/member/report")
+@limiter.limit("6/hour")
+async def member_report(
+    request: Request, req: MemberReportRequest, authorization: str = Header(...)
+):
+    """學員填完當週五題後產生自己的 PERMA 報告。"""
+    token = authorization.removeprefix("Bearer ").strip()
+    user_id = await get_user_id(token)
+    try:
+        _program_week_number(req.week_start)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="週次日期格式錯誤")
+    return await _ensure_member_report(user_id, req.week_start, user_id)
 
 
 if __name__ == "__main__":

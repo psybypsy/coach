@@ -62,16 +62,30 @@ https://dashboard.render.com → `perma-coach-api` → Environment：
 
 ---
 
-## 為什麼不寄 PDF 附件
+## 信件內容：短信 + PDF 附件
 
-目前 PDF 是在**瀏覽器**產生的（`src/lib/exportPdf.ts` 用 html2pdf，需要 DOM 才能畫圖表）。
-後端是 Python、沒有瀏覽器，要自動產 PDF 附件就得在 Python 重寫一整套圖表產生程式。
+信件本文是教練提供的固定短文（`_weekly_email_html()`），報告本身以 **PDF 附件**寄出。
 
-那會變成兩套實作，日後必然走鐘，與本專案「教練端看到的與學員收到的必須一致」
-的原則直接衝突（見 `src/components/ReportChart.tsx` 的共用設計）。
+PDF 由後端的 reportlab 產生（`_build_weekly_report_pdf()`，字型是 `backend/assets/fonts/NotoSansTC-Regular.ttf`），
+含雷達圖（T0 vs 本週）、主題占比圓餅圖與情緒詞雲——全部在 Python 畫，不需要瀏覽器。
 
-所以改為信件直接放報告全文，圖表則透過連結在網站上看；
-學員想要 PDF 可以在報告頁自行下載。
+> 註：這與本文件早期版本的說明相反。當時後端還沒有 PDF 能力，只能把報告全文放進信裡；
+> PR #11 補上 reportlab 之後就改成附件了。網站上仍然看得到同一份報告，信裡也附了連結。
+
+寄信與教練後台的「預覽學員收到的內容」共用同一組函式
+（`_weekly_email_html()` / `_build_weekly_report_pdf()`），所以教練預覽到的就是學員收到的。
+
+---
+
+## 什麼時候會寄
+
+| 週次 | 行為 |
+|---|---|
+| 1、2、3、5、6、7 | 產生即發布，**自動寄出**，教練不介入 |
+| 4、8 | 只產生草稿（`pending_coach`），學員看不到、不寄信；教練在後台確認後按「發布給學員」才寄 |
+
+寄送失敗（沒設定 Gmail、拿不到 email、PDF 產生失敗、SMTP 錯誤）一律不影響主流程，
+原因會寫進 `member_reports.email_error`，教練在後台看得到。
 
 ---
 
@@ -79,16 +93,17 @@ https://dashboard.render.com → `perma-coach-api` → Environment：
 
 若想讓寄件者變成 `report@psybypsy.com` 這種比較正式的位址，
 需要改用 Resend／SendGrid 之類的服務，並在網域的 DNS（目前 `psybypsy.com` 由 GoDaddy 代管）
-加上該服務提供的驗證紀錄。
-
-程式端只需要替換 `backend/app.py` 的 `_send_via_gmail()`，
-信件內容產生（`backend/report_email.py`）完全不用動。
+加上該服務提供的驗證紀錄。程式端只需要替換 `backend/app.py` 的 `_send_via_gmail()`。
 
 ---
 
 ## 相關程式碼
 
-- `backend/report_email.py` — 信件 HTML 產生（純函式，所有插入內容都經 `html.escape`）
+- `backend/app.py` 的 `_weekly_email_subject()` / `_weekly_email_html()` — 信件主旨與內文（教練提供的模板；插入內容都經 `html.escape`）
+- `backend/app.py` 的 `_build_weekly_report_pdf()` — PDF 附件（reportlab，含三張圖表）
 - `backend/app.py` 的 `_send_via_gmail()` / `_email_report()` — 實際寄送
+- `backend/app.py` 的 `_ensure_member_report()` — 產生報告的共用進入點（三個觸發點共用，具冪等性）
+- `POST /api/coach/report-completed-webhook` — Supabase Database Webhook，伺服器端自動觸發
 - `POST /api/coach/publish-report` — 教練發布第 4／8 週報告時觸發寄信
-- `member_reports.emailed_at` — 已寄出的時間戳，避免重複寄送
+- `POST /api/coach/weekly-reports/preview` — 教練預覽學員會收到的信與 PDF
+- `member_reports.emailed_at` / `email_content_hash` / `email_error` — 寄送狀態（見遷移 010）
