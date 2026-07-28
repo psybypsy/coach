@@ -57,10 +57,10 @@ Brevo 的寄信是 HTTP API（`api.brevo.com`，443 埠），完全不碰 SMTP �
 4. 到 [GoDaddy DNS 管理](https://dcc.godaddy.com/control/portfolio)照抄上去
 5. 回 Brevo 按 **Verify**（DNS 生效通常幾分鐘，最久可能要幾小時）
 
-> **品牌決定（2026-07-28）**：寄件位址用 `report@psybypsy.com`，顯示名稱維持 `Ipsen Taiwan`。
-> 這是「網頁上不得出現 PSYbyPSY」那條品牌規則的**已知例外，經使用者確認**——
-> 因為專案已有這個網域、不必另外花錢，而收件軟體主要顯示的是顯示名稱。
-> **請不要為了符合品牌規則把它改掉。**
+> **寄件位址（2026-07-28 確認）**：`report@psybypsy.com`，顯示名稱 `Ipsen Taiwan`。
+> PSYbyPSY 是公司／品牌名稱，用自己的網域寄信沒有問題。
+> （`src/` 底下那條「網頁 UI 不出現 PSYbyPSY」的規則是講**頁面呈現**，跟寄件網域無關，
+> 兩者不衝突。）
 
 ### 4. 開單請 Brevo 開通 transactional
 
