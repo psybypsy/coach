@@ -40,6 +40,9 @@ export const coach: Record<string, Translation> = {
   '基於': { en: 'Based on' },
   '週': { en: 'weeks' },
   '至少需要 1 次書寫': { en: 'Needs at least 1 entry' },
+  '學員完成一週書寫後會自動生成，也可以按上方按鈕立即重跑。': {
+    en: 'Generated automatically once the member completes a week; you can also rerun it now with the button above.',
+  },
   '納入客戶版': { en: 'Include in client version' },
   '每次 valence 與評分理由': { en: 'Per-week valence & rationale' },
   // 章節導覽側欄的精簡標籤（跟上面的完整標題分開，寬度較窄）

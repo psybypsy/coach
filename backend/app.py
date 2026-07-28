@@ -162,6 +162,10 @@ _background_tasks: set[asyncio.Task] = set()
 # 沒有這道鎖就可能同時開好幾個背景寄信任務、把同一封信寄很多次。
 _emailing_reports: set[str] = set()
 
+# 正在重跑深度分析的成員 id。學員前端與 Supabase webhook 會同時觸發同一週的報告，
+# 沒有這道鎖就可能同時開兩個背景任務、把全期間分析的錢付兩次。
+_analyzing_members: set[str] = set()
+
 
 def _spawn_background(coro) -> asyncio.Task:
     task = asyncio.create_task(coro)
@@ -1686,12 +1690,38 @@ async def _analyze_member(
         logger.warning("%s parse failed [%s]: %s", source, type(exc).__name__, exc)
         raise HTTPException(status_code=502, detail="分析解析失敗，請重新生成")
 
+    # 教練的策展成果——「納入客戶版」勾選、自訂框架區塊——不是這次 AI 生成的產物，
+    # 重新生成時要接回去。學員每寫完一週就會自動重跑一次（見 _auto_refresh_coach_analysis），
+    # 少了這段，教練的勾選與框架區塊會在毫無預警下被清掉。
+    prev_resp = await db().get(
+        f"{SUPABASE_REST}/coach_analyses",
+        headers=SUPABASE_HEADERS,
+        params=[("member_id", f"eq.{member_id}"), ("select", "blocks,client_charts"), ("limit", "1")],
+    )
+    prev_rows = prev_resp.json() if prev_resp.status_code == 200 else []
+    prev = prev_rows[0] if prev_rows else {}
+    prev_blocks = [b for b in (prev.get("blocks") or []) if isinstance(b, dict)]
+    # 依標題對齊而非索引：自訂區塊會 append 在後面，索引對不上。
+    prev_include = {
+        str(b.get("title") or "").strip().lower(): bool(b.get("include"))
+        for b in prev_blocks
+        if not b.get("custom")
+    }
+    for block in blocks:
+        key = str(block.get("title") or "").strip().lower()
+        if key in prev_include:
+            block["include"] = prev_include[key]
+    blocks = blocks + [b for b in prev_blocks if b.get("custom")]
+
+    prev_charts = prev.get("client_charts")
+    client_charts = prev_charts if isinstance(prev_charts, dict) and prev_charts else _CLIENT_CHART_DEFAULTS
+
     row = {
         "member_id": member_id,
         "based_on": len(posts),
         "sessions": sessions,
         "blocks": blocks,
-        "client_charts": _CLIENT_CHART_DEFAULTS,
+        "client_charts": client_charts,
         "translations": {},  # 重新生成 → 舊翻譯作廢
         "updated_at": datetime.now(TW_TZ).isoformat(),
     }
@@ -1708,6 +1738,25 @@ async def _analyze_member(
             return rows[0]
     logger.warning("coach_analyses upsert failed: %s", upsert_resp.text)
     return row
+
+
+async def _auto_refresh_coach_analysis(member_id: str) -> None:
+    """學員新產生一份週報告後，順手把教練端的縱向深度分析重跑一次。
+
+    在這之前，coach_analyses 只有教練親自按「重新生成分析」才會更新，所以學員
+    自己看得到每週報告、教練頁卻一直停在「基於 0 週」、圖表與情報簡報全空。
+    在背景跑、不 await：分析失敗或逾時都不該影響學員拿到自己的報告，
+    教練仍可隨時手動按按鈕補跑。coach_id 不帶入，避免把既有教練歸屬蓋掉。
+    """
+    if member_id in _analyzing_members:
+        return
+    _analyzing_members.add(member_id)
+    try:
+        await _analyze_member(member_id, member_id, "member-report-auto-analysis")
+    except Exception:
+        logger.exception("自動重跑教練深度分析失敗 member=%s", member_id)
+    finally:
+        _analyzing_members.discard(member_id)
 
 
 @app.post("/api/coach/analyze")
@@ -2386,6 +2435,10 @@ async def _ensure_member_report(user_id: str, week_start: str, actor_id: str) ->
         return row
 
     saved = insert_resp.json()[0]
+    # 教練端的深度分析跟著一起重跑，教練不必手動點「重新生成分析」。
+    # 放在這裡（而非 webhook 或前端）是因為三個觸發點都走這支，且上面已經
+    # 用「報告已存在就直接回傳」擋掉重複，所以只有真的新增一週才會多花一次分析。
+    _spawn_background(_auto_refresh_coach_analysis(user_id))
     # 自動發布的週次才寄信；第 4／8 週等教練按「發布給學員」時才寄。
     # 用 create_task 讓寄信在背景執行、不 await——Render 對外的 SMTP 連線
     # 有時會慢或整個逾時（實測遇過 Errno 101 與 TimeoutError），若同步等待
