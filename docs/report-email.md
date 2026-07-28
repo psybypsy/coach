@@ -2,7 +2,7 @@
 
 > ⚠️ **這份文件的 SMTP 設定只適用於本機開發。**
 > 正式環境（Render 免費方案）封鎖所有對外 SMTP 連接埠，SMTP 一定會逾時，
-> 寄信改走 Gmail API——設定步驟見 **[gmail-api-setup.md](gmail-api-setup.md)**。
+> 寄信改走 HTTP API——設定步驟見 **[brevo-setup.md](brevo-setup.md)**。
 >
 > 另外本文下方「為什麼不寄 PDF 附件」的結論已經過時：目前實際上**有**寄 PDF 附件
 > （後端用 reportlab 產生，含雷達圖／主題占比圓餅圖／情緒詞雲）。
@@ -100,7 +100,7 @@ PDF 由後端的 reportlab 產生（`_build_weekly_report_pdf()`，字型是 `ba
 
 若想讓寄件者變成 `report@psybypsy.com` 這種比較正式的位址，
 需要改用 Resend／SendGrid 之類的服務，並在網域的 DNS（目前 `psybypsy.com` 由 GoDaddy 代管）
-加上該服務提供的驗證紀錄。程式端只需要替換 `backend/app.py` 的 `_send_via_gmail()`。
+加上該服務提供的驗證紀錄。程式端只需要替換 `backend/app.py` 的 `_send_report_mail()`。
 
 ---
 
@@ -108,7 +108,7 @@ PDF 由後端的 reportlab 產生（`_build_weekly_report_pdf()`，字型是 `ba
 
 - `backend/app.py` 的 `_weekly_email_subject()` / `_weekly_email_html()` — 信件主旨與內文（教練提供的模板；插入內容都經 `html.escape`）
 - `backend/app.py` 的 `_build_weekly_report_pdf()` — PDF 附件（reportlab，含三張圖表）
-- `backend/app.py` 的 `_send_via_gmail()` / `_email_report()` — 實際寄送
+- `backend/app.py` 的 `_send_report_mail()` / `_email_report()` — 實際寄送
 - `backend/app.py` 的 `_ensure_member_report()` — 產生報告的共用進入點（三個觸發點共用，具冪等性）
 - `POST /api/coach/report-completed-webhook` — Supabase Database Webhook，伺服器端自動觸發
 - `POST /api/coach/publish-report` — 教練發布第 4／8 週報告時觸發寄信

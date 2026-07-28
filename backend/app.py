@@ -77,6 +77,36 @@ def _gmail_api_ready() -> bool:
     return bool(GMAIL_OAUTH_CLIENT_ID and GMAIL_OAUTH_CLIENT_SECRET and GMAIL_OAUTH_REFRESH_TOKEN)
 
 
+# ── Brevo（正式環境實際採用的管道）──
+# 一樣走 HTTPS 443，不受 SMTP 埠封鎖影響，而且只要一把 API key，
+# 不必像 Gmail API 那樣去 Google Cloud 建專案、跑 OAuth 流程。
+# 免費方案每天 300 封。設定方式見 docs/brevo-setup.md。
+BREVO_API_KEY: str | None = os.environ.get("BREVO_API_KEY")
+_BREVO_SEND_URL = "https://api.brevo.com/v3/smtp/email"
+# 寄件地址。走 Brevo 時這個位址必須先在 Brevo 後台完成「寄件者驗證」；
+# 沒設就沿用 GMAIL_ADDRESS（走 Gmail 的兩條管道一定得用 GMAIL_ADDRESS，
+# 因為 Gmail 不允許代寄任意位址）。
+REPORT_FROM_EMAIL: str | None = os.environ.get("REPORT_FROM_EMAIL") or GMAIL_ADDRESS
+
+# 不支援 HTML 的信件軟體看到的備援內容；三條管道共用。
+_PLAIN_TEXT_FALLBACK = "這封信包含你的 PERMA 個人回顧，請用支援 HTML 的信件軟體開啟。"
+
+
+def _mail_channel() -> str:
+    """目前實際會用哪一條寄信管道；沒有任何一條設定齊全時回 ""。
+
+    優先序：Brevo → Gmail API → Gmail SMTP。SMTP 排最後是因為 Render 免費方案
+    封鎖對外 SMTP 埠（25／465／587），那條路線只有在本機開發跑得動。
+    """
+    if BREVO_API_KEY and REPORT_FROM_EMAIL:
+        return "Brevo"
+    if GMAIL_ADDRESS and _gmail_api_ready():
+        return "Gmail API"
+    if GMAIL_ADDRESS and GMAIL_APP_PASSWORD:
+        return "Gmail SMTP"
+    return ""
+
+
 # smtp.gmail.com 同時有 IPv4／IPv6 位址；Render 免費方案的對外網路沒有可用的
 # IPv6 路由，若 DNS 解析挑到 IPv6 位址會直接連線失敗（OSError: [Errno 101]
 # Network is unreachable，實測發生過）。其他呼叫（Anthropic／Supabase／OpenAI）
@@ -1975,7 +2005,7 @@ def _build_email(
     message["From"] = formataddr((REPORT_FROM_NAME, GMAIL_ADDRESS or ""), charset="utf-8")
     message["To"] = to_email
     # 純文字備援：不支援 HTML 的信件軟體至少看得到提示與連結。
-    message.set_content("這封信包含你的 PERMA 個人回顧，請用支援 HTML 的信件軟體開啟。")
+    message.set_content(_PLAIN_TEXT_FALLBACK)
     message.add_alternative(html_body, subtype="html")
     if attachment:
         filename, payload = attachment
@@ -2039,15 +2069,52 @@ async def _send_via_gmail_api(message: EmailMessage) -> None:
         raise RuntimeError(f"Gmail API 寄送失敗 {resp.status_code}: {resp.text[:300]}")
 
 
-async def _send_via_gmail(
+async def _send_via_brevo(
     to_email: str,
     subject: str,
     html_body: str,
     attachment: tuple[str, bytes] | None = None,
 ) -> None:
-    """寄出一封信。有設 OAuth 就走 Gmail API，否則退回 SMTP（本機開發用）。"""
+    """走 Brevo 的 HTTP API（443 埠）寄出，繞開平台對 SMTP 埠的封鎖。
+
+    Brevo 收的是結構化 JSON 而不是 RFC 822 原文，所以這裡不共用 _build_email。
+    """
+    body: dict = {
+        "sender": {"name": REPORT_FROM_NAME, "email": REPORT_FROM_EMAIL or ""},
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "htmlContent": html_body,
+        "textContent": _PLAIN_TEXT_FALLBACK,
+    }
+    if attachment:
+        filename, payload = attachment
+        body["attachment"] = [
+            {"name": filename, "content": base64.b64encode(payload).decode("ascii")}
+        ]
+    resp = await db().post(
+        _BREVO_SEND_URL,
+        headers={"api-key": BREVO_API_KEY or "", "accept": "application/json"},
+        json=body,
+        timeout=60,
+    )
+    if resp.status_code not in (200, 201):
+        # 401 = API key 錯；400 且訊息含 sender 多半是寄件位址還沒在 Brevo 驗證。
+        raise RuntimeError(f"Brevo 寄送失敗 {resp.status_code}: {resp.text[:300]}")
+
+
+async def _send_report_mail(
+    to_email: str,
+    subject: str,
+    html_body: str,
+    attachment: tuple[str, bytes] | None = None,
+) -> None:
+    """依 _mail_channel() 選出的管道寄出一封信。"""
+    channel = _mail_channel()
+    if channel == "Brevo":
+        await _send_via_brevo(to_email, subject, html_body, attachment)
+        return
     message = _build_email(to_email, subject, html_body, attachment)
-    if _gmail_api_ready():
+    if channel == "Gmail API":
         await _send_via_gmail_api(message)
         return
     # smtplib 是阻塞式的，丟到執行緒避免卡住 event loop。
@@ -2064,8 +2131,8 @@ async def _email_report(report: dict) -> bool:
     或寄送管道出錯，都只記 log 並把原因寫進 email_error 欄（見遷移 010）——
     報告本身在網站上還是看得到。已寄過（emailed_at 有值）就不重複寄。
     """
-    if not (GMAIL_ADDRESS and (_gmail_api_ready() or GMAIL_APP_PASSWORD)):
-        logger.info("Gmail 寄信認證未設齊（需 GMAIL_ADDRESS + OAuth 三件組或 App 密碼），略過寄送報告 email")
+    if not _mail_channel():
+        logger.info("沒有任何寄信管道設定齊全（Brevo／Gmail API／Gmail SMTP），略過寄送報告 email")
         return False
     if report.get("emailed_at"):
         return False
@@ -2131,7 +2198,7 @@ async def _deliver_report_email(report: dict) -> bool:
     last_exc: Exception | None = None
     for attempt in range(2):
         try:
-            await _send_via_gmail(to_email, subject, html_body, (filename, pdf_bytes))
+            await _send_report_mail(to_email, subject, html_body, (filename, pdf_bytes))
             last_exc = None
             break
         except Exception as exc:
@@ -2142,13 +2209,13 @@ async def _deliver_report_email(report: dict) -> bool:
         # 逾時（而不是被拒絕或認證失敗）代表封包被靜靜丟掉，最典型的原因是
         # 主機平台封鎖對外 SMTP 連接埠——Render 免費方案就會擋 25／465／587。
         # 把這個線索直接寫進 email_error，免得下次又只看到一句「timed out」。
-        channel = "Gmail API" if _gmail_api_ready() else "Gmail SMTP"
+        channel = _mail_channel()
         hint = ""
-        if isinstance(last_exc, TimeoutError) and not _gmail_api_ready():
+        if isinstance(last_exc, TimeoutError) and channel == "Gmail SMTP":
             hint = (
                 f"；連線在交握階段就逾時，最可能是主機平台封鎖對外 SMTP 連接埠 {_GMAIL_SMTP_PORT}"
-                "（Render 免費方案會擋 25／465／587）。請設定 GMAIL_OAUTH_* 三個環境變數改走"
-                " Gmail API（見 docs/gmail-api-setup.md）；調長 timeout／重試都沒有用。"
+                "（Render 免費方案會擋 25／465／587）。請設定 BREVO_API_KEY 改走 Brevo"
+                "（見 docs/brevo-setup.md）；調長 timeout／重試都沒有用。"
             )
         return await _fail(
             f"{channel} 寄送失敗（已重試一次）[{type(last_exc).__name__}]: {last_exc}{hint}"

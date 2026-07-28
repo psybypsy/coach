@@ -1,6 +1,14 @@
-# 寄信改走 Gmail API（一次性設定）
+# 寄信走 Gmail API（備援方案，一次性設定）
 
-## 為什麼要改
+> ℹ️ **正式環境目前採用的是 Brevo，不是這一份** —— 見 [brevo-setup.md](brevo-setup.md)。
+>
+> 這份留著是因為 Gmail API 的程式碼已經寫好且測過，隨時可以啟用（設了
+> `GMAIL_OAUTH_*` 三個變數就會自動接手）。**什麼時候會需要它**：如果 Brevo 寄出的信
+> 開始進垃圾信匣（從 `@gmail.com` 經第三方寄信會有 SPF／DKIM 對不齊的問題），
+> 而你又不想買網域，那就改走這條 —— 信真的從 Gmail 伺服器出去，DKIM 天然對齊。
+> 代價是要在 Google Cloud 跑一次 OAuth 設定，比 Brevo 麻煩得多。
+
+## 為什麼不用 SMTP
 
 Render **免費方案封鎖所有對外 SMTP 連接埠**（25／465／587），這是平台層級的防火牆，
 用來防止免費機器被拿去發垃圾信（[Render 官方公告](https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports)）。
