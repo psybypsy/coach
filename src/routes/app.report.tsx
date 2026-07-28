@@ -31,12 +31,13 @@ function ReportPage() {
   const { t, language } = useLanguage()
   const [loading, setLoading] = useState(true)
   const [reports, setReports] = useState<MemberReport[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // 每一週各自可收合，像教練後台的區塊一樣；預設只展開最新一週。
+  const [openIds, setOpenIds] = useState<string[]>([])
   const [displayName, setDisplayName] = useState('')
-  const [downloading, setDownloading] = useState(false)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
   // 有寫週記、卻還沒有對應報告的週次（最新的排前面）。
-  // 發布週記時的背景生成可能失敗（Render 冷啟動加分析要一分多鐘，
-  // 使用者關掉分頁就斷了），這裡讓學員能自己補產生，不會卡在空白頁。
+  // 正常情況下報告會在發布當下自動產生，這裡是萬一自動觸發失敗時的補救管道，
+  // 不是預期中每次都要用到的步驟。
   const [missingWeeks, setMissingWeeks] = useState<string[]>([])
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState<string | null>(null)
@@ -55,15 +56,19 @@ function ReportPage() {
     setGenerating(false)
   }
 
-  const handleDownload = async () => {
-    const el = document.getElementById('member-report-doc')
+  const handleDownload = async (reportId: string) => {
+    const el = document.getElementById(`member-report-doc-${reportId}`)
     if (!el) return
-    setDownloading(true)
+    setDownloadingId(reportId)
     try {
       await downloadReportPdf(el, 'PERMA-Review.pdf')
     } finally {
-      setDownloading(false)
+      setDownloadingId(null)
     }
+  }
+
+  function toggleOpen(id: string) {
+    setOpenIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]))
   }
 
   async function load() {
@@ -85,7 +90,8 @@ function ReportPage() {
 
     const list = (rows as MemberReport[] | null) ?? []
     setReports(list)
-    setSelectedId((prev) => (prev && list.some((r) => r.id === prev) ? prev : (list[0]?.id ?? null)))
+    // 只展開最新一週；如果使用者已經手動展開過其他週次，保留那些狀態不動。
+    setOpenIds((prev) => (prev.length > 0 ? prev : list[0] ? [list[0].id] : []))
     setDisplayName(profile?.display_name ?? '')
 
     // 有週記卻沒報告的週次。注意 member_reports 對學員只看得到 published，
@@ -104,8 +110,6 @@ function ReportPage() {
     void load()
   }, [])
 
-  const selected = reports.find((r) => r.id === selectedId) ?? null
-
   if (loading) {
     return (
       <div className="mx-auto max-w-3xl px-5 py-8">
@@ -114,7 +118,7 @@ function ReportPage() {
     )
   }
 
-  // 有週記待產生報告時的面板。可能出現在完全沒報告、也可能出現在已有舊報告的情況。
+  // 有週記待產生報告時的面板：安靜的補救入口，不是預期中的必經步驟。
   const generatePanel = missingWeeks.length > 0 && (
     <div className="mb-5 rounded-xl border border-gold/45 bg-gold/10 p-5 text-center">
       <p className="text-sm leading-relaxed text-foreground-soft">
@@ -128,9 +132,7 @@ function ReportPage() {
         {generating ? t('產生中，大約需要一分鐘…') : t('產生我的報告')}
       </button>
       {generating && (
-        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-          {t('請先不要關閉這個頁面。')}
-        </p>
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{t('請先不要關閉這個頁面。')}</p>
       )}
       {genError && <p className="mt-2 text-sm leading-relaxed text-rust">{genError}</p>}
     </div>
@@ -169,66 +171,70 @@ function ReportPage() {
 
       {generatePanel}
 
-      {/* 週次切換：最新的排最前面 */}
-      {reports.length > 1 && (
-        <div className="mb-5 flex flex-wrap gap-2">
-          {reports.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => setSelectedId(r.id)}
-              className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
-                r.id === selectedId
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border bg-card text-foreground-soft hover:bg-muted'
-              }`}
-            >
-              {t('第 {n} 週', { n: r.week_number })}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {selected && (
-        <div className="mb-4 flex justify-end">
-          <button
-            onClick={() => void handleDownload()}
-            disabled={downloading}
-            className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground-soft transition hover:bg-muted disabled:opacity-50"
-          >
-            {downloading ? t('產生中…') : t('下載 PDF')}
-          </button>
-        </div>
-      )}
-
-      {selected && (
-        <div className="cv-doc" id="member-report-doc">
-          <div className="cv-doc-head">
-            <div className="cv-doc-title">{t('個人福祉回顧')}</div>
-            <div className="cv-doc-meta">
-              {displayName}　·　{t('第 {n} 週', { n: selected.week_number })}　·
-              {formatDate(selected.created_at, language)}
-            </div>
-          </div>
-
-          <div dangerouslySetInnerHTML={{ __html: mdToHtml(selected.body_md) }} />
-
-          {CHART_DEFS.some((c) => selected.charts?.[c.key]) && (
-            <div className="cv-doc-charts">
-              {CHART_DEFS.filter((c) => selected.charts?.[c.key]).map((c, idx) => (
-                <div key={c.key} className="cv-doc-chart">
-                  {idx === 0 && <h2 className="cv-doc-chart-h">{t('情緒歷程一覽')}</h2>}
-                  <div className="cv-slbl">
-                    <span>{t(c.title)}</span>
+      {/* 全部週次都在這一頁，各自可收合展開——不用切換分頁。 */}
+      <div className="flex flex-col gap-3">
+        {reports.map((r, idx) => {
+          const open = openIds.includes(r.id)
+          return (
+            <article key={r.id} className="cv-block">
+              <button
+                type="button"
+                className="cv-block-hd w-full text-left"
+                onClick={() => toggleOpen(r.id)}
+              >
+                <span className="cv-caret" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>
+                  ▶
+                </span>
+                <span className="cv-block-title">
+                  {t('第 {n} 週', { n: r.week_number })}　·　{formatDate(r.created_at, language)}
+                </span>
+                {idx === 0 && <span className="cv-block-tag">{t('最新')}</span>}
+              </button>
+              {open && (
+                <div className="cv-block-body">
+                  <div className="mb-4 flex justify-end">
+                    <button
+                      onClick={() => void handleDownload(r.id)}
+                      disabled={downloadingId === r.id}
+                      className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground-soft transition hover:bg-muted disabled:opacity-50"
+                    >
+                      {downloadingId === r.id ? t('產生中…') : t('下載 PDF')}
+                    </button>
                   </div>
-                  <ReportChart chartKey={c.key} sessions={selected.sessions} baseline={selected.baseline} />
-                </div>
-              ))}
-            </div>
-          )}
 
-          <div className="cv-doc-sign">{t('教練　Yee Ming Tan')}</div>
-        </div>
-      )}
+                  <div className="cv-doc" id={`member-report-doc-${r.id}`}>
+                    <div className="cv-doc-head">
+                      <div className="cv-doc-title">{t('個人福祉回顧')}</div>
+                      <div className="cv-doc-meta">
+                        {displayName}　·　{t('第 {n} 週', { n: r.week_number })}　·
+                        {formatDate(r.created_at, language)}
+                      </div>
+                    </div>
+
+                    <div dangerouslySetInnerHTML={{ __html: mdToHtml(r.body_md) }} />
+
+                    {CHART_DEFS.some((c) => r.charts?.[c.key]) && (
+                      <div className="cv-doc-charts">
+                        {CHART_DEFS.filter((c) => r.charts?.[c.key]).map((c, i) => (
+                          <div key={c.key} className="cv-doc-chart">
+                            {i === 0 && <h2 className="cv-doc-chart-h">{t('情緒歷程一覽')}</h2>}
+                            <div className="cv-slbl">
+                              <span>{t(c.title)}</span>
+                            </div>
+                            <ReportChart chartKey={c.key} sessions={r.sessions} baseline={r.baseline} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="cv-doc-sign">{t('教練　Yee Ming Tan')}</div>
+                  </div>
+                </div>
+              )}
+            </article>
+          )
+        })}
+      </div>
     </div>
   )
 }

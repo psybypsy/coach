@@ -35,9 +35,6 @@ function JournalWizard() {
   const [error, setError] = useState<string | null>(null)
   const [visibility, setVisibility] = useState<Visibility>('public')
   const [anonAlias, setAnonAlias] = useState('')
-  // 發布後、跳社群前先等報告產生完，讓使用者看得到結果，而不是背景默默跑、
-  // 失敗了也不知道（見 requestWeeklyReport 的呼叫處）。
-  const [generatingReport, setGeneratingReport] = useState(false)
 
   const weekStart = currentWeekStart()
   // step 到達 PUBLISH_STEP 時已經沒有對應題目，夾在最後一題避免 index 越界。
@@ -136,16 +133,12 @@ function JournalWizard() {
       }
 
       clearDraft(userId, weekStart)
-      // 發布成功後先等報告產生完，讓使用者看得到結果，而不是背景默默跑。
-      // 失敗不影響發布本身——「我的報告」頁面本來就有補救按鈕，這裡不重做一次。
-      setGeneratingReport(true)
-      await requestWeeklyReport(weekStart)
+      // 觸發本週報告生成後就先去社群（分析要跑約半分鐘，不讓使用者空等）。
+      // 失敗不影響發布本身——報告完成後會自動出現在「我的報告」，也會自動寄信；
+      // 萬一真的沒觸發成功，「我的報告」頁面有補救按鈕。
+      void requestWeeklyReport(weekStart)
       void navigate({ to: '/app/community' })
     } catch (err) {
-      // requestWeeklyReport 內部已自行接住錯誤、不會丟出，會走到這裡的
-      // 只有 perma_entries／journal_posts 寫入失敗，這時要退回發布畫面顯示錯誤，
-      // 不能停在「產生中」畫面卡住不動。
-      setGeneratingReport(false)
       const message = err instanceof Error ? err.message : 'Unknown error'
       console.error('Publish error:', message)
       setError(t('發布失敗，請再試一次。'))
@@ -158,15 +151,6 @@ function JournalWizard() {
     return (
       <div className="mx-auto max-w-md px-6 py-10">
         <p className="text-sm text-muted-foreground">{t('載入中…')}</p>
-      </div>
-    )
-  }
-
-  if (generatingReport) {
-    return (
-      <div className="bg-page flex min-h-screen flex-col items-center justify-center px-6 py-10 text-center">
-        <div className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        <p className="text-sm text-foreground-soft">{t('請稍等，正在整理報告的回饋中…')}</p>
       </div>
     )
   }
