@@ -12,6 +12,7 @@ import os
 import re
 import smtplib
 import socket
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -58,6 +59,23 @@ REPORT_FROM_NAME: str = os.environ.get("REPORT_FROM_NAME", "Ipsen Taiwan")
 APP_BASE_URL: str = os.environ.get("APP_BASE_URL", "https://coach-roan-eta.vercel.app")
 _GMAIL_SMTP_HOST = "smtp.gmail.com"
 _GMAIL_SMTP_PORT = 465  # SSL
+
+# ── 寄信管道：優先走 Gmail API（HTTPS 443），SMTP 只留給本機開發 ──
+# Render 免費方案封鎖所有對外 SMTP 連接埠（25／465／587），封包被靜靜丟掉，
+# smtplib 一定以 TimeoutError 收場——調長 timeout 或重試都沒有用，這是防火牆。
+# Gmail API 走 https://gmail.googleapis.com（443），不在封鎖範圍內，而且寄件者
+# 仍然是 Gmail 本人，DKIM／SPF 完全對齊，不會被判成垃圾信。
+# 設定方式見 docs/gmail-api-setup.md。這三個變數沒設齊就自動退回 SMTP。
+GMAIL_OAUTH_CLIENT_ID: str | None = os.environ.get("GMAIL_OAUTH_CLIENT_ID")
+GMAIL_OAUTH_CLIENT_SECRET: str | None = os.environ.get("GMAIL_OAUTH_CLIENT_SECRET")
+GMAIL_OAUTH_REFRESH_TOKEN: str | None = os.environ.get("GMAIL_OAUTH_REFRESH_TOKEN")
+_GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+_GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+
+
+def _gmail_api_ready() -> bool:
+    return bool(GMAIL_OAUTH_CLIENT_ID and GMAIL_OAUTH_CLIENT_SECRET and GMAIL_OAUTH_REFRESH_TOKEN)
+
 
 # smtp.gmail.com 同時有 IPv4／IPv6 位址；Render 免費方案的對外網路沒有可用的
 # IPv6 路由，若 DNS 解析挑到 IPv6 位址會直接連線失敗（OSError: [Errno 101]
@@ -1943,15 +1961,13 @@ async def coach_translate(req: CoachTranslateRequest, authorization: str = Heade
     return {**analysis, "translations": translations}
 
 
-def _send_via_gmail(
+def _build_email(
     to_email: str,
     subject: str,
     html_body: str,
     attachment: tuple[str, bytes] | None = None,
-) -> None:
-    """透過 Gmail SMTP 寄出一封 HTML 信，可選擇附加一份 PDF。
-    阻塞式，呼叫端請用 to_thread 包起來。用標準函式庫的 smtplib，不額外增加相依套件。
-    """
+) -> EmailMessage:
+    """組出一封 HTML 信（可選擇附加一份 PDF）。SMTP 與 Gmail API 兩條管道共用。"""
     message = EmailMessage()
     message["Subject"] = subject
     # formataddr 會在顯示名稱含非 ASCII 字元時自動做 RFC 2047 編碼。
@@ -1966,10 +1982,76 @@ def _send_via_gmail(
         # add_attachment 必須在 add_alternative 之後呼叫，訊息才會變成
         # multipart/mixed（內含 multipart/alternative + 附件）的正確結構。
         message.add_attachment(payload, maintype="application", subtype="pdf", filename=filename)
+    return message
 
+
+def _send_via_smtp(message: EmailMessage) -> None:
+    """走 Gmail SMTP 寄出。阻塞式，呼叫端請用 to_thread 包起來。
+    註：Render 免費方案封鎖對外 SMTP 埠，這條路線只在本機開發能用。
+    """
     with smtplib.SMTP_SSL(_GMAIL_SMTP_HOST, _GMAIL_SMTP_PORT, timeout=60) as smtp:
         smtp.login(GMAIL_ADDRESS or "", GMAIL_APP_PASSWORD or "")
         smtp.send_message(message)
+
+
+# access token 有效期約一小時，快取起來免得每封信都去換一次。
+_gmail_token: str | None = None
+_gmail_token_expiry: float = 0.0
+_gmail_token_lock = asyncio.Lock()
+
+
+async def _gmail_access_token() -> str:
+    """用 refresh token 換一張短效 access token（快取到快過期為止）。"""
+    global _gmail_token, _gmail_token_expiry
+    async with _gmail_token_lock:
+        # 提早 60 秒換新，避免拿到一張在路上剛好過期的 token。
+        if _gmail_token and time.monotonic() < _gmail_token_expiry - 60:
+            return _gmail_token
+        resp = await db().post(
+            _GOOGLE_TOKEN_URL,
+            data={
+                "client_id": GMAIL_OAUTH_CLIENT_ID or "",
+                "client_secret": GMAIL_OAUTH_CLIENT_SECRET or "",
+                "refresh_token": GMAIL_OAUTH_REFRESH_TOKEN or "",
+                "grant_type": "refresh_token",
+            },
+        )
+        if resp.status_code != 200:
+            # invalid_grant 幾乎都是 refresh token 失效：OAuth 同意畫面若停在
+            # 「測試中」，Google 會在 7 天後撤銷 token（見 docs/gmail-api-setup.md）。
+            raise RuntimeError(f"取得 Gmail access token 失敗 {resp.status_code}: {resp.text[:200]}")
+        payload = resp.json()
+        _gmail_token = str(payload["access_token"])
+        _gmail_token_expiry = time.monotonic() + float(payload.get("expires_in") or 3600)
+        return _gmail_token
+
+
+async def _send_via_gmail_api(message: EmailMessage) -> None:
+    """走 Gmail API（HTTPS 443）寄出，繞開平台對 SMTP 埠的封鎖。"""
+    token = await _gmail_access_token()
+    resp = await db().post(
+        _GMAIL_SEND_URL,
+        headers={"Authorization": f"Bearer {token}"},
+        json={"raw": base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")},
+        timeout=60,
+    )
+    if resp.status_code not in (200, 201):
+        raise RuntimeError(f"Gmail API 寄送失敗 {resp.status_code}: {resp.text[:300]}")
+
+
+async def _send_via_gmail(
+    to_email: str,
+    subject: str,
+    html_body: str,
+    attachment: tuple[str, bytes] | None = None,
+) -> None:
+    """寄出一封信。有設 OAuth 就走 Gmail API，否則退回 SMTP（本機開發用）。"""
+    message = _build_email(to_email, subject, html_body, attachment)
+    if _gmail_api_ready():
+        await _send_via_gmail_api(message)
+        return
+    # smtplib 是阻塞式的，丟到執行緒避免卡住 event loop。
+    await asyncio.to_thread(_send_via_smtp, message)
 
 
 async def _email_report(report: dict) -> bool:
@@ -1979,11 +2061,11 @@ async def _email_report(report: dict) -> bool:
     （雷達圖／主題占比圓餅圖／情緒詞雲皆在後端畫，不需要瀏覽器）。
 
     刻意設計成「失敗不影響主流程」：沒設定 Gmail 認證、拿不到 email、
-    或 SMTP 出錯，都只記 log 並把原因寫進 email_error 欄（見遷移 010）——
+    或寄送管道出錯，都只記 log 並把原因寫進 email_error 欄（見遷移 010）——
     報告本身在網站上還是看得到。已寄過（emailed_at 有值）就不重複寄。
     """
-    if not (GMAIL_ADDRESS and GMAIL_APP_PASSWORD):
-        logger.info("GMAIL_ADDRESS / GMAIL_APP_PASSWORD 未設定，略過寄送報告 email")
+    if not (GMAIL_ADDRESS and (_gmail_api_ready() or GMAIL_APP_PASSWORD)):
+        logger.info("Gmail 寄信認證未設齊（需 GMAIL_ADDRESS + OAuth 三件組或 App 密碼），略過寄送報告 email")
         return False
     if report.get("emailed_at"):
         return False
@@ -2049,8 +2131,7 @@ async def _deliver_report_email(report: dict) -> bool:
     last_exc: Exception | None = None
     for attempt in range(2):
         try:
-            # smtplib 是阻塞式的，丟到執行緒避免卡住 event loop。
-            await asyncio.to_thread(_send_via_gmail, to_email, subject, html_body, (filename, pdf_bytes))
+            await _send_via_gmail(to_email, subject, html_body, (filename, pdf_bytes))
             last_exc = None
             break
         except Exception as exc:
@@ -2061,15 +2142,16 @@ async def _deliver_report_email(report: dict) -> bool:
         # 逾時（而不是被拒絕或認證失敗）代表封包被靜靜丟掉，最典型的原因是
         # 主機平台封鎖對外 SMTP 連接埠——Render 免費方案就會擋 25／465／587。
         # 把這個線索直接寫進 email_error，免得下次又只看到一句「timed out」。
+        channel = "Gmail API" if _gmail_api_ready() else "Gmail SMTP"
         hint = ""
-        if isinstance(last_exc, TimeoutError):
+        if isinstance(last_exc, TimeoutError) and not _gmail_api_ready():
             hint = (
                 f"；連線在交握階段就逾時，最可能是主機平台封鎖對外 SMTP 連接埠 {_GMAIL_SMTP_PORT}"
-                "（Render 免費方案會擋 25／465／587）。改用付費方案或改走 HTTP API 寄信才會通，"
-                "調長 timeout／重試都沒有用。"
+                "（Render 免費方案會擋 25／465／587）。請設定 GMAIL_OAUTH_* 三個環境變數改走"
+                " Gmail API（見 docs/gmail-api-setup.md）；調長 timeout／重試都沒有用。"
             )
         return await _fail(
-            f"Gmail SMTP 寄送失敗（已重試一次）[{type(last_exc).__name__}]: {last_exc}{hint}"
+            f"{channel} 寄送失敗（已重試一次）[{type(last_exc).__name__}]: {last_exc}{hint}"
         )
 
     # 內容雜湊：教練改過內文再發布一次時，才需要重寄（見遷移 010）。

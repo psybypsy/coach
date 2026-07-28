@@ -57,18 +57,22 @@ cp .env.example .env
 | `OPENAI_API_KEY` | 語音轉文字（Whisper）用 | [platform.openai.com](https://platform.openai.com/api-keys) |
 | `SUPABASE_SERVICE_ROLE_KEY` | 後端寫入資料庫用（權限極高，絕對不能外流） | Supabase 專案 → Settings → API Keys |
 | `GMAIL_ADDRESS` | 寄報告信用的 Gmail 位址（不需自有網域、不必設 DNS） | 教練的 Gmail |
-| `GMAIL_APP_PASSWORD` | Google「應用程式密碼」（需先開兩步驟驗證），**不是登入密碼** | Google 帳號 → 安全性 |
+| `GMAIL_OAUTH_CLIENT_ID`／`_SECRET`／`_REFRESH_TOKEN` | **正式環境寄信必填**：走 Gmail API（443 埠） | 見 [docs/gmail-api-setup.md](docs/gmail-api-setup.md) |
+| `GMAIL_APP_PASSWORD` | 本機開發的備援管道；Google「應用程式密碼」，**不是登入密碼** | Google 帳號 → 安全性 |
 | `REPORT_WEBHOOK_SECRET` | 驗證 Supabase journal_posts Database Webhook；請使用長隨機字串 | 自行產生並同時設在 Render 與 Webhook header |
 
-`SUPABASE_URL` 已經幫你填好了，不用改。`GMAIL_*` 兩個沒設定時完全不寄信，其餘功能照常運作。
-設定步驟見 [docs/report-email.md](docs/report-email.md)。
+`SUPABASE_URL` 已經幫你填好了，不用改。`GMAIL_*` 全都沒設定時完全不寄信，其餘功能照常運作。
+
+> ⚠️ **正式環境一定要用 Gmail API，不能用 SMTP。** Render 免費方案封鎖所有對外 SMTP
+> 連接埠（25／465／587），`smtplib` 一定會以 `TimeoutError` 收場，調長 timeout 或重試都沒有用。
+> 設定步驟見 **[docs/gmail-api-setup.md](docs/gmail-api-setup.md)**（含一個容易踩雷的 7 天 token 到期問題）。
 
 **每週報告自動產生與寄送**：在 Supabase 建立 `journal_posts` 的 Database Webhook（INSERT、UPDATE），
 URL 指向 `https://<render-domain>/api/coach/report-completed-webhook`，並加入
 `X-Report-Webhook-Secret: <REPORT_WEBHOOK_SECRET>` header。每當某一週的 P／E／R／M／A
 五欄完整提交，系統就產生一份只看該週、並與 T0 比較的報告：
 
-- **第 1、2、3、5、6、7 週** —— 直接發布給學員，並用 Gmail SMTP 寄出信件＋PDF 附件（後端 reportlab 產生，含雷達圖／主題占比圓餅圖／情緒詞雲）。教練不需要介入。
+- **第 1、2、3、5、6、7 週** —— 直接發布給學員，並用 Gmail API 寄出信件＋PDF 附件（後端 reportlab 產生，含雷達圖／主題占比圓餅圖／情緒詞雲）。教練不需要介入。
 - **第 4、8 週** —— 只產生草稿（`pending_coach`），學員看不到也不寄信，等教練在後台編輯確認後按「發布給學員」才寄出。
 
 webhook 是伺服器端觸發，不受學員關閉分頁影響；前端的 `/api/member/report` 與報告頁的
