@@ -1,3 +1,13 @@
+// 把 Date 轉成本機時區的 YYYY-MM-DD。刻意不用 toISOString()——那一律輸出 UTC，
+// 對 UTC+8（台灣）使用者來說，本機時間週一 00:00–07:59 換算成 UTC 還是週日，
+// 日期字串會整整早一天，進而讓 programWeekNumber() 算出錯誤的週次。
+function formatLocalDate(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 // 回傳本週一的日期字串（YYYY-MM-DD），週次以週一為起點。
 export function currentWeekStart(): string {
   const now = new Date()
@@ -6,13 +16,13 @@ export function currentWeekStart(): string {
   const monday = new Date(now)
   monday.setDate(now.getDate() + diffToMonday)
   monday.setHours(0, 0, 0, 0)
-  return monday.toISOString().slice(0, 10)
+  return formatLocalDate(monday)
 }
 
 export function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr + 'T00:00:00')
   d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  return formatLocalDate(d)
 }
 
 // ── 課程週次（week 1 = 2026/07/27 那一週）──
