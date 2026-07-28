@@ -10,6 +10,9 @@ export const report: Record<string, Translation> = {
     en: 'Finish this week’s PERMA entry and your personal report will appear here.',
   },
   '你第 {n} 週的記錄還沒產生報告。': { en: 'Your week {n} entry does not have a report yet.' },
+  '第 {n} 週的報告正在自動產生中，通常一分鐘內完成。': {
+    en: 'Your week {n} report is being generated automatically — usually done within a minute.',
+  },
   '產生我的報告': { en: 'Generate my report' },
   '產生中，大約需要一分鐘…': { en: 'Generating — this takes about a minute…' },
   '請先不要關閉這個頁面。': { en: 'Please keep this page open.' },

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { supabase } from '../lib/supabase'
 import { useLanguage } from '../lib/i18n/context'
@@ -41,6 +41,11 @@ function ReportPage() {
   const [missingWeeks, setMissingWeeks] = useState<string[]>([])
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState<string | null>(null)
+  // 缺報告時先安靜地自動輪詢一段時間（報告很可能正在背景產生中），
+  // 不需要使用者自己按或重新整理；輪詢逾時才顯示手動補救按鈕。
+  const [autoChecking, setAutoChecking] = useState(false)
+  const [pollTimedOut, setPollTimedOut] = useState(false)
+  const pollAttempts = useRef(0)
 
   const handleGenerate = async () => {
     const week = missingWeeks[0]
@@ -110,6 +115,30 @@ function ReportPage() {
     void load()
   }, [])
 
+  // 有缺報告的週次時，每 5 秒重查一次（純讀取，不呼叫 AI、不花錢），
+  // 最多輪詢 90 秒；報告在這段時間內自動出現就直接顯示，不逾時不會出現按鈕。
+  const hasMissing = missingWeeks.length > 0
+  useEffect(() => {
+    if (!hasMissing || pollTimedOut) {
+      setAutoChecking(false)
+      return
+    }
+    pollAttempts.current = 0
+    setAutoChecking(true)
+    const MAX_ATTEMPTS = 18
+    const id = window.setInterval(() => {
+      pollAttempts.current += 1
+      if (pollAttempts.current >= MAX_ATTEMPTS) {
+        window.clearInterval(id)
+        setAutoChecking(false)
+        setPollTimedOut(true)
+        return
+      }
+      void load()
+    }, 5000)
+    return () => window.clearInterval(id)
+  }, [hasMissing, pollTimedOut])
+
   if (loading) {
     return (
       <div className="mx-auto max-w-3xl px-5 py-8">
@@ -121,20 +150,34 @@ function ReportPage() {
   // 有週記待產生報告時的面板：安靜的補救入口，不是預期中的必經步驟。
   const generatePanel = missingWeeks.length > 0 && (
     <div className="mb-5 rounded-xl border border-gold/45 bg-gold/10 p-5 text-center">
-      <p className="text-sm leading-relaxed text-foreground-soft">
-        {t('你第 {n} 週的記錄還沒產生報告。', { n: programWeekNumber(missingWeeks[0]) })}
-      </p>
-      <button
-        onClick={() => void handleGenerate()}
-        disabled={generating}
-        className="mt-3 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-soft transition hover:bg-primary-glow disabled:opacity-50"
-      >
-        {generating ? t('產生中，大約需要一分鐘…') : t('產生我的報告')}
-      </button>
-      {generating && (
-        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{t('請先不要關閉這個頁面。')}</p>
+      {autoChecking && !pollTimedOut ? (
+        // 安靜輪詢中：不需要使用者按任何東西，報告出現時這個區塊會自動消失。
+        <div className="flex items-center justify-center gap-2">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <p className="text-sm leading-relaxed text-foreground-soft">
+            {t('第 {n} 週的報告正在自動產生中，通常一分鐘內完成。', {
+              n: programWeekNumber(missingWeeks[0]),
+            })}
+          </p>
+        </div>
+      ) : (
+        <>
+          <p className="text-sm leading-relaxed text-foreground-soft">
+            {t('你第 {n} 週的記錄還沒產生報告。', { n: programWeekNumber(missingWeeks[0]) })}
+          </p>
+          <button
+            onClick={() => void handleGenerate()}
+            disabled={generating}
+            className="mt-3 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-soft transition hover:bg-primary-glow disabled:opacity-50"
+          >
+            {generating ? t('產生中，大約需要一分鐘…') : t('產生我的報告')}
+          </button>
+          {generating && (
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{t('請先不要關閉這個頁面。')}</p>
+          )}
+          {genError && <p className="mt-2 text-sm leading-relaxed text-rust">{genError}</p>}
+        </>
       )}
-      {genError && <p className="mt-2 text-sm leading-relaxed text-rust">{genError}</p>}
     </div>
   )
 
