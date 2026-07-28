@@ -93,6 +93,22 @@ interface MemberReportRow {
   published_at: string | null
 }
 
+// 每月（里程碑）PERMA 報告（見遷移 009）：第 4 週回顧第 1–4 週、第 8 週回顧
+// 第 1–8 週，與 T0 基準比較。僅教練端閱讀，不寄給學員，不受發布流程影響。
+interface MonthlyPermaReport {
+  member_id: string
+  milestone_week: number
+  weeks_covered: number
+  week_start_from: string | null
+  week_start_to: string | null
+  content: {
+    baseline: BaselineScores | null
+    sessions: SessionScore[]
+    blocks: BriefBlock[]
+    scope: string
+  }
+}
+
 // #2 情報簡報區塊標題一律用「固定的 canonical 標題」（依區塊順序）並走 t()，
 // 預設英文、跟隨介面語言 —— 這樣即使某成員的分析是舊版用中文生成、標題存成中文，
 // 教練介面也不會出現「中文標題混英文框架」。後端固定依此順序產出 10 個區塊。
@@ -218,6 +234,15 @@ function MemberDetailPage() {
   const [editReportId, setEditReportId] = useState<string | null>(null)
   const [reportEditText, setReportEditText] = useState('')
   const [publishingReport, setPublishingReport] = useState<string | null>(null)
+  // 每月（里程碑）PERMA 報告（見遷移 009）：第 4／8 週跨週回顧，僅教練閱讀
+  const [monthlyReports, setMonthlyReports] = useState<MonthlyPermaReport[]>([])
+  const [monthlyBusy, setMonthlyBusy] = useState(false)
+  const [openMonthly, setOpenMonthly] = useState<number[]>([])
+  // 月報告專用的自訂分析框架：key 用里程碑週數（4 或 8），與教練情報簡報那組
+  // （fwDesc / fwDraft，單一值）分開，避免月報告的草稿互相覆蓋。
+  const [monthlyFwDesc, setMonthlyFwDesc] = useState<Record<number, string>>({})
+  const [monthlyFwDraft, setMonthlyFwDraft] = useState<Record<number, Framework | null>>({})
+  const [monthlyFwBusy, setMonthlyFwBusy] = useState<string | null>(null)
   // T0 基準點：五面向 0–10 輸入（字串以容許暫時空白），存進 coach_analyses.baseline
   const emptyBaselineDraft: Record<DimKey, string> = { P: '', E: '', R: '', M: '', A: '' }
   const [baselineDraft, setBaselineDraft] = useState<Record<DimKey, string>>(emptyBaselineDraft)
@@ -253,9 +278,12 @@ function MemberDetailPage() {
     if (memberReports.length > 0) {
       items.push({ id: 'sec-member-reports', label: t('學員版報告') })
     }
+    if (posts.length > 0) {
+      items.push({ id: 'sec-monthly-reports', label: t('每月 PERMA 報告') })
+    }
     items.push({ id: 'sec-timeline', label: t('書寫時間軸') })
     return items
-  }, [hasDeepAnalysis, memberReports.length, t])
+  }, [hasDeepAnalysis, memberReports.length, posts.length, t])
 
   // 依捲動位置自動高亮側欄目前章節（進入視窗上方 35% 區帶即視為目前章節）
   useEffect(() => {
@@ -296,6 +324,7 @@ function MemberDetailPage() {
       { data: postRows },
       { data: analysisRow },
       { data: reportRows },
+      { data: monthlyRows },
     ] = await Promise.all([
       supabase.from('profiles').select('display_name').eq('id', id).single(),
       supabase
@@ -314,11 +343,17 @@ function MemberDetailPage() {
         .select('*')
         .eq('user_id', id)
         .order('week_number', { ascending: false }),
+      supabase
+        .from('perma_monthly_reports')
+        .select('*')
+        .eq('member_id', id)
+        .order('milestone_week', { ascending: true }),
     ])
     setName(profile?.display_name ?? '')
     setEntries((entryRows as unknown as EntryRow[]) ?? [])
     setPosts((postRows as unknown as JournalPost[]) ?? [])
     setMemberReports((reportRows as unknown as MemberReportRow[]) ?? [])
+    setMonthlyReports((monthlyRows as unknown as MonthlyPermaReport[]) ?? [])
     const row = (analysisRow as unknown as CoachAnalysis) ?? null
     setAnalysis(row)
     const b = row?.baseline
@@ -372,6 +407,139 @@ function MemberDetailPage() {
     }
   }
 
+  async function reloadMonthlyReports() {
+    const { data } = await supabase
+      .from('perma_monthly_reports')
+      .select('*')
+      .eq('member_id', id)
+      .order('milestone_week', { ascending: true })
+    setMonthlyReports((data as unknown as MonthlyPermaReport[]) ?? [])
+  }
+
+  // 生成（或重新生成）第 4 週、第 8 週的跨週回顧；僅教練閱讀，不寄信
+  async function generateMonthlyReports() {
+    if (!baseline) {
+      setMessage(t('請把 T0 的五個面向都填 0–10 的分數'))
+      return
+    }
+    setMonthlyBusy(true)
+    setMessage(null)
+    try {
+      const resp = await authFetch('/api/coach/monthly-reports/generate', { member_id: id })
+      if (resp.ok) {
+        await reloadMonthlyReports()
+        setOpenMonthly((prev) => Array.from(new Set([...prev, 4, 8])))
+      } else {
+        const body = (await resp.json().catch(() => ({}))) as { detail?: string }
+        setMessage(body.detail || t('發布失敗，請再試一次。'))
+      }
+    } catch {
+      setMessage(t('發布失敗，請再試一次。'))
+    } finally {
+      setMonthlyBusy(false)
+    }
+  }
+
+  // 月報告專用的自訂分析框架：描述 → AI 生成草稿 → 用它分析該里程碑涵蓋的週次
+  async function genMonthlyFramework(milestone: number) {
+    const description = (monthlyFwDesc[milestone] ?? '').trim()
+    if (description.length < 4) {
+      setMessage(t('請先描述你想分析什麼'))
+      return
+    }
+    setMonthlyFwBusy(`gen-${milestone}`)
+    setMessage(null)
+    try {
+      const resp = await authFetch('/api/coach/framework/generate', { description, language })
+      if (resp.ok) {
+        const fw = (await resp.json()) as Partial<Framework>
+        setMonthlyFwDraft((prev) => ({
+          ...prev,
+          [milestone]: {
+            name: fw.name ?? '',
+            basis: fw.basis ?? '',
+            lens: fw.lens ?? '',
+            dimensions: (fw.dimensions ?? []).map((d) => ({
+              name: d?.name ?? '',
+              look_for: d?.look_for ?? '',
+              evidence_rule: d?.evidence_rule ?? '',
+            })),
+            references: fw.references ?? [],
+            note: fw.note ?? '',
+          },
+        }))
+      } else {
+        const body = (await resp.json().catch(() => ({}))) as { detail?: string }
+        setMessage(body.detail || t('發布失敗，請再試一次。'))
+      }
+    } catch {
+      setMessage(t('發布失敗，請再試一次。'))
+    } finally {
+      setMonthlyFwBusy(null)
+    }
+  }
+
+  async function runMonthlyFrameworkAnalysis(milestone: number) {
+    const draft = monthlyFwDraft[milestone]
+    if (!draft) return
+    const dims = draft.dimensions.filter((d) => d.name.trim())
+    if (dims.length === 0) {
+      setMessage(t('請至少保留一個維度'))
+      return
+    }
+    setMonthlyFwBusy(`run-${milestone}`)
+    setMessage(null)
+    try {
+      const resp = await authFetch('/api/coach/monthly-reports/analyze-framework', {
+        member_id: id,
+        milestone_week: milestone,
+        framework: { ...draft, dimensions: dims },
+        language: 'zh-TW',
+      })
+      if (resp.ok) {
+        await reloadMonthlyReports()
+        setMonthlyFwDraft((prev) => ({ ...prev, [milestone]: null }))
+        setMonthlyFwDesc((prev) => ({ ...prev, [milestone]: '' }))
+        setOpenMonthly((prev) => (prev.includes(milestone) ? prev : [...prev, milestone]))
+      } else {
+        const body = (await resp.json().catch(() => ({}))) as { detail?: string }
+        setMessage(body.detail || t('發布失敗，請再試一次。'))
+      }
+    } catch {
+      setMessage(t('發布失敗，請再試一次。'))
+    } finally {
+      setMonthlyFwBusy(null)
+    }
+  }
+
+  function updateMonthlyFwDim(milestone: number, i: number, key: keyof FwDimension, val: string) {
+    setMonthlyFwDraft((prev) => {
+      const draft = prev[milestone]
+      if (!draft) return prev
+      return {
+        ...prev,
+        [milestone]: { ...draft, dimensions: draft.dimensions.map((d, j) => (j === i ? { ...d, [key]: val } : d)) },
+      }
+    })
+  }
+  function addMonthlyFwDim(milestone: number) {
+    setMonthlyFwDraft((prev) => {
+      const draft = prev[milestone]
+      if (!draft) return prev
+      return {
+        ...prev,
+        [milestone]: { ...draft, dimensions: [...draft.dimensions, { name: '', look_for: '', evidence_rule: '' }] },
+      }
+    })
+  }
+  function removeMonthlyFwDim(milestone: number, i: number) {
+    setMonthlyFwDraft((prev) => {
+      const draft = prev[milestone]
+      if (!draft) return prev
+      return { ...prev, [milestone]: { ...draft, dimensions: draft.dimensions.filter((_, j) => j !== i) } }
+    })
+  }
+
   // 儲存 T0 基準點：upsert coach_analyses（教練 RLS 允許 insert/update；分析未生成也可先存）
   async function saveBaseline() {
     if (!baseline) {
@@ -412,7 +580,7 @@ function MemberDetailPage() {
       const resp = await authFetch('/api/coach/analyze')
       if (resp.ok) {
         setAnalysis((await resp.json()) as CoachAnalysis)
-        setBriefLang('en') // 新內容、翻譯已作廢，回到英文
+        setBriefLang('zh-TW') // 新內容、翻譯已作廢，回到原生繁中
       } else {
         const body = (await resp.json().catch(() => ({}))) as { detail?: string }
         setMessage(body.detail || t('發布失敗，請再試一次。'))
@@ -524,7 +692,7 @@ function MemberDetailPage() {
       })
       if (resp.ok) {
         setAnalysis((await resp.json()) as CoachAnalysis)
-        setBriefLang('en') // 新增區塊、翻譯快取已作廢，回到英文
+        setBriefLang('zh-TW') // 新增區塊、翻譯快取已作廢，回到原生繁中
         setFwDraft(null)
         setFwDesc('')
       } else {
@@ -1363,6 +1531,178 @@ function MemberDetailPage() {
                         </div>
                       )}
                     </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* ── 每月（里程碑）PERMA 報告：第 4／8 週跨週回顧，僅教練閱讀，不寄信 ── */}
+          {posts.length > 0 && (
+            <section className="mb-8" id="sec-monthly-reports">
+              <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('每月 PERMA 報告')}</h2>
+              <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                {t('第 4 週回顧第 1–4 週、第 8 週回顧第 1–8 週，並與 T0 基準比較；僅教練可見。')}
+              </p>
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => void generateMonthlyReports()}
+                  disabled={monthlyBusy || !baseline}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                >
+                  {monthlyBusy
+                    ? t('生成中…')
+                    : monthlyReports.length > 0
+                      ? t('重新生成月報告')
+                      : t('生成月報告')}
+                </button>
+                {!baseline && <span className="text-xs text-muted-foreground">{t('需先設定並儲存 T0 基準點')}</span>}
+              </div>
+              {monthlyReports.length === 0 && (
+                <p className="mb-3 text-sm text-muted-foreground">{t('目前還沒有月報告。完成 4 週或 8 週後，按上方按鈕即可生成。')}</p>
+              )}
+              <div className="flex flex-col gap-3">
+                {monthlyReports.map((report) => {
+                  const m = report.milestone_week
+                  const open = openMonthly.includes(m)
+                  const sessions = report.content?.sessions ?? []
+                  const rBaseline = report.content?.baseline ?? null
+                  const blocks = report.content?.blocks ?? []
+                  const draft = monthlyFwDraft[m] ?? null
+                  return (
+                    <article key={m} className="cv-block">
+                      <button
+                        type="button"
+                        className="cv-block-hd w-full text-left"
+                        onClick={() => setOpenMonthly((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]))}
+                      >
+                        <span className="cv-caret" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>▶</span>
+                        <span className="cv-block-title">
+                          {t('第 {n} 週', { n: m })}
+                          {report.week_start_from ? ` · ${report.week_start_from} → ${report.week_start_to}` : ''}
+                        </span>
+                        <span className="cv-block-tag">{t('第 1–{n} 週', { n: m })}</span>
+                      </button>
+                      {open && (
+                        <div className="cv-block-body">
+                          {sessions.length > 0 && (
+                            <>
+                              {CHART_DEFS.filter((c) => ['dims', 'topics', 'radar', 'cloud'].includes(c.key)).map((c) => (
+                                <div key={c.key} className="mb-4">
+                                  <div className="cv-slbl"><span>{t(c.title)}</span></div>
+                                  <ReportChart chartKey={c.key} sessions={sessions} baseline={rBaseline} />
+                                </div>
+                              ))}
+                            </>
+                          )}
+                          {blocks.map((b, i) => (
+                            <div key={i} className="cv-block" style={{ marginTop: 12 }}>
+                              <div className="cv-block-hd">
+                                <span className="cv-block-title">{t(BLOCK_TITLES[i] ?? b.title)}</span>
+                                {b.custom && <span className="cv-block-tag ai">{t('AI 框架')}</span>}
+                              </div>
+                              <div className="cv-block-body">
+                                <div className="cv-md" dangerouslySetInnerHTML={{ __html: mdToHtml(b.body) }} />
+                              </div>
+                            </div>
+                          ))}
+
+                          {/* ── 這份月報告專用的自訂分析框架：只分析這個里程碑涵蓋的週次 ── */}
+                          <div className="cv-fw-intro" style={{ marginTop: 16 }}>
+                            <p className="mb-3 text-xs text-muted-foreground">
+                              {t('用自己的話描述你想分析什麼，AI 會依心理學文獻生成一個有理論依據的框架；你可以編輯後用它產生一個新的情報簡報區塊。')}
+                            </p>
+                            <textarea
+                              className="cv-textarea"
+                              style={{ minHeight: 64 }}
+                              placeholder={t('例如：看這位成員面對轉變時的能動性 / 情緒調節的方式 / 自我批評 vs 自我疼惜')}
+                              value={monthlyFwDesc[m] ?? ''}
+                              onChange={(e) => setMonthlyFwDesc((prev) => ({ ...prev, [m]: e.target.value }))}
+                            />
+                            <div className="mt-2 flex flex-wrap gap-3">
+                              <button
+                                onClick={() => void genMonthlyFramework(m)}
+                                disabled={monthlyFwBusy !== null || (monthlyFwDesc[m] ?? '').trim().length < 4}
+                                className="rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary disabled:opacity-50"
+                              >
+                                {monthlyFwBusy === `gen-${m}` ? t('生成中…') : t('AI 生成分析框架')}
+                              </button>
+                            </div>
+                          </div>
+
+                          {draft && (
+                            <div className="cv-fw">
+                              <div className="cv-fw-hd">{t('生成的分析框架（可編輯）')}</div>
+                              <label className="cv-fw-lab">{t('框架名稱')}</label>
+                              <input
+                                className="cv-fw-in"
+                                value={draft.name}
+                                onChange={(e) => setMonthlyFwDraft((prev) => ({ ...prev, [m]: { ...draft, name: e.target.value } }))}
+                              />
+                              <label className="cv-fw-lab">{t('理論依據 / 出處')}</label>
+                              <input
+                                className="cv-fw-in"
+                                value={draft.basis}
+                                onChange={(e) => setMonthlyFwDraft((prev) => ({ ...prev, [m]: { ...draft, basis: e.target.value } }))}
+                              />
+                              <label className="cv-fw-lab">{t('分析視角')}</label>
+                              <input
+                                className="cv-fw-in"
+                                value={draft.lens}
+                                onChange={(e) => setMonthlyFwDraft((prev) => ({ ...prev, [m]: { ...draft, lens: e.target.value } }))}
+                              />
+                              <label className="cv-fw-lab">{t('分析維度')}</label>
+                              {draft.dimensions.map((d, i) => (
+                                <div key={i} className="cv-fw-dim">
+                                  <input
+                                    className="cv-fw-in"
+                                    placeholder={t('維度名')}
+                                    value={d.name}
+                                    onChange={(e) => updateMonthlyFwDim(m, i, 'name', e.target.value)}
+                                  />
+                                  <input
+                                    className="cv-fw-in"
+                                    placeholder={t('要留意的語言／行為線索')}
+                                    value={d.look_for}
+                                    onChange={(e) => updateMonthlyFwDim(m, i, 'look_for', e.target.value)}
+                                  />
+                                  <input
+                                    className="cv-fw-in"
+                                    placeholder={t('證據規則（引用原話）')}
+                                    value={d.evidence_rule}
+                                    onChange={(e) => updateMonthlyFwDim(m, i, 'evidence_rule', e.target.value)}
+                                  />
+                                  <button className="cv-fw-del" onClick={() => removeMonthlyFwDim(m, i)} title={t('移除維度')}>×</button>
+                                </div>
+                              ))}
+                              <button className="cv-fw-add" onClick={() => addMonthlyFwDim(m)}>＋ {t('新增維度')}</button>
+                              {draft.references.length > 0 && (
+                                <div className="cv-fw-refs">
+                                  <div className="cv-fw-lab" style={{ margin: '0 0 2px' }}>{t('參考文獻')}</div>
+                                  <ul>{draft.references.map((r, i) => <li key={i}>{r}</li>)}</ul>
+                                </div>
+                              )}
+                              {draft.note && <div className="cv-fw-note">{draft.note}</div>}
+                              <div className="mt-3 flex gap-2">
+                                <button
+                                  onClick={() => void runMonthlyFrameworkAnalysis(m)}
+                                  disabled={monthlyFwBusy !== null}
+                                  className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                                >
+                                  {monthlyFwBusy === `run-${m}` ? t('分析中…') : t('用這個框架分析')}
+                                </button>
+                                <button
+                                  onClick={() => setMonthlyFwDraft((prev) => ({ ...prev, [m]: null }))}
+                                  className="rounded-lg border border-border px-4 py-2 text-sm text-foreground-soft"
+                                >
+                                  {t('取消')}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </article>
                   )
                 })}
               </div>

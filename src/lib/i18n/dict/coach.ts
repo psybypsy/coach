@@ -233,6 +233,7 @@ export const coach: Record<string, Translation> = {
     en: 'No monthly reports yet. Once 4 or 8 weeks are complete, use the button above to generate them.',
   },
   '已生成月報告': { en: 'Monthly reports generated:' },
+  '第 1–{n} 週': { en: 'Weeks 1–{n}' },
   '用 AI 框架增加新的分析內容': { en: 'Add new analysis with an AI framework' },
   '用自己的話描述想分析什麼，AI 會依心理學文獻生成有理論依據的框架；你可以編輯後套用到這段期間。': {
     en: 'Describe in your own words what you want to analyze. AI generates a theory-grounded framework from the psychology literature; edit it, then apply it to this period.',
