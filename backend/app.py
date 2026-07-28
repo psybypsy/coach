@@ -110,6 +110,10 @@ app = FastAPI(title="Coach Platform API", lifespan=lifespan)
 # 背景寄信（_email_report）就是用這個模式，這裡統一存放。
 _background_tasks: set[asyncio.Task] = set()
 
+# 正在寄送中的報告 id。學員的報告頁會輪詢、Supabase webhook 也會觸發，
+# 沒有這道鎖就可能同時開好幾個背景寄信任務、把同一封信寄很多次。
+_emailing_reports: set[str] = set()
+
 
 def _spawn_background(coro) -> asyncio.Task:
     task = asyncio.create_task(coro)
@@ -1984,6 +1988,20 @@ async def _email_report(report: dict) -> bool:
     if report.get("emailed_at"):
         return False
 
+    # 同一份報告同時只跑一支寄送任務（見 _emailing_reports 的說明）。
+    report_id = str(report.get("id") or "")
+    if report_id and report_id in _emailing_reports:
+        logger.info("報告 %s 已有寄送任務進行中，略過這次觸發", report_id)
+        return False
+    _emailing_reports.add(report_id)
+    try:
+        return await _deliver_report_email(report)
+    finally:
+        _emailing_reports.discard(report_id)
+
+
+async def _deliver_report_email(report: dict) -> bool:
+    """實際產生 PDF 並寄出；呼叫端請用 _email_report（它負責前置檢查與併發鎖）。"""
     user_id = report["user_id"]
     week_number = report["week_number"]
 
@@ -2040,7 +2058,19 @@ async def _email_report(report: dict) -> bool:
             if attempt == 0:
                 await asyncio.sleep(3)
     if last_exc is not None:
-        return await _fail(f"Gmail SMTP 寄送失敗（已重試一次）[{type(last_exc).__name__}]: {last_exc}")
+        # 逾時（而不是被拒絕或認證失敗）代表封包被靜靜丟掉，最典型的原因是
+        # 主機平台封鎖對外 SMTP 連接埠——Render 免費方案就會擋 25／465／587。
+        # 把這個線索直接寫進 email_error，免得下次又只看到一句「timed out」。
+        hint = ""
+        if isinstance(last_exc, TimeoutError):
+            hint = (
+                f"；連線在交握階段就逾時，最可能是主機平台封鎖對外 SMTP 連接埠 {_GMAIL_SMTP_PORT}"
+                "（Render 免費方案會擋 25／465／587）。改用付費方案或改走 HTTP API 寄信才會通，"
+                "調長 timeout／重試都沒有用。"
+            )
+        return await _fail(
+            f"Gmail SMTP 寄送失敗（已重試一次）[{type(last_exc).__name__}]: {last_exc}{hint}"
+        )
 
     # 內容雜湊：教練改過內文再發布一次時，才需要重寄（見遷移 010）。
     content_hash = hashlib.sha256((report.get("body_md") or "").encode("utf-8")).hexdigest()
@@ -2153,7 +2183,18 @@ async def _ensure_member_report(user_id: str, week_start: str, actor_id: str) ->
     )
     existing = existing_resp.json() if existing_resp.status_code == 200 else []
     if existing:
-        return existing[0]
+        report = existing[0]
+        # 報告已存在但上次寄信失敗（email_error 有值、emailed_at 還是空）就再試一次。
+        # 沒有這段的話，寄信只會在「報告第一次被建立」的那一瞬間嘗試一次——
+        # 之後不管學員按幾次「產生我的報告」、webhook 重觸發幾次，都會走到這裡
+        # 直接回傳既有報告，那封信就永遠不會補寄出去（實測第 1 週就卡在這）。
+        if (
+            report.get("status") == "published"
+            and not report.get("emailed_at")
+            and report.get("email_error")
+        ):
+            _spawn_background(_email_report(report))
+        return report
 
     posts = await _fetch_member_posts(user_id)
     post = next((p for p in posts if str(p.get("week_start") or "") == week_start), None)
