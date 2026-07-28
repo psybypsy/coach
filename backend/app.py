@@ -105,6 +105,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Coach Platform API", lifespan=lifespan)
 
+# asyncio 只對 create_task() 的結果持有弱參照；沒有其他地方保留強參照的話，
+# 任務可能在還沒跑完時就被 GC 回收（"Task was destroyed but it is pending"）。
+# 背景寄信（_email_report）就是用這個模式，這裡統一存放。
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _spawn_background(coro) -> asyncio.Task:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -1951,7 +1963,7 @@ def _send_via_gmail(
         # multipart/mixed（內含 multipart/alternative + 附件）的正確結構。
         message.add_attachment(payload, maintype="application", subtype="pdf", filename=filename)
 
-    with smtplib.SMTP_SSL(_GMAIL_SMTP_HOST, _GMAIL_SMTP_PORT, timeout=30) as smtp:
+    with smtplib.SMTP_SSL(_GMAIL_SMTP_HOST, _GMAIL_SMTP_PORT, timeout=60) as smtp:
         smtp.login(GMAIL_ADDRESS or "", GMAIL_APP_PASSWORD or "")
         smtp.send_message(message)
 
@@ -2013,11 +2025,22 @@ async def _email_report(report: dict) -> bool:
     html_body = _weekly_email_html(display_name, f"{APP_BASE_URL}/app/report")
     filename = f"第{week_number}週-PERMA幸福感回顧.pdf"
 
-    try:
-        # smtplib 是阻塞式的，丟到執行緒避免卡住 event loop。
-        await asyncio.to_thread(_send_via_gmail, to_email, subject, html_body, (filename, pdf_bytes))
-    except Exception as exc:
-        return await _fail(f"Gmail SMTP 寄送失敗 [{type(exc).__name__}]: {exc}")
+    # Render 對外的 SMTP 連線偶爾會逾時（實測遇過），值得重試一次；
+    # 現在寄信已經是背景執行（見呼叫端 asyncio.create_task），
+    # 多等一次不會拖到任何使用者正在等的請求。
+    last_exc: Exception | None = None
+    for attempt in range(2):
+        try:
+            # smtplib 是阻塞式的，丟到執行緒避免卡住 event loop。
+            await asyncio.to_thread(_send_via_gmail, to_email, subject, html_body, (filename, pdf_bytes))
+            last_exc = None
+            break
+        except Exception as exc:
+            last_exc = exc
+            if attempt == 0:
+                await asyncio.sleep(3)
+    if last_exc is not None:
+        return await _fail(f"Gmail SMTP 寄送失敗（已重試一次）[{type(last_exc).__name__}]: {last_exc}")
 
     # 內容雜湊：教練改過內文再發布一次時，才需要重寄（見遷移 010）。
     content_hash = hashlib.sha256((report.get("body_md") or "").encode("utf-8")).hexdigest()
@@ -2174,8 +2197,13 @@ async def _ensure_member_report(user_id: str, week_start: str, actor_id: str) ->
 
     saved = insert_resp.json()[0]
     # 自動發布的週次才寄信；第 4／8 週等教練按「發布給學員」時才寄。
+    # 用 create_task 讓寄信在背景執行、不 await——Render 對外的 SMTP 連線
+    # 有時會慢或整個逾時（實測遇過 Errno 101 與 TimeoutError），若同步等待
+    # 會拖慢這支函式的回應時間，甚至可能讓呼叫端（Supabase webhook）
+    # 判定逾時。報告本身已經存進 member_reports，寄信結果與這裡的回傳
+    # 完全無關，成功或失敗都會分別寫進 emailed_at／email_error。
     if saved.get("status") == "published":
-        await _email_report(saved)
+        _spawn_background(_email_report(saved))
     return saved
 
 
