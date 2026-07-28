@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import smtplib
+import socket
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -57,6 +58,20 @@ REPORT_FROM_NAME: str = os.environ.get("REPORT_FROM_NAME", "Ipsen Taiwan")
 APP_BASE_URL: str = os.environ.get("APP_BASE_URL", "https://coach-roan-eta.vercel.app")
 _GMAIL_SMTP_HOST = "smtp.gmail.com"
 _GMAIL_SMTP_PORT = 465  # SSL
+
+# smtp.gmail.com 同時有 IPv4／IPv6 位址；Render 免費方案的對外網路沒有可用的
+# IPv6 路由，若 DNS 解析挑到 IPv6 位址會直接連線失敗（OSError: [Errno 101]
+# Network is unreachable，實測發生過）。其他呼叫（Anthropic／Supabase／OpenAI）
+# 都正常，代表整體網路沒問題，只有這個特定組合會撞到，所以只在 process 層級
+# 全域過濾成只回傳 IPv4 位址——不影響其他服務（它們本來就沒有走到 IPv6）。
+_orig_getaddrinfo = socket.getaddrinfo
+
+
+def _ipv4_only_getaddrinfo(*args, **kwargs):
+    return [ai for ai in _orig_getaddrinfo(*args, **kwargs) if ai[0] == socket.AF_INET]
+
+
+socket.getaddrinfo = _ipv4_only_getaddrinfo
 
 SUPABASE_REST = f"{SUPABASE_URL}/rest/v1"
 SUPABASE_HEADERS = {
