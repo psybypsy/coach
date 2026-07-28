@@ -20,6 +20,7 @@ export const perma: Record<string, Translation> = {
   '發布': { en: 'Post' },
   '發布中…': { en: 'Posting…' },
   '發布失敗，請再試一次。': { en: 'Something went wrong. Please try again.' },
+  '請稍等，正在整理報告的回饋中…': { en: 'Hang tight — putting your report together…' },
 
   // ── 每週書寫入口（home）與 5 題精靈（journal）──
   '日記': { en: 'Journal' },
