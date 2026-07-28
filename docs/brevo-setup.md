@@ -15,39 +15,102 @@ Brevo 的寄信是 HTTP API（`api.brevo.com`，443 埠），完全不碰 SMTP �
 
 ---
 
-## 設定步驟（約 5 分鐘）
+## ⚠️ 先看這段：兩個新帳號一定會撞到的關卡
+
+實測（2026-07-28）依序撞到三個問題，**照順序處理才不會白忙**：
+
+1. **IP 封鎖**（`401 unrecognised IP address`）—— 2024/5/16 之後開的帳號預設開啟。
+   到 **Settings → Security → Authorized IPs**，在 `API keys` 那一列按 **Deactivate for API keys**。
+   > 注意這跟「停用 API key 本身」是兩個不同的東西，Brevo 介面上長很像，很容易按錯。
+   > 驗收：SMTP & API 頁上方的橫幅要變成 "Unauthorized IP addresses are **not** blocked"。
+   >
+   > 為什麼要整個關掉而不是把 IP 加白名單：Render 用的是[跟其他客戶共用的浮動 IP 範圍](https://render.com/docs/outbound-ip-addresses)，
+   > 列不進白名單，就算列了範圍變動時信也會靜默斷掉。而且**只要授權任何一個 IP，就會自動啟用對其餘所有 IP 的封鎖**。
+
+2. **帳號未開通 transactional**（`403 Your SMTP account is not yet activated`）——
+   新帳號預設不能寄 transactional email，要開支援單請 Brevo 人工開通，**約 1–2 個工作天**，
+   沒有自助按鈕。開單方式見下面步驟 4。
+
+3. **只驗證單一寄件地址不夠** —— Brevo 實務上會要求先完成**網域驗證**才開通 transactional。
+   所以下面直接走網域驗證，不要只加 sender。
+
+---
+
+## 設定步驟
 
 ### 1. 註冊 Brevo
 
 到 [brevo.com](https://www.brevo.com/) 用 Email 註冊免費帳號。不需要信用卡。
 
-### 2. 驗證寄件地址
+### 2. 關掉 API 的 IP 封鎖
 
-左側 **Senders, Domains & Dedicated IPs** → **Senders** → **Add a sender**，
-填入要當寄件者的 Gmail 位址（`psybypsy01@gmail.com`）與顯示名稱。
+見上面第 1 點。**這步不做，後面每一步都會回 401，會很難判斷是哪裡錯。**
 
-Brevo 會寄一封確認信到那個信箱，**點裡面的連結完成驗證**。沒驗證的話寄信會回
-`400 sender is not valid`。
+### 3. 驗證寄件網域（用 `psybypsy.com`）
 
-### 3. 產生 API key
+本專案已擁有 `psybypsy.com`（GoDaddy 代管），且該網域目前**沒有 MX、沒有 SPF/TXT 紀錄**，
+沒有在收發信，所以加 Brevo 的紀錄不會影響任何現有服務。
 
-左側頭像選單 → **SMTP & API** → **API Keys** 分頁 → **Generate a new API key**。
-取個名字（例如 `perma-coach`），複製產生的字串（`xkeysib-` 開頭）。
+1. Brevo 左側 **Senders, Domains & Dedicated IPs** → **Domains** → **Add a domain**
+2. 填 `psybypsy.com`
+3. Brevo 會給幾筆 DNS 紀錄（`brevo-code` 的 TXT、DKIM 的 TXT/CNAME，可能還有 DMARC）
+4. 到 [GoDaddy DNS 管理](https://dcc.godaddy.com/control/portfolio)照抄上去
+5. 回 Brevo 按 **Verify**（DNS 生效通常幾分鐘，最久可能要幾小時）
+
+> **品牌決定（2026-07-28）**：寄件位址用 `report@psybypsy.com`，顯示名稱維持 `Ipsen Taiwan`。
+> 這是「網頁上不得出現 PSYbyPSY」那條品牌規則的**已知例外，經使用者確認**——
+> 因為專案已有這個網域、不必另外花錢，而收件軟體主要顯示的是顯示名稱。
+> **請不要為了符合品牌規則把它改掉。**
+
+### 4. 開單請 Brevo 開通 transactional
+
+網域驗證完成後，Brevo 右上角 **?** → **Support and Tickets** → 開單，內容講明：
+
+> Requesting activation for **transactional email** (not marketing).
+> Website: https://coach-roan-eta.vercel.app
+> Sending domain: psybypsy.com (already verified in my account)
+> Use case: weekly personal well-being report emails sent to enrolled coaching
+> participants who signed up — one email per participant per week, with a PDF attachment.
+> Expected volume: under 100 emails/month.
+
+約 1–2 個工作天回覆。**開通前寄信一律回 `403 permission_denied`，這不是設定錯誤，是還在排隊。**
+
+### 5. 產生 API key
+
+左側頭像選單 → **SMTP & API** → **API keys & MCP** 分頁 → **Generate API key**。
+取個名字，複製產生的字串（`xkeysib-` 開頭）。
 
 > ⚠️ 這把 key 只會顯示一次，關掉就看不到了，請先貼到安全的地方。
 > 它等同於「可以用你的帳號寄信」的權限，不要 commit 進 Git、不要貼在聊天群組。
+>
+> 產完記得確認列表裡那把 key 的 Status 是 **Active** 不是 `Deactivated`。
 
-### 4. 設進 Render
+### 6. 設進 Render
 
 Render 主控台 → 你的 service → **Environment** → 加入：
 
 | 變數 | 值 |
 |---|---|
-| `BREVO_API_KEY` | 步驟 3 複製的那把 key |
-| `REPORT_FROM_EMAIL` | 步驟 2 驗證過的寄件位址（若跟 `GMAIL_ADDRESS` 一樣可以不設） |
+| `BREVO_API_KEY` | 步驟 5 複製的那把 key |
+| `REPORT_FROM_EMAIL` | `report@psybypsy.com` |
 
 存檔後 Render 會自動重新部署。**不用刪 `GMAIL_*` 的變數**——程式碼的管道優先序是
 Brevo → Gmail API → Gmail SMTP，設了 `BREVO_API_KEY` 就會走 Brevo，其餘留著當備援。
+
+### 7. 先用 curl 確認（不用等部署）
+
+拿到 key 就可以直接測，10 秒有答案：
+
+```bash
+curl -i -X POST https://api.brevo.com/v3/smtp/email -H "api-key: 你的KEY" -H "content-type: application/json" -d '{"sender":{"name":"Ipsen Taiwan","email":"report@psybypsy.com"},"to":[{"email":"你的測試信箱@gmail.com"}],"subject":"Brevo 測試","htmlContent":"<p>收到就成功了。</p>"}'
+```
+
+| 回應 | 意思 |
+|---|---|
+| `201` + `messageId` | ✅ 成功 |
+| `401 unrecognised IP` | 步驟 2 的 IP 封鎖沒關掉 |
+| `403 not yet activated` | 步驟 4 的開通還沒下來，繼續等 |
+| `400 sender is not valid` | 步驟 3 的網域驗證沒過，或寄件位址不屬於已驗證網域 |
 
 ---
 
@@ -72,25 +135,20 @@ Brevo 後台的 **Transactional → Logs** 也看得到每封信的投遞狀態�
 
 ---
 
-## ⚠️ 收不到信、或信進了垃圾信匣
+## 關於投遞率
 
-這是這個方案**已知的取捨**，不是設定錯誤。
+因為走的是**已驗證網域**（`psybypsy.com`）而不是 `@gmail.com`，SPF／DKIM 完全對齊，
+投遞率跟一般商業信件一樣，不會有「via brevo.com」那種標記。
 
-從 `@gmail.com` 的位址經由 Brevo 寄信，SPF／DKIM 無法對齊——因為 Brevo 的伺服器
-不在 gmail.com 的授權寄件清單裡。gmail.com 的 DMARC 政策是 `p=none`，所以信**不會被退回**，
-但收件方（尤其 Gmail、Yahoo）可能判定成垃圾信，或在寄件者旁顯示「via brevo.com」。
+> 這點很重要：早期曾考慮只驗證單一 Gmail 寄件地址（不綁網域），但那樣 SPF／DKIM
+> 對不齊，自 2024 年 2 月 Gmail／Yahoo [收緊寄件者驗證要求](https://help.brevo.com/hc/en-us/articles/14925263522578-Comply-with-Gmail-Yahoo-and-Microsoft-s-requirements-for-email-senders)
+> 之後很容易進垃圾信匣。**不要退回那個做法。**
 
-自 2024 年 2 月起 Gmail／Yahoo 收緊了寄件者驗證要求，
-[Brevo 官方也建議](https://help.brevo.com/hc/en-us/articles/14925263522578-Comply-with-Gmail-Yahoo-and-Microsoft-s-requirements-for-email-senders)綁定自有網域。
+若仍有個別學員收不到，先請他們查垃圾信匣並把寄件者加入聯絡人；
+`psybypsy.com` 是新網域，剛開始寄信時信譽尚未建立，量少而穩定地寄一陣子就會改善。
 
-**如果實際遇到投遞問題，處理順序：**
-
-1. 先請學員檢查垃圾信匣，並把寄件者加入聯絡人（治標，但立即有效）。
-2. 真正的解法是**買一個網域**（約 NT$400/年），在 Brevo 完成 **Domain Authentication**
-   （加幾筆 DNS 的 TXT／CNAME 紀錄）。之後信從 `@你的網域` 寄出，SPF／DKIM 完全對齊，
-   投遞率跟一般商業信件一樣，而且比 `@gmail.com` 更符合 Ipsen Taiwan 的品牌形象。
-3. 另一條路是改走 Gmail API（免費、DKIM 天然對齊，因為信真的從 Gmail 伺服器出去），
-   程式碼已經寫好了，只差 Google Cloud 那邊的設定——見 [gmail-api-setup.md](gmail-api-setup.md)。
+另一條備援路線是 Gmail API（DKIM 天然對齊，因為信真的從 Gmail 伺服器出去），
+程式碼已經寫好測好，只差 Google Cloud 的設定——見 [gmail-api-setup.md](gmail-api-setup.md)。
 
 ---
 
@@ -98,7 +156,9 @@ Brevo 後台的 **Transactional → Logs** 也看得到每封信的投遞狀態�
 
 | 症狀 | 原因與處理 |
 |---|---|
-| `400 sender is not valid` | 寄件位址還沒在 Brevo 完成驗證，或 `REPORT_FROM_EMAIL` 跟驗證過的位址不一致。 |
-| `401 unauthorized` | API key 錯或被刪掉了，重新產生一把。 |
+| `400 sender is not valid` | 網域驗證沒過，或 `REPORT_FROM_EMAIL` 不屬於已驗證的網域。 |
+| `401 unrecognised IP address` | IP 封鎖沒關掉，見上面的關卡 1。**不要去授權那個 IP**——授權任何一個 IP 反而會啟用對其餘所有 IP 的封鎖。 |
+| `401 unauthorized`（沒提到 IP） | API key 錯、被刪掉、或 Status 是 `Deactivated`。 |
+| `403 not yet activated` | 帳號的 transactional 還沒開通，見關卡 2，等 Brevo 回覆。 |
 | `402` / 額度用罄 | 免費方案每天 300 封。正常用量不會碰到，除非補寄迴圈異常。 |
 | 又出現 `TimeoutError` | 代表還在走 SMTP——`BREVO_API_KEY` 沒設到或拼錯，檢查 Render 的環境變數。 |
