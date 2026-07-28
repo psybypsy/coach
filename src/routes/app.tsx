@@ -78,7 +78,7 @@ function AppShell() {
   }
 
   const NAV_ITEMS = [
-    { to: '/app/home' as const, label: t('每週書寫') },
+    { to: '/app/home' as const, label: t('PERMA 自我回顧') },
     { to: '/app/community' as const, label: t('社群') },
     { to: '/app/report' as const, label: t('我的報告') },
   ]
