@@ -131,9 +131,31 @@ create table coach_analyses (
   client_text   text,
   client_date   date,
   coach_id      uuid references profiles(id),
-  translations  jsonb   not null default '{}'::jsonb, -- 見遷移 003：{ "zh-TW": { blocks, sessions } } 英文分析的翻譯快取
+  translations  jsonb   not null default '{}'::jsonb, -- 繁中原文；{ "en": { blocks, sessions } } 為英文翻譯快取
   baseline      jsonb,                                 -- 見遷移 005：T0 基準點五面向分數 {"P":n,...}（0–10），圖表起點
+  report_emailed_at timestamptz,
+  report_email_recipient text,
+  report_email_content_hash text,
+  report_email_provider_id text,
+  report_email_error text,
   updated_at    timestamptz not null default now()
+);
+
+-- 每週完成時產生的單週 PERMA vs T0 報告（見遷移 008）。
+create table perma_weekly_reports (
+  member_id uuid not null references profiles(id) on delete cascade,
+  week_start date not null,
+  post_id uuid references journal_posts(id) on delete set null,
+  week_number integer not null,
+  content jsonb not null default '{}'::jsonb,
+  report_emailed_at timestamptz,
+  report_email_recipient text,
+  report_email_content_hash text,
+  report_email_provider_id text,
+  report_email_error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (member_id, week_start)
 );
 
 -- ── 7. RLS：資料庫層的權限牆 ───────────────────────────────────
@@ -147,6 +169,7 @@ alter table post_comments enable row level security;
 alter table weekly_reviews enable row level security;
 alter table allowed_emails enable row level security;
 alter table coach_analyses enable row level security;
+alter table perma_weekly_reports enable row level security;
 
 -- 判斷目前登入者是否為教練。
 -- 注意：security definer 函式若不明確指定 search_path，在 auth schema
@@ -199,6 +222,8 @@ create policy "read own or coach" on weekly_reviews for select to authenticated
 create policy "coach read analyses"   on coach_analyses for select to authenticated using (is_coach());
 create policy "coach insert analyses" on coach_analyses for insert to authenticated with check (is_coach());
 create policy "coach update analyses" on coach_analyses for update to authenticated using (is_coach());
+create policy "member or coach read weekly perma reports" on perma_weekly_reports for select to authenticated
+  using (auth.uid() = member_id or is_coach());
 
 -- allowed_emails / ai_usage_log：不建任何 policy = 只有 service_role 能讀寫。
 

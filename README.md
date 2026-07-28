@@ -56,8 +56,19 @@ cp .env.example .env
 | `ANTHROPIC_API_KEY` | AI 週分析用 | [console.anthropic.com](https://console.anthropic.com) |
 | `OPENAI_API_KEY` | 語音轉文字（Whisper）用 | [platform.openai.com](https://platform.openai.com/api-keys) |
 | `SUPABASE_SERVICE_ROLE_KEY` | 後端寫入資料庫用（權限極高，絕對不能外流） | Supabase 專案 → Settings → API Keys |
+| `RESEND_API_KEY` | 寄送八週報告與 PDF 附件 | [resend.com](https://resend.com) |
+| `REPORT_EMAIL_FROM` | 已在 Resend 驗證網域的寄件者，例如 `陳郁敏 教練 <reports@example.com>` | Resend → Domains |
+| `REPORT_EMAIL_REPLY_TO` | 學員回覆報告信時的收件地址（可留空） | 教練的收件信箱 |
+| `REPORT_WEBHOOK_SECRET` | 驗證 Supabase journal_posts Database Webhook；請使用長隨機字串 | 自行產生並同時設在 Render 與 Webhook header |
 
 `SUPABASE_URL` 已經幫你填好了，不用改。
+
+單週與八週報告自動寄送需在 Supabase 建立 `journal_posts` 的 Database Webhook（INSERT、UPDATE），
+URL 指向 `https://<render-domain>/api/coach/report-completed-webhook`，並加入
+`X-Report-Webhook-Secret: <REPORT_WEBHOOK_SECRET>` header。coach 必須先填好 T0；
+之後每當 P／E／R／M／A 五欄完整提交，系統會產生只使用該週內容的「本週 vs T0」
+PERMA 報告並寄出 PDF。完整週數達到 8 週時，會再產生八週總結；相同內容與 T0
+未變時不會重複寄送。
 
 填完後啟動：
 
