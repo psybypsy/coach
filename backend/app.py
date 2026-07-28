@@ -41,6 +41,10 @@ ANTHROPIC_API_KEY: str = os.environ["ANTHROPIC_API_KEY"]
 PORT: int = int(os.environ.get("PORT", 8000))
 ALLOWED_ORIGINS: list[str] = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",")]
 REPORT_WEBHOOK_SECRET: str = os.environ.get("REPORT_WEBHOOK_SECRET", "")
+# 每位學員每小時可觸發幾次 /api/member/report（防止刷爆 AI 費用）。
+# 測試期間可在 Render 設 MEMBER_REPORT_RATE_LIMIT 調寬（例如 "100/hour"），
+# 正式上線前記得拿掉這個環境變數或改回小數字，回到 6/hour 的預設值。
+MEMBER_REPORT_RATE_LIMIT: str = os.environ.get("MEMBER_REPORT_RATE_LIMIT", "6/hour")
 
 # ── 學員報告 Email ──
 # 用 Gmail 自己的 SMTP 寄信：不需要自有網域、不必設定 DNS。
@@ -2165,7 +2169,7 @@ class MemberReportRequest(BaseModel):
 
 
 @app.post("/api/member/report")
-@limiter.limit("6/hour")
+@limiter.limit(MEMBER_REPORT_RATE_LIMIT)
 async def member_report(
     request: Request, req: MemberReportRequest, authorization: str = Header(...)
 ):
