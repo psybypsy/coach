@@ -1056,15 +1056,22 @@ function MemberDetailPage() {
                 disabled={busy !== null || posts.length < 1}
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
               >
-                {busy === 'analyze' ? t('分析中…') : analysis ? t('重新生成分析') : t('生成情緒分析與情報簡報')}
+                {busy === 'analyze' ? t('分析中…') : hasDeepAnalysis ? t('重新生成分析') : t('生成情緒分析與情報簡報')}
               </button>
-              {analysis && (
+              {/* 只填了 T0 基準點也會有 coach_analyses 列（based_on 預設 0），
+                  拿它當「已分析」會顯示成「基於 0 週」，看起來像壞掉 —— 以 sessions 為準。 */}
+              {hasDeepAnalysis && (
                 <span className="text-xs text-muted-foreground">
-                  {t('基於')} {analysis.based_on} {t('週')}
+                  {t('基於')} {analysis!.based_on} {t('週')}
                 </span>
               )}
               {posts.length < 1 && (
                 <span className="text-xs text-muted-foreground">{t('至少需要 1 次書寫')}</span>
+              )}
+              {posts.length > 0 && !hasDeepAnalysis && (
+                <span className="text-xs text-muted-foreground">
+                  {t('學員完成一週書寫後會自動生成，也可以按上方按鈕立即重跑。')}
+                </span>
               )}
             </div>
 
