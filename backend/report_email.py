@@ -14,7 +14,7 @@ import re
 # 品牌：Ipsen Taiwan 為主、教練名為輔（寄件網域雖是 psybypsy.com，
 # 但信件內容與寄件人顯示名稱一律用 Ipsen Taiwan）。
 BRAND_NAME = "Ipsen Taiwan"
-COACH_NAME = "陳郁敏"
+COACH_NAME = "Yee Ming Tan"
 
 _INK = "#1C2530"
 _SOFT = "#54606E"

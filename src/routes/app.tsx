@@ -78,8 +78,8 @@ function AppShell() {
   }
 
   const NAV_ITEMS = [
-    { to: '/app/home' as const, label: t('PERMA Self-Reflection') },
-    { to: '/app/community' as const, label: t('Community') },
+    { to: '/app/home' as const, label: t('每週書寫') },
+    { to: '/app/community' as const, label: t('社群') },
     { to: '/app/report' as const, label: t('我的報告') },
   ]
 
@@ -106,7 +106,7 @@ function AppShell() {
                 )
               })}
               {/* coach 帳號在成員介面時額外顯示一鍵回教練後台的按鈕（不強制自動跳轉，
-                  避免像陳郁敏這種「既是教練也自己寫週記」的帳號被迫離開成員首頁）。 */}
+                  避免像教練本人這種「既是教練也自己寫週記」的帳號被迫離開成員首頁）。 */}
               {isCoach && (
                 <Link
                   to="/app/coach"

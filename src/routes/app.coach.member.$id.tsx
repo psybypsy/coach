@@ -196,7 +196,7 @@ function MemberDetailPage() {
   const [fwDesc, setFwDesc] = useState('')
   const [fwDraft, setFwDraft] = useState<Framework | null>(null)
   // 教練簡報內文顯示語言：預設英文（原生生成語言）；中文為即時翻譯的快取版
-  const [briefLang, setBriefLang] = useState<'en' | 'zh-TW'>('en')
+  const [briefLang, setBriefLang] = useState<'en' | 'zh-TW'>('zh-TW')
   // 子項目預設全收起（外層三大區塊維持展開）：記的是「明確展開」的項目，空陣列＝全部收起
   const [openRows, setOpenRows] = useState<number[]>([])
   const [openBlocks, setOpenBlocks] = useState<number[]>([])
@@ -424,23 +424,23 @@ function MemberDetailPage() {
     }
   }
 
-  // 切換教練簡報內文語言：英文即時切；中文若無快取則呼叫後端翻譯一次
+  // 切換教練簡報內文語言：繁中是原生生成語言，即時切；英文若無快取則呼叫後端翻譯一次
   async function switchBriefLang(target: 'en' | 'zh-TW') {
-    if (target === 'en') {
-      setBriefLang('en')
+    if (target === 'zh-TW') {
+      setBriefLang('zh-TW')
       return
     }
-    if (analysis?.translations?.['zh-TW']) {
-      setBriefLang('zh-TW')
+    if (analysis?.translations?.['en']) {
+      setBriefLang('en')
       return
     }
     setBusy('translate')
     setMessage(null)
     try {
-      const resp = await authFetch('/api/coach/translate', { member_id: id, target: 'zh-TW' })
+      const resp = await authFetch('/api/coach/translate', { member_id: id, target: 'en' })
       if (resp.ok) {
         setAnalysis((await resp.json()) as CoachAnalysis)
-        setBriefLang('zh-TW')
+        setBriefLang('en')
       } else {
         const body = (await resp.json().catch(() => ({}))) as { detail?: string }
         setMessage(body.detail || t('發布失敗，請再試一次。'))
@@ -747,7 +747,7 @@ function MemberDetailPage() {
             ...chartParagraphs,
             new Paragraph({
               spacing: { before: 400 },
-              children: [new TextRun({ text: t('教練　陳郁敏'), size: 22, color: '54606E' })],
+              children: [new TextRun({ text: t('教練　Yee Ming Tan'), size: 22, color: '54606E' })],
             }),
           ],
         },
@@ -804,8 +804,8 @@ function MemberDetailPage() {
     analysis?.blocks.some((block) =>
       ['actions for the next four weeks', '未來四週行動'].includes(String(block.title || '').trim().toLowerCase()),
     ) ?? false
-  // 內文顯示語言：中文且有快取則用翻譯版，否則用原生英文（依 index 對齊 canonical）
-  const briefTr = briefLang === 'zh-TW' ? analysis?.translations?.['zh-TW'] : undefined
+  // 內文顯示語言：英文且有快取則用翻譯版，否則用原生繁中（依 index 對齊 canonical）
+  const briefTr = briefLang === 'en' ? analysis?.translations?.['en'] : undefined
   const viewBlocks = briefTr?.blocks ?? analysis?.blocks ?? []
   const viewSessions = briefTr?.sessions ?? analysis?.sessions ?? []
 
@@ -902,11 +902,11 @@ function MemberDetailPage() {
 
             {analysis && analysis.sessions.length > 0 && (
               <>
-                {/* 內文語言切換：預設英文；點「中文」即時翻譯一次並快取，之後切換即時 */}
+                {/* 內文語言切換：預設繁中；點「EN」即時翻譯一次並快取，之後切換即時 */}
                 <div className="mb-4 flex items-center justify-end gap-2">
                   <span className="text-xs text-muted-foreground">{t('內文語言')}</span>
                   <div className="inline-flex overflow-hidden rounded-md border border-border">
-                    {(['en', 'zh-TW'] as const).map((lng) => (
+                    {(['zh-TW', 'en'] as const).map((lng) => (
                       <button
                         key={lng}
                         onClick={() => switchBriefLang(lng)}
@@ -917,7 +917,7 @@ function MemberDetailPage() {
                             : 'text-foreground-soft hover:bg-muted'
                         }`}
                       >
-                        {lng === 'en' ? 'EN' : busy === 'translate' ? t('翻譯中…') : '中文'}
+                        {lng === 'zh-TW' ? '中文' : busy === 'translate' ? t('翻譯中…') : 'EN'}
                       </button>
                     ))}
                   </div>
@@ -1098,12 +1098,12 @@ function MemberDetailPage() {
                                   {t('刪除')}
                                 </span>
                               )}
-                              {briefLang === 'en' ? (
+                              {briefLang === 'zh-TW' ? (
                                 <span className="cv-block-edit" onClick={() => startEdit(i)}>
                                   {t('編輯')}
                                 </span>
                               ) : (
-                                <span className="cv-block-edit" style={{ opacity: 0.5 }} title={t('請切回 EN 編輯原文')}>
+                                <span className="cv-block-edit" style={{ opacity: 0.5 }} title={t('請切回中文編輯原文')}>
                                   {t('編輯')}
                                 </span>
                               )}
@@ -1476,7 +1476,7 @@ function MemberDetailPage() {
                       ))}
                     </div>
                   )}
-                  <div className="cv-doc-sign">{t('教練　陳郁敏')}</div>
+                  <div className="cv-doc-sign">{t('教練　Yee Ming Tan')}</div>
                 </div>
               )}
               </>

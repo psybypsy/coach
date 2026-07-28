@@ -226,7 +226,7 @@ function ReportPage() {
             </div>
           )}
 
-          <div className="cv-doc-sign">{t('教練　陳郁敏')}</div>
+          <div className="cv-doc-sign">{t('教練　Yee Ming Tan')}</div>
         </div>
       )}
     </div>

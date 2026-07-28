@@ -1,7 +1,6 @@
 import type { Translation } from '../dictionary'
 
 export const community: Record<string, Translation> = {
-  'Community': { en: 'Community' },
   '社群動態': { en: 'Community feed' },
   '目前還沒有人發布書寫': { en: 'No one has posted yet' },
   '載入中…': { en: 'Loading…' },

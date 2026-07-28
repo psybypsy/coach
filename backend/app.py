@@ -453,10 +453,10 @@ Per-block requirements:
 Language: English. No emoji anywhere. Tone: professional, precise, theoretically grounded — like a senior coach's clinical notes."""
 
 
-def _coach_analysis_system(week_count: int, language: str = "en") -> str:
+def _coach_analysis_system(week_count: int, language: str = "zh-TW") -> str:
     if language != "zh-TW":
         return _coach_analysis_system_en(week_count)
-    return f"""你是資深高階主管教練的分析助理，服務於教練 陳郁敏。你會收到一位團隊成員 {week_count} 次每週 PERMA 反思的原始回答（P=Positive Emotions、E=Engagement、R=Relationships、M=Meaning、A=Accomplishment）。請產出兩部分：每次的情緒 valence 量化分析（含理由），與一份僅供教練的情報簡報。
+    return f"""你是資深高階主管教練的分析助理，服務於教練 Yee Ming Tan。你會收到一位團隊成員 {week_count} 次每週 PERMA 反思的原始回答（P=Positive Emotions、E=Engagement、R=Relationships、M=Meaning、A=Accomplishment）。請產出兩部分：每次的情緒 valence 量化分析（含理由），與一份僅供教練的情報簡報。
 
 嚴格照此格式輸出，兩個標記都要出現：
 <<<SCORES>>>
@@ -503,10 +503,10 @@ def _coach_analysis_system(week_count: int, language: str = "en") -> str:
 語言：繁體中文（台灣）。全篇不得使用任何 emoji。語氣專業、精確，兼具實證理論素養，如資深教練結合學理的臨床筆記。"""
 
 
-def _framework_gen_system(language: str = "en") -> str:
+def _framework_gen_system(language: str = "zh-TW") -> str:
     """教練用自然語言描述想分析什麼 → AI 上網找對應的實證理論 → 生成可套用的結構化框架。"""
     if language == "zh-TW":
-        return """你是結合心理學文獻與高階主管教練實務的「分析框架設計師」，服務於教練 陳郁敏。教練會用自然語言描述他想在一位成員的每週 PERMA 反思書寫中分析什麼，請優先使用網路搜尋，找出對應且有實證基礎的心理學／諮商／教練理論或模型（例如「面對轉變的能動性」→ 自我決定理論 SDT；「完美主義」→ Frost 多維完美主義；「情緒調節方式」→ Gross 情緒調節歷程模型；「自我批評 vs 自我疼惜」→ Neff 自我疼惜），再轉化成一個可實際套用在反思文字上的結構化分析框架。
+        return """你是結合心理學文獻與高階主管教練實務的「分析框架設計師」，服務於教練 Yee Ming Tan。教練會用自然語言描述他想在一位成員的每週 PERMA 反思書寫中分析什麼，請優先使用網路搜尋，找出對應且有實證基礎的心理學／諮商／教練理論或模型（例如「面對轉變的能動性」→ 自我決定理論 SDT；「完美主義」→ Frost 多維完美主義；「情緒調節方式」→ Gross 情緒調節歷程模型；「自我批評 vs 自我疼惜」→ Neff 自我疼惜），再轉化成一個可實際套用在反思文字上的結構化分析框架。
 
 規則：
 - 框架必須紮根於具名的理論／模型，並在 basis 標明出處（作者, 年份）。
@@ -549,12 +549,12 @@ def _framework_to_text(fw: dict) -> str:
     return "\n".join(lines)
 
 
-def _framework_block_system(fw: dict, week_count: int, language: str = "en") -> str:
+def _framework_block_system(fw: dict, week_count: int, language: str = "zh-TW") -> str:
     """用一個(教練生成的)框架，對成員 {week_count} 次每週反思生成單一情報簡報區塊。
     輸出格式與既有 block 一致，可直接 append 進 coach_analyses.blocks。"""
     fw_text = _framework_to_text(fw)
     if language == "zh-TW":
-        return f"""你是資深高階主管教練 陳郁敏 的分析助理。教練提供了一個自訂分析框架，請只用「這個框架」分析一位成員 {week_count} 次每週 PERMA 反思，產出一個情報簡報區塊（僅教練可見、可含坦率假設）。
+        return f"""你是資深高階主管教練 Yee Ming Tan 的分析助理。教練提供了一個自訂分析框架，請只用「這個框架」分析一位成員 {week_count} 次每週 PERMA 反思，產出一個情報簡報區塊（僅教練可見、可含坦率假設）。
 
 自訂框架：
 {fw_text}
@@ -597,7 +597,7 @@ Requirements:
 - Do not repeat the title page or signature (the system adds them)."""
 
 
-_CLIENT_REPORT_SYSTEM_ZH = """你是教練 陳郁敏 的寫作助理。以下是教練勾選要納入客戶交付版的分析內容。請改寫成一份給客戶本人閱讀的正式、溫暖、賦能的「個人福祉回顧」。
+_CLIENT_REPORT_SYSTEM_ZH = """你是教練 Yee Ming Tan 的寫作助理。以下是教練勾選要納入客戶交付版的分析內容。請改寫成一份給客戶本人閱讀的正式、溫暖、賦能的「個人福祉回顧」。
 
 要求：
 - 移除所有假設、臨床推測、風險或診斷性語言；聚焦優勢、軌跡、意義與前瞻。
@@ -610,13 +610,13 @@ _CLIENT_REPORT_SYSTEM_ZH = """你是教練 陳郁敏 的寫作助理。以下是
 - 不要重複標題頁與署名（系統會自動加上）。"""
 
 
-def _client_report_system(language: str = "en") -> str:
+def _client_report_system(language: str = "zh-TW") -> str:
     return _CLIENT_REPORT_SYSTEM_ZH if language == "zh-TW" else _CLIENT_REPORT_SYSTEM_EN
 
 
-_TRANSLATE_SYSTEM = """You translate an executive-coaching analysis from English into Traditional Chinese (Taiwan, 繁體中文).
+_TRANSLATE_SYSTEM = """You translate an executive-coaching analysis from Traditional Chinese (Taiwan, 繁體中文) into English.
 
-You will receive a JSON object with "blocks" and "sessions". Return ONLY a JSON object with the exact same structure, keys, and array lengths, translating these human-readable text fields into natural, professional Traditional Chinese:
+You will receive a JSON object with "blocks" and "sessions". Return ONLY a JSON object with the exact same structure, keys, and array lengths, translating these human-readable text fields into natural, professional English:
 - blocks[].title, blocks[].body
 - sessions[].overallReason, sessions[].dims.P/E/R/M/A.reason, sessions[].emotions[].word
 
@@ -708,11 +708,11 @@ def _parse_analysis(out: str) -> tuple[list, list]:
 
 
 def _detect_lang(text: str) -> str:
-    """依內容裡中文字 vs 拉丁字母的多寡，判斷學員書寫語言；判斷不出來預設英文。
+    """依內容裡中文字 vs 拉丁字母的多寡，判斷學員書寫語言；判斷不出來預設繁中。
     政策：分析與客戶回顧都跟隨「學員書寫的語言」，而非教練介面語言。"""
     cjk = sum(1 for ch in text if 0x4E00 <= ord(ch) <= 0x9FFF)
     latin = sum(1 for ch in text if "a" <= ch.lower() <= "z")
-    return "zh-TW" if cjk > latin else "en"
+    return "en" if latin > cjk else "zh-TW"
 
 
 async def _fetch_member_posts(member_id: str) -> list[dict]:
@@ -730,7 +730,7 @@ async def _fetch_member_posts(member_id: str) -> list[dict]:
 
 class CoachMemberRequest(BaseModel):
     member_id: str
-    language: str = "en"  # 分析與客戶報告的語言，跟隨教練介面（預設英文）
+    language: str = "zh-TW"  # 分析與客戶報告的語言，跟隨教練介面（預設繁中）
 
 
 async def _analyze_member(
@@ -747,9 +747,9 @@ async def _analyze_member(
     if len(posts) < 1:
         raise HTTPException(status_code=409, detail="這位成員還沒有任何週記")
 
-    # 深度分析一律以英文生成（教練工作語言預設英文）；中文由前端點「中文」時
+    # 深度分析一律以繁中生成（全站預設繁中）；英文由前端點「EN」時
     # 呼叫 /api/coach/translate 即時翻譯並快取，見遷移 003。
-    lang = "en"
+    lang = "zh-TW"
 
     dump_parts = []
     for i, p in enumerate(posts):
@@ -808,13 +808,13 @@ async def coach_analyze(req: CoachMemberRequest, authorization: str = Header(...
 
 class CoachFrameworkGenerateRequest(BaseModel):
     description: str
-    language: str = "en"
+    language: str = "zh-TW"
 
 
 class CoachFrameworkAnalyzeRequest(BaseModel):
     member_id: str
     framework: dict
-    language: str = "en"
+    language: str = "zh-TW"
 
 
 @app.post("/api/coach/framework/generate")
@@ -889,8 +889,8 @@ async def coach_analyze_framework(
     if len(posts) < 1:
         raise HTTPException(status_code=409, detail="這位成員還沒有任何週記")
 
-    # 自訂區塊與既有分析同語言（既有深度分析一律英文，見 /api/coach/analyze）。
-    lang = "en"
+    # 自訂區塊與既有分析同語言（既有深度分析一律繁中，見 /api/coach/analyze）。
+    lang = "zh-TW"
     dump_parts = []
     for i, p in enumerate(posts):
         lines = [f"── 第 {i + 1} 次（{p.get('week_start', '')}）"]
@@ -957,7 +957,7 @@ async def _write_client_report(
     """把勾選的分析區塊改寫成給本人閱讀的回顧文件（Markdown）。
 
     language 留空時沿用原本行為：由分析內容自動判斷語言。
-    學員版報告會明確指定 zh-TW，因為分析本身是英文生成、但學員要讀中文。
+    學員版報告仍明確指定 zh-TW，確保不會因為學員用英文書寫就收到英文報告。
     """
     included = _included_blocks(analysis)
     if not included:
@@ -1006,12 +1006,12 @@ async def coach_client_report(req: CoachMemberRequest, authorization: str = Head
 
 class CoachTranslateRequest(BaseModel):
     member_id: str
-    target: str = "zh-TW"  # 目前只支援翻成繁體中文；英文為原生生成語言
+    target: str = "en"  # 目前只支援翻成英文；繁中為原生生成語言
 
 
 @app.post("/api/coach/translate")
 async def coach_translate(req: CoachTranslateRequest, authorization: str = Header(...)):
-    """把已生成的英文分析（blocks + sessions 的文字欄位）翻成目標語言並快取。
+    """把已生成的繁中分析（blocks + sessions 的文字欄位）翻成目標語言並快取。
     已快取則直接回傳，不重複呼叫模型。"""
     token = authorization.removeprefix("Bearer ").strip()
     coach_id = await require_coach(token)
@@ -1217,7 +1217,7 @@ async def member_report(
         return existing[0]
 
     analysis = await _analyze_member(user_id, user_id, "member-report")
-    # 學員讀的是中文；分析本身是英文生成，這裡明確指定改寫成繁中。
+    # 學員讀的是中文；分析本身已是繁中生成，這裡仍明確指定，避免學員用英文書寫時被判成英文。
     body_md = await _write_client_report(analysis, user_id, "member-report-text", language="zh-TW")
 
     baseline_resp = await db().get(

@@ -79,12 +79,12 @@ export const coach: Record<string, Translation> = {
   '列印 / 匯出 PDF': { en: 'Print / Export PDF' },
   '個人福祉回顧': { en: 'Personal Well-being Review' },
   '情緒歷程一覽': { en: 'Emotional journey at a glance' },
-  '教練　陳郁敏': { en: 'Coach · Tan Yee Ming' },
+  '教練　Yee Ming Tan': { en: 'Coach · Tan Yee Ming' },
 
   // 內文語言切換
   '內文語言': { en: 'Text language' },
   '翻譯中…': { en: 'Translating…' },
-  '請切回 EN 編輯原文': { en: 'Switch to EN to edit the source text' },
+  '請切回中文編輯原文': { en: 'Switch to 中文 to edit the source text' },
 
   // 情報簡報區塊 canonical 標題（依固定順序，預設英文）
   '整體情緒與福祉軌跡': { en: 'Overall Emotional & Well-being Trajectory' },
