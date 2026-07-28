@@ -16,6 +16,13 @@
       "autoPort": true
     },
     {
+      "name": "perma-coach-dev-65357",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 65357,
+      "autoPort": false
+    },
+    {
       "name": "perma-coach-backend",
       "runtimeExecutable": "backend/.venv/bin/uvicorn",
       "runtimeArgs": ["app:app", "--reload", "--app-dir", "backend", "--port", "8000"],

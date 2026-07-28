@@ -66,6 +66,30 @@ export const coach: Record<string, Translation> = {
   },
   '正向（往上）': { en: 'Positive (up)' },
   '負向（往下）': { en: 'Negative (down)' },
+  '每週 PERMA 報告': { en: 'Weekly PERMA Reports' },
+  '每份報告只根據該週的 P／E／R／M／A 內容分析，並與 T0 基準比較。': {
+    en: 'Each report analyzes only that week’s P/E/R/M/A content and compares it with the T0 baseline.',
+  },
+  '已寄送': { en: 'Emailed' },
+  '等待寄送': { en: 'Awaiting email' },
+  // 客戶視角預覽（每週報告）
+  '預覽客戶收到的信與 PDF': { en: 'Preview what the client receives' },
+  '上方圖表僅教練可見，客戶收到的是下列信件與 PDF。': {
+    en: 'The charts above are coach-only; the client receives the email and PDF below.',
+  },
+  '客戶收到的內容': { en: 'What the client receives' },
+  '收件者': { en: 'To' },
+  '主旨': { en: 'Subject' },
+  '附件': { en: 'Attachment' },
+  '這一週尚未實際寄出，以下為將寄出的內容。': {
+    en: 'This week has not been emailed yet — this is what will be sent.',
+  },
+  'PDF 附件': { en: 'PDF attachment' },
+  '預覽失敗，請再試一次。': { en: 'Preview failed. Please try again.' },
+  '面向': { en: 'Dimension' },
+  'T0 基準': { en: 'T0 baseline' },
+  '本週': { en: 'This week' },
+  '變化': { en: 'Change' },
 
   // 客戶交付版
   '客戶交付版': { en: 'Client Deliverable' },
@@ -75,16 +99,18 @@ export const coach: Record<string, Translation> = {
   '目前納入客戶版的區塊：': { en: 'Blocks included in client version: ' },
   '生成客戶交付版': { en: 'Generate client deliverable' },
   '重新生成客戶版': { en: 'Regenerate client version' },
+  '客戶版已生成，PDF 已寄送給成員。': { en: 'Client version generated and PDF emailed to the member.' },
+  '客戶版已生成，但 PDF 尚未寄出：': { en: 'Client version generated, but the PDF was not emailed: ' },
   '生成中…': { en: 'Generating…' },
   '列印 / 匯出 PDF': { en: 'Print / Export PDF' },
   '個人福祉回顧': { en: 'Personal Well-being Review' },
   '情緒歷程一覽': { en: 'Emotional journey at a glance' },
-  '教練　陳郁敏': { en: 'Coach · Tan Yee Ming' },
+  '教練　Yee Ming Tan': { en: 'Coach · Tan Yee Ming' },
 
   // 內文語言切換
   '內文語言': { en: 'Text language' },
   '翻譯中…': { en: 'Translating…' },
-  '請切回 EN 編輯原文': { en: 'Switch to EN to edit the source text' },
+  '請切回中文編輯原文': { en: 'Switch to 中文 to edit the source text' },
 
   // 情報簡報區塊 canonical 標題（依固定順序，預設英文）
   '整體情緒與福祉軌跡': { en: 'Overall Emotional & Well-being Trajectory' },
@@ -180,6 +206,42 @@ export const coach: Record<string, Translation> = {
   '整體（自動平均）：': { en: 'Overall (auto average): ' },
   '五個面向都填 0–10 才會套用到圖表。': { en: 'Fill all five dimensions (0–10) to apply to the charts.' },
   'T0 基準（虛線）': { en: 'T0 baseline (dashed)' },
+
+  // 每週報告：教練手動生成
+  '生成每週報告': { en: 'Generate weekly reports' },
+  '重新生成每週報告': { en: 'Regenerate weekly reports' },
+  '需先設定並儲存 T0 基準點': { en: 'Set and save the T0 baseline first' },
+  '請先在最上方填寫並儲存 T0 基準點': { en: 'Fill in and save the T0 baseline at the top first' },
+  '目前還沒有每週報告。按上方按鈕，即可為每個「五面向都填寫」的完整週各生成一份。': {
+    en: 'No weekly reports yet. Use the button above to generate one for each fully completed week (all five dimensions filled).',
+  },
+  '已生成每週報告': { en: 'Weekly reports generated:' },
+  '生成失敗，請再試一次。': { en: 'Generation failed, please try again.' },
+  '本週主題占比': { en: 'This week’s topic share' },
+  '本週情緒詞雲': { en: 'This week’s emotion word cloud' },
+  '這週沒有可用的主題資料。': { en: 'No topic data available for this week.' },
+  '與 T0 的逐面向變化': { en: 'Change from T0 by dimension' },
+
+  // 每月（里程碑）報告
+  '每月 PERMA 報告': { en: 'Monthly PERMA Reports' },
+  '第 4 週回顧第 1–4 週、第 8 週回顧第 1–8 週，並與 T0 基準比較；僅教練可見。': {
+    en: 'The week-4 report reviews weeks 1–4 and the week-8 report reviews weeks 1–8, both compared with the T0 baseline. Coach-only.',
+  },
+  '生成月報告': { en: 'Generate monthly reports' },
+  '重新生成月報告': { en: 'Regenerate monthly reports' },
+  '目前還沒有月報告。完成 4 週或 8 週後，按上方按鈕即可生成。': {
+    en: 'No monthly reports yet. Once 4 or 8 weeks are complete, use the button above to generate them.',
+  },
+  '已生成月報告': { en: 'Monthly reports generated:' },
+  '第 1–{n} 週': { en: 'Weeks 1–{n}' },
+  '用 AI 框架增加新的分析內容': { en: 'Add new analysis with an AI framework' },
+  '用自己的話描述想分析什麼，AI 會依心理學文獻生成有理論依據的框架；你可以編輯後套用到這段期間。': {
+    en: 'Describe in your own words what you want to analyze. AI generates a theory-grounded framework from the psychology literature; edit it, then apply it to this period.',
+  },
+  '例如：面對轉變時的能動性／情緒調節方式／自我批評 vs 自我疼惜': {
+    en: 'e.g. agency through change / how they regulate emotion / self-criticism vs self-compassion',
+  },
+  '已加入新的分析內容': { en: 'New analysis added' },
   '直接編輯客戶版文字（Markdown：## 標題、** 粗體、- 條列），儲存後即更新交付文件。': {
     en: 'Edit the client version text directly (Markdown: ## headings, ** bold **, - bullets). Saving updates the deliverable.',
   },

@@ -140,7 +140,7 @@ function JournalWizard() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
       console.error('Publish error:', message)
-      setError(t('Something went wrong. Please try again.'))
+      setError(t('發布失敗，請再試一次。'))
     } finally {
       setSubmitting(false)
     }

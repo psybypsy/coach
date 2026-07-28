@@ -90,7 +90,7 @@ function LoginPage() {
       setError(
         t(
           error.status === 500
-            ? '此 email 不在允許名單內，請確認是否為陳郁敏老師邀請的信箱，或聯繫老師確認。'
+            ? '此 email 不在允許名單內，請確認是否為 Yee Ming Tan 教練邀請的信箱，或聯繫教練確認。'
             : '寄送失敗，請確認 email 格式後再試一次。',
         ),
       )

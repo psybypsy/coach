@@ -10,6 +10,8 @@ export const perma: Record<string, Translation> = {
 
   '今天想寫哪個維度？': { en: 'Which dimension do you want to write about today?' },
   '書寫': { en: 'Write' },
+  // 主導覽三個分頁：介面預設繁中，英文版才顯示 PERMA Self-Reflection / Community。
+  'PERMA 自我回顧': { en: 'PERMA Self-Reflection' },
   '社群': { en: 'Community' },
   '個人幸福報告': { en: 'Well-being Report' },
   '寫下你的想法': { en: 'Write your thoughts' },

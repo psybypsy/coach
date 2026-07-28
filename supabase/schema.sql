@@ -131,9 +131,60 @@ create table coach_analyses (
   client_text   text,
   client_date   date,
   coach_id      uuid references profiles(id),
-  translations  jsonb   not null default '{}'::jsonb, -- 見遷移 003：{ "zh-TW": { blocks, sessions } } 英文分析的翻譯快取
+  translations  jsonb   not null default '{}'::jsonb, -- 繁中原文；{ "en": { blocks, sessions } } 為英文翻譯快取
   baseline      jsonb,                                 -- 見遷移 005：T0 基準點五面向分數 {"P":n,...}（0–10），圖表起點
   updated_at    timestamptz not null default now()
+);
+
+-- ── 6b. 學員自填的 T0 起始分數（見遷移 007）─────────────────────
+create table baseline_scores (
+  user_id uuid primary key references profiles(id) on delete cascade,
+  p int not null check (p between 0 and 10),
+  e int not null check (e between 0 and 10),
+  r int not null check (r between 0 and 10),
+  m int not null check (m between 0 and 10),
+  a int not null check (a between 0 and 10),
+  reference_date date not null default date '2026-07-17',
+  created_at timestamptz not null default now()
+);
+
+-- ── 6c. 學員版 PERMA 報告（見遷移 008、010）────────────────────
+-- 一位學員一週一列。week 1、2、3、5、6、7 產生即 published 並自動寄信；
+-- week 4、8 為 pending_coach 草稿，教練確認後才發布。
+create table member_reports (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references profiles(id) on delete cascade,
+  week_start   date not null,
+  week_number  int  not null,
+  status       text not null default 'published'
+                 check (status in ('published', 'pending_coach')),
+  body_md      text not null default '',
+  charts       jsonb not null default '{}'::jsonb,
+  sessions     jsonb not null default '[]'::jsonb,
+  baseline     jsonb,
+  post_id      uuid references journal_posts(id) on delete set null,  -- 遷移 010
+  emailed_at   timestamptz,
+  email_content_hash text,                                            -- 遷移 010
+  email_error  text,                                                  -- 遷移 010
+  created_at   timestamptz not null default now(),
+  published_at timestamptz,
+  unique (user_id, week_start)
+);
+
+create index member_reports_user_idx on member_reports (user_id, week_start desc);
+
+-- ── 6d. 每月（里程碑）PERMA 報告（見遷移 009）──────────────────
+-- 僅教練閱讀，不寄給學員：milestone_week = 4 看第 1–4 週、= 8 看第 1–8 週。
+create table perma_monthly_reports (
+  member_id      uuid not null references profiles(id) on delete cascade,
+  milestone_week integer not null,
+  weeks_covered  integer not null default 0,
+  week_start_from date,
+  week_start_to   date,
+  content        jsonb not null default '{}'::jsonb,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+  primary key (member_id, milestone_week)
 );
 
 -- ── 7. RLS：資料庫層的權限牆 ───────────────────────────────────
@@ -147,6 +198,9 @@ alter table post_comments enable row level security;
 alter table weekly_reviews enable row level security;
 alter table allowed_emails enable row level security;
 alter table coach_analyses enable row level security;
+alter table baseline_scores enable row level security;
+alter table member_reports enable row level security;
+alter table perma_monthly_reports enable row level security;
 
 -- 判斷目前登入者是否為教練。
 -- 注意：security definer 函式若不明確指定 search_path，在 auth schema
@@ -199,6 +253,23 @@ create policy "read own or coach" on weekly_reviews for select to authenticated
 create policy "coach read analyses"   on coach_analyses for select to authenticated using (is_coach());
 create policy "coach insert analyses" on coach_analyses for insert to authenticated with check (is_coach());
 create policy "coach update analyses" on coach_analyses for update to authenticated using (is_coach());
+-- baseline_scores：學員只填得了、也只看得到自己那一列，且刻意不建 update/delete
+-- （起始分數只填一次，事後不能改，才有基準點的意義）。教練看得到全部。
+create policy "read own baseline"    on baseline_scores for select to authenticated using (user_id = auth.uid());
+create policy "insert own baseline"  on baseline_scores for insert to authenticated with check (user_id = auth.uid());
+create policy "coach read baselines" on baseline_scores for select to authenticated using (is_coach());
+
+-- member_reports：學員只看得到自己且已發布的（week 4/8 草稿對學員完全隱形）。
+-- 教練看得到全部，但只改得動 pending_coach 草稿（見遷移 010）——已寄出的內容不可再變動。
+-- 刻意不建 insert policy：報告一律由後端 service_role 產生。
+create policy "read own published reports" on member_reports for select to authenticated
+  using (user_id = auth.uid() and status = 'published');
+create policy "coach read all reports" on member_reports for select to authenticated using (is_coach());
+create policy "coach update reports"   on member_reports for update to authenticated
+  using (is_coach() and status = 'pending_coach');
+
+create policy "member or coach read monthly perma reports" on perma_monthly_reports for select to authenticated
+  using (auth.uid() = member_id or is_coach());
 
 -- allowed_emails / ai_usage_log：不建任何 policy = 只有 service_role 能讀寫。
 
@@ -223,5 +294,5 @@ create trigger on_auth_user_created
 
 -- ── 9. 白名單名單（依實際邀請對象增減）──────────────────────────
 -- insert into allowed_emails (email, role, note) values
---   ('coach@example.com', 'coach', '陳郁敏教練 / Tan Yee Ming'),
+--   ('coach@example.com', 'coach', 'Yee Ming Tan 教練 / Tan Yee Ming'),
 --   ('member1@example.com', 'member', '成員一');
