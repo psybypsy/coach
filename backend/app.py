@@ -1740,19 +1740,53 @@ async def _analyze_member(
     return row
 
 
-async def _auto_refresh_coach_analysis(member_id: str) -> None:
-    """學員新產生一份週報告後，順手把教練端的縱向深度分析重跑一次。
+async def _coach_analysis_state(member_id: str) -> dict:
+    """回傳 {"weeks", "based_on", "stale"}：教練端縱向分析是否落後於實際週記數。
+
+    based_on 記的是上次分析涵蓋幾次週記，所以「週記數 > based_on」就代表有新的一週
+    還沒進到教練端的縱向分析裡。用這個當自動重跑的門檻，而不是「有沒有新增報告」：
+    報告可能早就存在（例如學員重複觸發、或報告是別的路徑補產生的），那時仍需要重跑。
+    兩次輕量查詢就能判斷，只有真的落後才會花 AI 費用。
+    """
+    posts = await _fetch_member_posts(member_id)
+    weeks = len(posts)
+    resp = await db().get(
+        f"{SUPABASE_REST}/coach_analyses",
+        headers=SUPABASE_HEADERS,
+        params=[("member_id", f"eq.{member_id}"), ("select", "based_on,sessions"), ("limit", "1")],
+    )
+    rows = resp.json() if resp.status_code == 200 else []
+    # 沒有那一列 → 從沒分析過。只存過 T0 基準點也會有這一列（based_on 預設 0、
+    # sessions 為空），那一樣算沒分析過。兩種情況都當 based_on = 0。
+    based_on = 0
+    if rows and (rows[0].get("sessions") or []):
+        based_on = int(rows[0].get("based_on") or 0)
+    return {"weeks": weeks, "based_on": based_on, "stale": based_on < weeks}
+
+
+async def _coach_analysis_is_stale(member_id: str) -> bool:
+    return (await _coach_analysis_state(member_id))["stale"]
+
+
+async def _auto_refresh_coach_analysis(member_id: str, coach_id: str | None = None) -> None:
+    """把教練端的縱向深度分析重跑一次——只在它落後於週記數時才跑。
 
     在這之前，coach_analyses 只有教練親自按「重新生成分析」才會更新，所以學員
     自己看得到每週報告、教練頁卻一直停在「基於 0 週」、圖表與情報簡報全空。
     在背景跑、不 await：分析失敗或逾時都不該影響學員拿到自己的報告，
-    教練仍可隨時手動按按鈕補跑。coach_id 不帶入，避免把既有教練歸屬蓋掉。
+    教練仍可隨時手動按按鈕補跑。
+    coach_id 只有教練開頁觸發時才帶入（見 /api/coach/ensure-analysis）；
+    學員觸發時保持 None，避免把 coach_analyses.coach_id 蓋成學員自己的 id。
     """
     if member_id in _analyzing_members:
         return
     _analyzing_members.add(member_id)
     try:
-        await _analyze_member(member_id, member_id, "member-report-auto-analysis")
+        if not await _coach_analysis_is_stale(member_id):
+            return  # 已是最新，不重複花錢
+        await _analyze_member(
+            member_id, coach_id or member_id, "member-report-auto-analysis", coach_id=coach_id
+        )
     except Exception:
         logger.exception("自動重跑教練深度分析失敗 member=%s", member_id)
     finally:
@@ -1764,6 +1798,28 @@ async def coach_analyze(req: CoachMemberRequest, authorization: str = Header(...
     token = authorization.removeprefix("Bearer ").strip()
     coach_id = await require_coach(token)
     return await _analyze_member(req.member_id, coach_id, "coach-analyze", coach_id=coach_id)
+
+
+@app.post("/api/coach/ensure-analysis")
+async def coach_ensure_analysis(req: CoachMemberRequest, authorization: str = Header(...)):
+    """教練一開成員頁就呼叫：縱向分析落後就在背景補跑，教練不必按「重新生成分析」。
+
+    學員端的自動觸發（前端 /api/member/report、Supabase webhook）有可能一次都沒跑到——
+    webhook 沒設、學員寫完就關分頁、後端當時正在重啟。少了這一支，coach_analyses 會
+    一直停在舊的週數，只能靠教練自己記得按按鈕，第 1／2／3／5／6／7 週就不算真的全自動。
+
+    不 await 分析：整份縱向分析要跑約半分鐘，這裡要立刻回應。前端拿到 refreshing=true
+    後自己輪詢 coach_analyses 即可。落後判定與學員端共用 _coach_analysis_state，
+    所以已是最新時這支只花兩次輕量查詢、不會產生 AI 費用。
+    """
+    token = authorization.removeprefix("Bearer ").strip()
+    coach_id = await require_coach(token)
+    state = await _coach_analysis_state(req.member_id)
+    running = req.member_id in _analyzing_members
+    if state["stale"] and not running:
+        # 教練觸發才帶 coach_id：這是唯一能確定歸屬的時機（學員觸發時帶會蓋錯）。
+        _spawn_background(_auto_refresh_coach_analysis(req.member_id, coach_id=coach_id))
+    return {**state, "refreshing": state["stale"] or running}
 
 
 class CoachFrameworkGenerateRequest(BaseModel):
@@ -2392,6 +2448,10 @@ async def _ensure_member_report(user_id: str, week_start: str, actor_id: str) ->
             and report.get("email_error")
         ):
             _spawn_background(_email_report(report))
+        # 報告已存在也要檢查教練端分析是否落後：學員某一週的報告可能早就產生過
+        # （重複觸發、或由別的路徑補產生），但那時 coach_analyses 沒跟著更新。
+        # 只有真的落後才會花 AI 費用，見 _coach_analysis_is_stale。
+        _spawn_background(_auto_refresh_coach_analysis(user_id))
         return report
 
     posts = await _fetch_member_posts(user_id)

@@ -40,6 +40,9 @@ export const coach: Record<string, Translation> = {
   '基於': { en: 'Based on' },
   '週': { en: 'weeks' },
   '至少需要 1 次書寫': { en: 'Needs at least 1 entry' },
+  '偵測到新的一週，正在自動更新分析…（約半分鐘，完成後會自動顯示）': {
+    en: 'New week detected — updating the analysis automatically (about 30s; it will appear here).',
+  },
   '學員完成一週書寫後會自動生成，也可以按上方按鈕立即重跑。': {
     en: 'Generated automatically once the member completes a week; you can also rerun it now with the button above.',
   },
