@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { supabase } from '../lib/supabase'
 import { useLanguage } from '../lib/i18n/context'
@@ -247,6 +247,18 @@ function MemberDetailPage() {
   const emptyBaselineDraft: Record<DimKey, string> = { P: '', E: '', R: '', M: '', A: '' }
   const [baselineDraft, setBaselineDraft] = useState<Record<DimKey, string>>(emptyBaselineDraft)
   const [savingBaseline, setSavingBaseline] = useState(false)
+  // 教練一進頁就讓後端檢查縱向分析有沒有落後；落後就在背景補跑（不必按按鈕）。
+  // autoAnalyzing 代表「背景正在跑」，此時前端輪詢 coach_analyses 等新結果。
+  const [autoAnalyzing, setAutoAnalyzing] = useState(false)
+  // 輪詢的「這一輪」序號：換成別的成員或離開頁面時遞增，讓還在跑的舊輪迴圈自己結束。
+  // 少了它，從 A 切到 B 時 A 的輪詢會用舊的 id 讀回資料、把 B 的分析蓋成 A 的。
+  const analysisRunRef = useRef(0)
+  useEffect(
+    () => () => {
+      analysisRunRef.current += 1
+    },
+    [],
+  )
   // 五項都是 0–10 的有效數字才成立；否則視為未設定（圖表不套 T0）
   const baseline = useMemo<BaselineScores | null>(() => {
     const nums = {} as BaselineScores
@@ -314,6 +326,42 @@ function MemberDetailPage() {
     }
     setChecking(false)
     await load()
+    void ensureAnalysisFresh()
+  }
+
+  // 縱向分析落後就讓後端在背景補跑，跑完自動把新結果換上——教練不必按「重新生成分析」。
+  // 學員端的自動觸發（/api/member/report、Supabase webhook）有可能一次都沒跑到
+  //（webhook 沒設、學員寫完就關分頁、後端當時在重啟），這是最後一道保險。
+  async function ensureAnalysisFresh() {
+    const run = (analysisRunRef.current += 1)
+    try {
+      const resp = await authFetch('/api/coach/ensure-analysis', { member_id: id })
+      if (!resp.ok || analysisRunRef.current !== run) return
+      const state = (await resp.json()) as { weeks: number; based_on: number; refreshing: boolean }
+      if (!state.refreshing) return
+      setAutoAnalyzing(true)
+      // 整份縱向分析約要半分鐘；每 10 秒回讀一次，最多等 5 分鐘。
+      // 逾時就放棄輪詢（分析可能仍在跑），教練重新整理或按按鈕都能拿到結果。
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 10_000))
+        if (analysisRunRef.current !== run) return
+        const { data } = await supabase
+          .from('coach_analyses')
+          .select('*')
+          .eq('member_id', id)
+          .maybeSingle()
+        const row = (data as unknown as CoachAnalysis) ?? null
+        if (row && (row.sessions?.length ?? 0) > 0 && (row.based_on ?? 0) >= state.weeks) {
+          setAnalysis(row)
+          setBriefLang('zh-TW') // 新內容、舊翻譯已作廢
+          break
+        }
+      }
+    } catch {
+      // 純粹是保險機制，失敗不該干擾教練看頁面
+    } finally {
+      if (analysisRunRef.current === run) setAutoAnalyzing(false)
+    }
   }
 
   async function load() {
@@ -1053,11 +1101,17 @@ function MemberDetailPage() {
             <div className="mb-4 flex flex-wrap items-center gap-3">
               <button
                 onClick={runAnalyze}
-                disabled={busy !== null || posts.length < 1}
+                disabled={busy !== null || autoAnalyzing || posts.length < 1}
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
               >
                 {busy === 'analyze' ? t('分析中…') : hasDeepAnalysis ? t('重新生成分析') : t('生成情緒分析與情報簡報')}
               </button>
+              {/* 背景自動補跑中：按鈕停用，避免同一份分析被付兩次錢 */}
+              {autoAnalyzing && (
+                <span className="text-xs text-muted-foreground">
+                  {t('偵測到新的一週，正在自動更新分析…（約半分鐘，完成後會自動顯示）')}
+                </span>
+              )}
               {/* 只填了 T0 基準點也會有 coach_analyses 列（based_on 預設 0），
                   拿它當「已分析」會顯示成「基於 0 週」，看起來像壞掉 —— 以 sessions 為準。 */}
               {hasDeepAnalysis && (
@@ -1068,7 +1122,7 @@ function MemberDetailPage() {
               {posts.length < 1 && (
                 <span className="text-xs text-muted-foreground">{t('至少需要 1 次書寫')}</span>
               )}
-              {posts.length > 0 && !hasDeepAnalysis && (
+              {posts.length > 0 && !hasDeepAnalysis && !autoAnalyzing && (
                 <span className="text-xs text-muted-foreground">
                   {t('學員完成一週書寫後會自動生成，也可以按上方按鈕立即重跑。')}
                 </span>
