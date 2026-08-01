@@ -44,13 +44,14 @@ select * from email_reminders limit 1;
 
 ### 3. 排程時間
 
-排程寫在 `.github/workflows/weekly-reminders.yml`，目前是 **台灣時間週五下午 3 點**。
+排程寫在 `.github/workflows/weekly-reminders.yml`，目前是 **台灣時間週日下午 3 點**。
 
 **GitHub Actions 的 cron 一律吃 UTC**，台灣是 UTC+8，換算時要減 8 小時：
 
 | 想要的台灣時間 | cron 寫法 |
 |---|---|
-| 週五下午 3 點（目前設定） | `0 7 * * 5` |
+| 週日下午 3 點（目前設定） | `0 7 * * 0` |
+| 週五下午 3 點 | `0 7 * * 5` |
 | 週一早上 9 點 | `0 1 * * 1` |
 | 週一早上 8 點 | `0 0 * * 1` |
 

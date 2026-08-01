@@ -58,6 +58,8 @@ GMAIL_APP_PASSWORD: str | None = os.environ.get("GMAIL_APP_PASSWORD")
 # 所以改這裡兩種信會一起變。2026-08-01 起改為 PSY by PSY（取代原本的 Ipsen Taiwan）。
 # 註：「網頁不得出現 PSYbyPSY」那條品牌規範只約束網頁 UI，跟寄件者名稱是兩件事。
 REPORT_FROM_NAME: str = os.environ.get("REPORT_FROM_NAME", "PSY by PSY")
+# 信件內文與 PDF 報告的署名，三個地方共用同一個字串：提醒信、報告信、PDF 內文結尾。
+EMAIL_SIGNATURE = "Yee Ming Tan 教練與 PSY by PSY 團隊"
 APP_BASE_URL: str = os.environ.get("APP_BASE_URL", "https://coach-roan-eta.vercel.app")
 _GMAIL_SMTP_HOST = "smtp.gmail.com"
 _GMAIL_SMTP_PORT = 465  # SSL
@@ -1318,6 +1320,12 @@ def _build_weekly_report_pdf(
                 story.append(Paragraph(html.escape(text), body))
 
     story.extend([
+        Spacer(1, 6 * mm),
+        Paragraph(
+            html.escape(EMAIL_SIGNATURE),
+            ParagraphStyle("WeeklySignZH", parent=body, fontSize=10.5, leading=16,
+                           textColor=colors.HexColor("#283444")),
+        ),
         Spacer(1, 4 * mm),
         Paragraph(
             "這份報告只根據本週書寫與 T0 起始狀態整理，不使用其他週內容；它不是診斷或好壞評分。",
@@ -1366,7 +1374,7 @@ def _weekly_email_html(member_name: str, report_url: str = "") -> str:
     <p>我們也整理了這週幸福感的變化趨勢（見附件），供你參考。建議你自己重新翻閱時，可以帶著兩個問題去看：這一週最讓你有感的收穫是什麼？如果重來一次，有沒有哪個部分想試著調整？</p>
     <p>也提醒你，下週記得同步填寫 PERMA 的覺察練習，讓紀錄能更完整。</p>
     {link}
-    <p>一切安好，<br>Yee Ming Tan 教練</p>
+    <p>一切安好，<br>{html.escape(EMAIL_SIGNATURE)}</p>
     """
 
 
@@ -1382,9 +1390,8 @@ def _reminder_email_html(member_name: str, week_number: int, journal_url: str = 
     <p>{html.escape(member_name)}，你好：</p>
     <p>本週又是新的開始。希望你這一週過得充實而有意義。</p>
     <p>現在邀請你用幾分鐘的時間，回顧並記錄你這一週在「正向情緒、投入、人際關係、人生意義、成就感」五個面向的體驗和感受。</p>
-    <p>你的書寫，我們會認真讀，並在週末時給你完整的反饋與分析。</p>
     {link}
-    <p>期待你的分享，<br>Yee Ming Tan 教練</p>
+    <p>期待你的分享，<br>{html.escape(EMAIL_SIGNATURE)}</p>
     """
 
 
