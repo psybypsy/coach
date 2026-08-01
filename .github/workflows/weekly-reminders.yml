@@ -1,0 +1,62 @@
+name: 每週 PERMA 書寫提醒
+
+# 定時去打後端的 /api/send-weekly-reminders，寄提醒信給本週還沒寫週記的學員。
+# 用 GitHub Actions 而不是 Render Cron Job：Render 的 cron 每個服務最低月費 $1，
+# 這支只是定時打一個 HTTP 端點，用 Actions 完全免費。
+
+on:
+  schedule:
+    # GitHub 的排程一律吃 UTC。台灣（UTC+8）週五下午 3 點 = 週五 07:00 UTC。
+    # 註：GitHub 的排程在尖峰時段可能延遲幾分鐘到數十分鐘，週報提醒不影響。
+    - cron: '0 7 * * 5'
+  # 也可以到 Actions 分頁手動按 Run workflow 觸發一次（測試用）。
+  workflow_dispatch:
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 喚醒 Render 後端
+        # 後端是 Render 免費方案，閒置後會休眠，冷啟動約 50 秒。先打一個輕量端點
+        # 把它叫醒，免得下一步的正式請求卡在冷啟動。這步失敗不算數（|| true）。
+        run: |
+          curl -sS -o /dev/null --max-time 180 \
+            https://perma-coach-api.onrender.com/docs || true
+
+      - name: 寄送提醒信
+        env:
+          # 值要跟 Render 環境變數 REPORT_WEBHOOK_SECRET 一致。
+          # 走 env 而不是直接內插 ${{ }} 進指令，避免值被寫進 shell 指令列。
+          WEBHOOK_SECRET: ${{ secrets.REPORT_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$WEBHOOK_SECRET" ]; then
+            echo "::error::REPORT_WEBHOOK_SECRET 這個 repository secret 沒設定"
+            exit 1
+          fi
+
+          # -w 把 HTTP 狀態碼接在回應主體後面，才能分別判斷。
+          response=$(curl -sS --max-time 300 \
+            -w '\n%{http_code}' \
+            -X POST https://perma-coach-api.onrender.com/api/send-weekly-reminders \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET")
+
+          status=$(printf '%s' "$response" | tail -n1)
+          body=$(printf '%s' "$response" | sed '$d')
+
+          echo "HTTP $status"
+          echo "$body"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::提醒信寄送失敗（HTTP $status）"
+            exit 1
+          fi
+
+          # 端點就算整體回 200，個別學員的寄送失敗會收在 errors 陣列裡，
+          # 這裡把它拉出來讓 Actions 頁面上直接看得到。
+          errors=$(printf '%s' "$body" | python3 -c \
+            'import json,sys; print(json.dumps(json.load(sys.stdin).get("errors") or [], ensure_ascii=False))')
+          if [ "$errors" != "[]" ]; then
+            echo "::warning::有學員寄送失敗：$errors"
+          fi

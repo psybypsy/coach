@@ -4,14 +4,19 @@
 
 ## 工作原理
 
-1. **Cron Job** 每週一次調用 `/api/send-weekly-reminders` 端點
-2. 端點查詢所有學員，檢查是否已填該週週記
+1. **GitHub Actions 排程**（`.github/workflows/weekly-reminders.yml`）每週一次調用
+   `/api/send-weekly-reminders` 端點
+2. 端點查詢所有學員，檢查是否已填**該課程週**的週記
 3. 未填的學員會收到提醒郵件（同時記錄提醒已發送，避免重複）
 4. 已填或已寄過的學員會跳過
 
+> **為什麼不用 Render Cron Job？** Render 的 cron 每個服務最低月費 $1，而且它不是
+> 「填 URL 就會定時打」的排程器——只有 Schedule 與 Command 兩個欄位，要自己在
+> Command 裡寫 curl。這支排程只是定時打一個 HTTP 端點，用 GitHub Actions 免費且更單純。
+
 ---
 
-## 設定步驟（Render）
+## 設定步驟
 
 ### 1. 執行數據庫遷移
 
@@ -25,40 +30,50 @@
 select * from email_reminders limit 1;
 ```
 
-### 2. 在 Render 設定 Cron Job
+### 2. 在 GitHub 設定 secret
 
-1. 登入 [Render Dashboard](https://dashboard.render.com)
-2. 進入 `perma-coach-api` service
-3. 左側 → **Events** → **Cron Jobs**
-4. 點 **Create Cron Job**
+排程要用 `REPORT_WEBHOOK_SECRET` 才能通過端點驗證，值必須跟 **Render 環境變數
+`REPORT_WEBHOOK_SECRET` 一模一樣**。
 
-填入以下配置：
+1. 到 https://github.com/psybypsy/coach/settings/secrets/actions
+2. 點 **New repository secret**
+3. Name 填 `REPORT_WEBHOOK_SECRET`，Secret 貼上 Render 上那個值
+4. 存檔
 
-| 欄位 | 值 |
+沒設這個 secret 的話，排程會直接失敗並在 Actions 頁面標紅字提示。
+
+### 3. 排程時間
+
+排程寫在 `.github/workflows/weekly-reminders.yml`，目前是 **台灣時間週五下午 3 點**。
+
+**GitHub Actions 的 cron 一律吃 UTC**，台灣是 UTC+8，換算時要減 8 小時：
+
+| 想要的台灣時間 | cron 寫法 |
 |---|---|
-| **Name** | `send-weekly-reminders` |
-| **URL** | `https://perma-coach-api.onrender.com/api/send-weekly-reminders` |
-| **HTTP Method** | `POST` |
-| **Schedule** | 週一 08:00（`0 8 * * 1`）或其他時間 |
-| **Headers** | 新增 header：<br/>`X-Webhook-Secret: <你的 REPORT_WEBHOOK_SECRET>` |
+| 週五下午 3 點（目前設定） | `0 7 * * 5` |
+| 週一早上 9 點 | `0 1 * * 1` |
+| 週一早上 8 點 | `0 0 * * 1` |
 
-**時間表示法（Cron）：**
-- `0 8 * * 1` = 每週一早上 8 點
-- `0 9 * * 1` = 每週一早上 9 點
+註：GitHub 的排程在尖峰時段可能延遲幾分鐘到數十分鐘，週報提醒不受影響。
 
-### 3. 測試
+### 4. 測試
 
-手動調用一次（替換 `SECRET`）：
+不用等到週五——到 [Actions 分頁](https://github.com/psybypsy/coach/actions)
+選「每週 PERMA 書寫提醒」→ **Run workflow** 手動跑一次，執行紀錄裡會直接印出回應。
+
+也可以在本機打（替換 `<SECRET>`）：
 
 ```bash
-curl -X POST https://perma-coach-api.onrender.com/api/send-weekly-reminders \
-  -H "X-Webhook-Secret: <你的 REPORT_WEBHOOK_SECRET>"
+curl -X POST https://perma-coach-api.onrender.com/api/send-weekly-reminders -H "X-Webhook-Secret: <SECRET>"
 ```
 
 檢查回應：
 - `"sent": n` → 成功寄出 n 封提醒
 - `"skipped": m` → 跳過 m 位（已填週記或已寄過）
 - `"errors": [...]` → 任何錯誤訊息
+
+> ⚠️ 這一打就會**真的寄信**給所有沒填本週週記的學員。測試前先確認
+> `profiles` 裡 `role=member` 的名單，免得寄給一堆測試帳號。
 
 ### 4. 驗證（Supabase）
 
@@ -85,15 +100,16 @@ limit 10;
 
 | 症狀 | 解決方案 |
 |---|---|
-| Cron Job 顯示 `401 Unauthorized` | 檢查 `X-Webhook-Secret` header 是否正確（要跟 Render 環境變數一致） |
-| Cron Job 超時 | 增加等待時間；若太多學員可能要優化查詢 |
-| 有些學員沒收到提醒 | 檢查 `email_reminders` 表，看是否已記錄該週提醒；check Render 日誌 |
-| 學員收到重複提醒 | 檢查 Cron 設定，確認不是執行多次 |
+| 回 `401 Unauthorized` | GitHub secret `REPORT_WEBHOOK_SECRET` 跟 Render 環境變數的值對不上 |
+| 回 `500`，訊息提到 `email_reminders` | 遷移 011 沒跑，回到步驟 1 |
+| 回 200 但 `sent` 一直是 0 | 全部學員都被 skip：查 `email_reminders` 看該課程週是否已寄過，或他們本來就填完了 |
+| 第一次呼叫很慢 | Render 免費方案閒置會休眠，冷啟動約 50 秒；workflow 已先打 `/docs` 暖機 |
+| 學員收到重複提醒 | 查 `email_reminders`；第 1 週橫跨 7/27 與 8/3 兩個日曆週，端點用 `_program_week_bounds` 以區間比對，兩週只會寄一次 |
 
 ---
 
 ## 後續改進
 
 - 可在 `profiles` 表新增 `reminder_opt_out` 欄位，讓學員選擇退出提醒
-- 可調整提醒時間（目前固定周一早上）
+- 目前會寄給所有 `role=member` 的帳號，包含測試帳號；正式上線後可考慮加白名單過濾
 - 可針對不同族群發送不同內容
