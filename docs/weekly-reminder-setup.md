@@ -15,9 +15,12 @@
 
 ### 1. 執行數據庫遷移
 
-Render 會自動執行遷移 011，創建 `email_reminders` 表。
+**這一步要自己做，Render 不會幫你跑 Supabase 的遷移。**
 
-檢查是否成功：
+到 Supabase Dashboard → SQL Editor，貼上 `supabase/migrations/011_weekly_email_reminders.sql`
+的內容執行，建立 `email_reminders` 表。
+
+檢查是否成功（沒建表的話這句會報錯，端點也會整個寄不出去）：
 ```sql
 select * from email_reminders limit 1;
 ```

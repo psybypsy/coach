@@ -54,8 +54,10 @@ MEMBER_REPORT_RATE_LIMIT: str = os.environ.get("MEMBER_REPORT_RATE_LIMIT", "6/ho
 # 不是 Gmail 的登入密碼。沒設定時就完全不寄信，其餘功能照常運作。
 GMAIL_ADDRESS: str | None = os.environ.get("GMAIL_ADDRESS")
 GMAIL_APP_PASSWORD: str | None = os.environ.get("GMAIL_APP_PASSWORD")
-# 收件人看到的寄件者顯示名稱。品牌決定：一律 Ipsen Taiwan，不出現 PSYbyPSY。
-REPORT_FROM_NAME: str = os.environ.get("REPORT_FROM_NAME", "Ipsen Taiwan")
+# 收件人看到的寄件者顯示名稱。報告信與提醒信共用這一個設定（都走 _build_email），
+# 所以改這裡兩種信會一起變。2026-08-01 起改為 PSY by PSY（取代原本的 Ipsen Taiwan）。
+# 註：「網頁不得出現 PSYbyPSY」那條品牌規範只約束網頁 UI，跟寄件者名稱是兩件事。
+REPORT_FROM_NAME: str = os.environ.get("REPORT_FROM_NAME", "PSY by PSY")
 APP_BASE_URL: str = os.environ.get("APP_BASE_URL", "https://coach-roan-eta.vercel.app")
 _GMAIL_SMTP_HOST = "smtp.gmail.com"
 _GMAIL_SMTP_PORT = 465  # SSL
@@ -494,6 +496,21 @@ def _program_week_number(week_start: str) -> int:
     if target < week2_start:
         return 1
     return (target - week2_start).days // 7 + 2
+
+
+def _program_week_bounds(week_start: str) -> tuple[str, str]:
+    """回傳與 week_start 同屬一個課程週的「週一日期」區間（含頭含尾）。
+
+    第 1 週橫跨兩個日曆週（週一 7/27 與 8/3），所以判斷「這個課程週寫了沒」時
+    要比對整個區間，不能只比對單一個 week_start，否則 8/3 那週會誤判成沒寫過。
+    第 2 週起一個課程週就是一個日曆週，頭尾相同。
+    """
+    start = datetime.strptime(PROGRAM_WEEK_1_START, "%Y-%m-%d").date()
+    week2_start = datetime.strptime(PROGRAM_WEEK_2_START, "%Y-%m-%d").date()
+    target = datetime.strptime(week_start, "%Y-%m-%d").date()
+    if start <= target < week2_start:
+        return PROGRAM_WEEK_1_START, str(week2_start - timedelta(days=7))
+    return week_start, week_start
 
 
 async def require_coach(token: str) -> str:
@@ -2568,11 +2585,14 @@ async def send_weekly_reminders(x_webhook_secret: str = Header(default="", alias
     if not REPORT_WEBHOOK_SECRET or not hmac.compare_digest(x_webhook_secret, REPORT_WEBHOOK_SECRET):
         raise HTTPException(status_code=401, detail="Webhook 驗證失敗")
     
-    # 計算本週的 week_start（週一）
-    today = datetime.date.today()
-    days_since_monday = today.weekday()
-    week_start = today - datetime.timedelta(days=days_since_monday)
-    
+    # 計算本週的 week_start（週一）。注意本檔案是 `from datetime import datetime`，
+    # 沒有 import datetime 模組本身——不能寫 datetime.date.today() / datetime.timedelta。
+    today = datetime.now().date()
+    week_start = today - timedelta(days=today.weekday())
+    # 第 1 週橫跨兩個日曆週（7/27 與 8/3），所以「這位學員本週寫了沒」不能只比對單一個
+    # week_start，要涵蓋同一個課程週的所有週一。見 _program_week_bounds。
+    week_from, week_to = _program_week_bounds(str(week_start))
+
     # 查詢所有學員
     members_resp = await db().get(
         f"{SUPABASE_REST}/profiles",
@@ -2589,39 +2609,36 @@ async def send_weekly_reminders(x_webhook_secret: str = Header(default="", alias
         member_id = member.get("id")
         display_name = member.get("display_name", "學員")
         
-        # 取得該學員的 email
-        user_resp = await db().get(
-            f"{SUPABASE_REST}/auth.users",
-            headers=SUPABASE_HEADERS,
-            params=[("id", f"eq.{member_id}")],
-        )
-        if user_resp.status_code != 200:
-            continue
-        
-        users = user_resp.json() or []
-        if not users:
-            continue
-        
-        email = users[0].get("email")
+        # 取得該學員的 email。auth.users 不在 PostgREST 的公開 schema 裡（走 REST 會 404），
+        # 一定要用 service role 打 Admin Auth API——_member_identity 已經封裝好這件事。
+        _, email = await _member_identity(str(member_id))
         if not email:
             continue
-        
+
         try:
-            # 檢查是否已有該週的提醒記錄
+            # 檢查這個課程週是否已寄過提醒
             reminder_check = await db().get(
                 f"{SUPABASE_REST}/email_reminders",
                 headers=SUPABASE_HEADERS,
-                params=[("user_id", f"eq.{member_id}"), ("week_start", f"eq.{week_start}")],
+                params=[
+                    ("user_id", f"eq.{member_id}"),
+                    ("week_start", f"gte.{week_from}"),
+                    ("week_start", f"lte.{week_to}"),
+                ],
             )
             if reminder_check.status_code == 200 and reminder_check.json():
                 results["skipped"] += 1
                 continue
-            
-            # 檢查該週是否已有 journal_posts（已填週記）
+
+            # 檢查這個課程週是否已有 journal_posts（已填週記）
             journal_check = await db().get(
                 f"{SUPABASE_REST}/journal_posts",
                 headers=SUPABASE_HEADERS,
-                params=[("user_id", f"eq.{member_id}"), ("week_start", f"eq.{week_start}")],
+                params=[
+                    ("user_id", f"eq.{member_id}"),
+                    ("week_start", f"gte.{week_from}"),
+                    ("week_start", f"lte.{week_to}"),
+                ],
             )
             if journal_check.status_code == 200 and journal_check.json():
                 # 已填週記，不寄提醒，但記錄下來（避免下次重複寄）
