@@ -92,8 +92,10 @@ _BREVO_SEND_URL = "https://api.brevo.com/v3/smtp/email"
 # 因為 Gmail 不允許代寄任意位址）。
 REPORT_FROM_EMAIL: str | None = os.environ.get("REPORT_FROM_EMAIL") or GMAIL_ADDRESS
 
-# 不支援 HTML 的信件軟體看到的備援內容；三條管道共用。
+# 不支援 HTML 的信件軟體看到的備援內容；三條管道共用。_send_report_mail() 依信件種類
+# 傳對應的文字進來，這裡是還沒指定時的預設值（沿用報告信的措辭）。
 _PLAIN_TEXT_FALLBACK = "這封信包含你的 PERMA 個人回顧，請用支援 HTML 的信件軟體開啟。"
+_REMINDER_PLAIN_TEXT_FALLBACK = "這封信提醒你填寫本週的 PERMA 書寫，請用支援 HTML 的信件軟體開啟。"
 
 
 def _mail_channel() -> str:
@@ -2151,6 +2153,7 @@ def _build_email(
     subject: str,
     html_body: str,
     attachment: tuple[str, bytes] | None = None,
+    plain_text: str = _PLAIN_TEXT_FALLBACK,
 ) -> EmailMessage:
     """組出一封 HTML 信（可選擇附加一份 PDF）。SMTP 與 Gmail API 兩條管道共用。"""
     message = EmailMessage()
@@ -2160,7 +2163,7 @@ def _build_email(
     message["From"] = formataddr((REPORT_FROM_NAME, GMAIL_ADDRESS or ""), charset="utf-8")
     message["To"] = to_email
     # 純文字備援：不支援 HTML 的信件軟體至少看得到提示與連結。
-    message.set_content(_PLAIN_TEXT_FALLBACK)
+    message.set_content(plain_text)
     message.add_alternative(html_body, subtype="html")
     if attachment:
         filename, payload = attachment
@@ -2229,6 +2232,7 @@ async def _send_via_brevo(
     subject: str,
     html_body: str,
     attachment: tuple[str, bytes] | None = None,
+    plain_text: str = _PLAIN_TEXT_FALLBACK,
 ) -> None:
     """走 Brevo 的 HTTP API（443 埠）寄出，繞開平台對 SMTP 埠的封鎖。
 
@@ -2239,7 +2243,7 @@ async def _send_via_brevo(
         "to": [{"email": to_email}],
         "subject": subject,
         "htmlContent": html_body,
-        "textContent": _PLAIN_TEXT_FALLBACK,
+        "textContent": plain_text,
     }
     if attachment:
         filename, payload = attachment
@@ -2262,13 +2266,14 @@ async def _send_report_mail(
     subject: str,
     html_body: str,
     attachment: tuple[str, bytes] | None = None,
+    plain_text: str = _PLAIN_TEXT_FALLBACK,
 ) -> None:
     """依 _mail_channel() 選出的管道寄出一封信。"""
     channel = _mail_channel()
     if channel == "Brevo":
-        await _send_via_brevo(to_email, subject, html_body, attachment)
+        await _send_via_brevo(to_email, subject, html_body, attachment, plain_text)
         return
-    message = _build_email(to_email, subject, html_body, attachment)
+    message = _build_email(to_email, subject, html_body, attachment, plain_text)
     if channel == "Gmail API":
         await _send_via_gmail_api(message)
         return
@@ -2666,8 +2671,8 @@ async def send_weekly_reminders(x_webhook_secret: str = Header(default="", alias
             )
             
             try:
-                await _send_report_mail(email, subject, html_body)
-                
+                await _send_report_mail(email, subject, html_body, plain_text=_REMINDER_PLAIN_TEXT_FALLBACK)
+
                 # 記錄提醒已發送
                 await db().post(
                     f"{SUPABASE_REST}/email_reminders",
