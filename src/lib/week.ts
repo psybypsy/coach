@@ -25,9 +25,12 @@ export function addDays(dateStr: string, days: number): string {
   return formatLocalDate(d)
 }
 
-// ── 課程週次（week 1 = 2026/07/27 那一週）──
-// 這個起點同時寫在後端 backend/app.py 的 PROGRAM_WEEK_1_START，兩邊要一起改。
+// ── 課程週次（week 1 涵蓋 2026/07/27 那一週起到 8/9，之後每週一正常起算）──
+// 這組設定同時寫在後端 backend/app.py 的 PROGRAM_WEEK_1_START / PROGRAM_WEEK_2_START，兩邊要一起改。
+// Ipsen 這梯次 2026-08-01 才開始加入白名單，第 1 週刻意拉長到 8/9（含起跑緩衝期），
+// 讓當週或次週開始寫都算第 1 週；第 2 週起恢復成每週一到週日的正常週期（8/10 開始）。
 export const PROGRAM_WEEK_1_START = '2026-07-27'
+export const PROGRAM_WEEK_2_START = '2026-08-10'
 
 // 課程總長度；第 4、8 週的報告要教練確認後才發布給學員。
 export const PROGRAM_TOTAL_WEEKS = 8
@@ -35,9 +38,13 @@ export const COACH_REVIEW_WEEKS = [4, 8]
 
 // 由該週的週一日期換算成課程第幾週。起點之前的週次會是 0 或負數。
 export function programWeekNumber(weekStart: string): number {
+  const DAY = 24 * 60 * 60 * 1000
   const start = new Date(PROGRAM_WEEK_1_START + 'T00:00:00').getTime()
+  const week2Start = new Date(PROGRAM_WEEK_2_START + 'T00:00:00').getTime()
   const target = new Date(weekStart + 'T00:00:00').getTime()
-  return Math.floor((target - start) / (7 * 24 * 60 * 60 * 1000)) + 1
+  if (target < start) return Math.floor((target - start) / (7 * DAY)) + 1
+  if (target < week2Start) return 1
+  return Math.floor((target - week2Start) / (7 * DAY)) + 2
 }
 
 // 第 4、8 週的報告由教練親自確認後才發布。

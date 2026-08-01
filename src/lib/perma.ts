@@ -76,7 +76,7 @@ export const DIMENSION_CONFIGS: Record<DimensionKey, DimensionConfig> = {
     key: 'A',
     label: '成就力',
     sublabel: 'Accomplishment',
-    question: '有什麼進展讓你感到驕傲？',
+    question: '這週的工作有什麼進展讓你感到驕傲？',
     textColor: 'text-emerald-900',
     bgLight: 'bg-emerald-50',
     bgMed: 'bg-emerald-100',

@@ -475,17 +475,25 @@ _CLIENT_CHART_DEFAULTS = {
 # 學員版報告的圖表：比教練的客戶交付版多一張情緒詞雲。
 _MEMBER_CHART_DEFAULTS = {**_CLIENT_CHART_DEFAULTS, "cloud": True}
 
-# ── 課程週次（week 1 = 2026/07/27 那一週）──
+# ── 課程週次（week 1 涵蓋 2026/07/27 那一週起到 8/9，之後每週一正常起算）──
 # 同一組設定也寫在前端 src/lib/week.ts，兩邊要一起改。
+# Ipsen 這梯次 2026-08-01 才開始加入白名單，第 1 週刻意拉長到 8/9（含起跑緩衝期），
+# 讓當週或次週開始寫都算第 1 週；第 2 週起恢復成每週一到週日的正常週期（8/10 開始）。
 PROGRAM_WEEK_1_START = "2026-07-27"
+PROGRAM_WEEK_2_START = "2026-08-10"
 COACH_REVIEW_WEEKS = {4, 8}
 
 
 def _program_week_number(week_start: str) -> int:
     """由該週的週一日期換算成課程第幾週。"""
     start = datetime.strptime(PROGRAM_WEEK_1_START, "%Y-%m-%d").date()
+    week2_start = datetime.strptime(PROGRAM_WEEK_2_START, "%Y-%m-%d").date()
     target = datetime.strptime(week_start, "%Y-%m-%d").date()
-    return (target - start).days // 7 + 1
+    if target < start:
+        return (target - start).days // 7 + 1
+    if target < week2_start:
+        return 1
+    return (target - week2_start).days // 7 + 2
 
 
 async def require_coach(token: str) -> str:
