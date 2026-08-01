@@ -1345,6 +1345,24 @@ def _weekly_email_html(member_name: str, report_url: str = "") -> str:
     """
 
 
+
+def _reminder_email_html(member_name: str, week_number: int, journal_url: str = "") -> str:
+    """每週提醒郵件（提醒學員填週記）。"""
+    link = (
+        f'<p><a href="{html.escape(journal_url)}">點此進入寫作</a></p>'
+        if journal_url
+        else ""
+    )
+    return f"""
+    <p>{html.escape(member_name)}，你好：</p>
+    <p>本週又是新的開始。希望你這一週過得充實而有意義。</p>
+    <p>現在邀請你用幾分鐘的時間，回顧並記錄你這一週在「正向情緒、投入、人際關係、人生意義、成就感」五個面向的體驗和感受。</p>
+    <p>你的書寫，我們會認真讀，並在週末時給你完整的反饋與分析。</p>
+    {link}
+    <p>期待你的分享，<br>Yee Ming Tan 教練</p>
+    """
+
+
 class CoachMemberRequest(BaseModel):
     member_id: str
     language: str = "zh-TW"  # 分析與客戶報告的語言，跟隨教練介面（預設繁中）
@@ -2528,6 +2546,128 @@ async def member_report(
         raise HTTPException(status_code=400, detail="週次日期格式錯誤")
     return await _ensure_member_report(user_id, req.week_start, user_id)
 
+
+
+
+@app.post("/api/send-weekly-reminders")
+async def send_weekly_reminders(x_webhook_secret: str = Header(default="", alias="X-Webhook-Secret")):
+    """系統 API：每週發送提醒郵件給尚未填週記的學員。
+    
+    使用 Render Cron 或外部排程服務每週調用此端點。
+    會記錄已發送的提醒，避免重複寄送。
+    """
+    # 驗證（防止未授權調用）
+    if not REPORT_WEBHOOK_SECRET or not hmac.compare_digest(x_webhook_secret, REPORT_WEBHOOK_SECRET):
+        raise HTTPException(status_code=401, detail="Webhook 驗證失敗")
+    
+    # 計算本週的 week_start（週一）
+    today = datetime.date.today()
+    days_since_monday = today.weekday()
+    week_start = today - datetime.timedelta(days=days_since_monday)
+    
+    # 查詢所有學員
+    members_resp = await db().get(
+        f"{SUPABASE_REST}/profiles",
+        headers=SUPABASE_HEADERS,
+        params=[("role", "eq.member")],
+    )
+    if members_resp.status_code not in (200, 206):
+        raise HTTPException(status_code=500, detail="無法查詢學員列表")
+    
+    members = members_resp.json() or []
+    results = {"sent": 0, "skipped": 0, "errors": []}
+    
+    for member in members:
+        member_id = member.get("id")
+        display_name = member.get("display_name", "學員")
+        
+        # 取得該學員的 email
+        user_resp = await db().get(
+            f"{SUPABASE_REST}/auth.users",
+            headers=SUPABASE_HEADERS,
+            params=[("id", f"eq.{member_id}")],
+        )
+        if user_resp.status_code != 200:
+            continue
+        
+        users = user_resp.json() or []
+        if not users:
+            continue
+        
+        email = users[0].get("email")
+        if not email:
+            continue
+        
+        try:
+            # 檢查是否已有該週的提醒記錄
+            reminder_check = await db().get(
+                f"{SUPABASE_REST}/email_reminders",
+                headers=SUPABASE_HEADERS,
+                params=[("user_id", f"eq.{member_id}"), ("week_start", f"eq.{week_start}")],
+            )
+            if reminder_check.status_code == 200 and reminder_check.json():
+                results["skipped"] += 1
+                continue
+            
+            # 檢查該週是否已有 journal_posts（已填週記）
+            journal_check = await db().get(
+                f"{SUPABASE_REST}/journal_posts",
+                headers=SUPABASE_HEADERS,
+                params=[("user_id", f"eq.{member_id}"), ("week_start", f"eq.{week_start}")],
+            )
+            if journal_check.status_code == 200 and journal_check.json():
+                # 已填週記，不寄提醒，但記錄下來（避免下次重複寄）
+                await db().post(
+                    f"{SUPABASE_REST}/email_reminders",
+                    headers=SUPABASE_HEADERS,
+                    json={"user_id": member_id, "week_start": str(week_start)},
+                )
+                results["skipped"] += 1
+                continue
+            
+            # 寄送提醒郵件
+            subject = f"提醒：填寫第 {_program_week_number(str(week_start))} 週 PERMA 書寫"
+            html_body = _reminder_email_html(
+                display_name,
+                _program_week_number(str(week_start)),
+                f"{APP_BASE_URL}/app/journal",
+            )
+            
+            try:
+                await _send_report_mail(email, subject, html_body)
+                
+                # 記錄提醒已發送
+                await db().post(
+                    f"{SUPABASE_REST}/email_reminders",
+                    headers=SUPABASE_HEADERS,
+                    json={"user_id": member_id, "week_start": str(week_start)},
+                )
+                results["sent"] += 1
+                logger.info(f"已寄送週提醒給 {email}")
+            except Exception as mail_err:
+                # 記錄錯誤但繼續（不影響其他人）
+                await db().post(
+                    f"{SUPABASE_REST}/email_reminders",
+                    headers=SUPABASE_HEADERS,
+                    json={
+                        "user_id": member_id,
+                        "week_start": str(week_start),
+                        "error": str(mail_err)[:500],
+                    },
+                )
+                results["errors"].append(f"{email}: {str(mail_err)[:100]}")
+                logger.error(f"週提醒寄送失敗 {email}: {mail_err}")
+        
+        except Exception as e:
+            results["errors"].append(f"{member_id}: {str(e)[:100]}")
+            logger.error(f"處理學員 {member_id} 時出錯: {e}")
+    
+    return {
+        "week_start": str(week_start),
+        "sent": results["sent"],
+        "skipped": results["skipped"],
+        "errors": results["errors"],
+    }
 
 if __name__ == "__main__":
     import uvicorn
