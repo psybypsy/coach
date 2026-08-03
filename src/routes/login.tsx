@@ -15,6 +15,12 @@ export const Route = createFileRoute('/login')({
 })
 
 type Step = 'email' | 'sent'
+// 兩種登入方式並存：
+//   code     —— 寄 6 位數驗證碼（預設，不必記密碼）
+//   password —— email + 密碼，完全不碰 email
+// 密碼這條路是給「公司郵件閘道會攔截或延遲放行」的學員用的：信收不到就登入不了，
+// 而報告信被擋是另一件事（見 docs/email-deliverability-plan.html），不能靠登入方式解決。
+type Mode = 'code' | 'password'
 
 function getSavedEmails(): string[] {
   try {
@@ -47,6 +53,8 @@ function LoginPage() {
   const [savedEmails] = useState(getSavedEmails())
   const [code, setCode] = useState('')
   const [verifying, setVerifying] = useState(false)
+  const [mode, setMode] = useState<Mode>('code')
+  const [password, setPassword] = useState('')
 
   useEffect(() => {
     const description = readAuthErrorFromUrl()
@@ -101,6 +109,28 @@ function LoginPage() {
     setStep('sent')
   }
 
+  // Email + 密碼登入。完全不寄信，所以對方公司的郵件閘道擋不到。
+  // 學員的密碼有兩個來源：自己登入後在「個人資料」設定，或由教練用
+  // backend/tools/set_member_password.py 預先設好、以 email 以外的管道交付。
+  const signInWithPassword = async () => {
+    const trimmed = email.trim()
+    if (!trimmed || !password) return
+    setLoading(true)
+    setError(null)
+
+    const { error } = await supabase.auth.signInWithPassword({ email: trimmed, password })
+    setLoading(false)
+    if (error) {
+      // Supabase 對「密碼錯」與「這個帳號根本沒設過密碼」回同一個錯誤，
+      // 分不出來，所以訊息要同時把後者的解法講出來，否則沒設過密碼的人會卡死。
+      setError(t('email 或密碼錯誤。如果你還沒設定過密碼，請改用驗證碼登入，之後到「個人資料」設定密碼。'))
+      return
+    }
+    saveEmailToHistory(trimmed)
+    // 用整頁導轉而非 router navigate，確保 session 已寫入 storage 才進 app。
+    window.location.href = '/app/home'
+  }
+
   // 輸入信中的 6 位數驗證碼登入。
   // 這條路徑很重要：使用者在手機的 Gmail／Outlook App 裡點登入連結時，
   // 會開在 App 的內建瀏覽器，session 就存進那個 webview，之後自己開
@@ -149,23 +179,49 @@ function LoginPage() {
 
         <div className="rounded-xl border border-border bg-card p-6 shadow-soft">
           {step === 'email' ? (
-            <div className="space-y-4">
+            // 用真正的 <form>：手機與桌面的密碼管理器要看到 form 才會提示儲存與自動填入，
+            // 這正是密碼登入「打開網站按一下就進去」的關鍵，拆成裸 input 就不會觸發。
+            <form
+              className="space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (mode === 'password') void signInWithPassword()
+                else void sendLink(email)
+              }}
+            >
               <div>
                 <label htmlFor="email" className="mb-1.5 block text-sm font-semibold text-foreground">
                   {t('你的 email')}
                 </label>
                 <input
                   id="email"
+                  name="email"
                   type="email"
                   inputMode="email"
                   autoComplete="email"
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && void sendLink(email)}
                   className="h-11 w-full rounded-lg border border-border bg-background px-4 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
                 />
               </div>
+
+              {mode === 'password' && (
+                <div>
+                  <label htmlFor="password" className="mb-1.5 block text-sm font-semibold text-foreground">
+                    {t('密碼')}
+                  </label>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="h-11 w-full rounded-lg border border-border bg-background px-4 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
+                  />
+                </div>
+              )}
 
               {savedEmails.length > 0 && (
                 <div className="space-y-2">
@@ -175,7 +231,8 @@ function LoginPage() {
                       <button
                         key={e}
                         type="button"
-                        onClick={() => void sendLink(e)}
+                        // 密碼模式下只把 email 填進去（還要輸入密碼）；驗證碼模式下直接寄出。
+                        onClick={() => (mode === 'password' ? setEmail(e) : void sendLink(e))}
                         disabled={loading}
                         className="rounded-full border border-border bg-muted px-3 py-1.5 text-xs text-foreground transition hover:bg-primary-soft disabled:opacity-50"
                       >
@@ -189,17 +246,38 @@ function LoginPage() {
               {error && <p className="text-sm leading-relaxed text-rust">{error}</p>}
 
               <button
-                onClick={() => void sendLink(email)}
-                disabled={loading || !email.trim()}
+                type="submit"
+                disabled={loading || !email.trim() || (mode === 'password' && !password)}
                 className="flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-soft transition hover:bg-primary-glow active:scale-[0.98] disabled:opacity-50"
               >
-                {loading ? t('寄送中…') : t('寄送登入連結')}
+                {mode === 'password'
+                  ? loading
+                    ? t('登入中…')
+                    : t('登入')
+                  : loading
+                    ? t('寄送中…')
+                    : t('寄送登入連結')}
               </button>
 
-              <p className="text-center text-xs leading-relaxed text-muted-foreground">
-                {t('只有邀請名單內的 email 才能登入')}
-              </p>
-            </div>
+              <div className="border-t border-border pt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode(mode === 'password' ? 'code' : 'password')
+                    setError(null)
+                    setPassword('')
+                  }}
+                  className="block w-full text-center text-xs font-semibold text-muted-foreground underline"
+                >
+                  {mode === 'password' ? t('改用 email 驗證碼登入') : t('改用密碼登入')}
+                </button>
+                <p className="mt-2 text-center text-xs leading-relaxed text-muted-foreground">
+                  {mode === 'password'
+                    ? t('沒設定過密碼？先用驗證碼登入一次，再到「個人資料」設定密碼。')
+                    : t('只有邀請名單內的 email 才能登入')}
+                </p>
+              </div>
+            </form>
           ) : (
             <div className="space-y-4">
               <div className="space-y-2 text-center">

@@ -100,6 +100,8 @@ iOS / macOS Safari 的 ITP（Intelligent Tracking Prevention）會在
 
 ## 相關程式碼
 
+- 密碼登入（與驗證碼並存，給收不到信的學員用）—— 見 [`password-login.md`](password-login.md)。
+  被 ITP 清掉 session 時，有密碼的人重新登入是自動填、3 秒的事，不必等信。
 - `src/lib/supabase.ts` — session 持久化設定、`flowType: 'implicit'`
   （**不要改成 pkce**：PKCE 會把 code_verifier 綁在發出登入請求的瀏覽器，
   使用者在 email App 內建瀏覽器點連結就會直接驗證失敗）

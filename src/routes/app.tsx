@@ -143,7 +143,7 @@ function AppShell() {
           )}
         </div>
 
-        {/* 選單面板：改名字、語言、登出 */}
+        {/* 選單面板：個人資料（名字＋登入密碼）、語言、登出 */}
         {panel === 'menu' && (
           <>
             <button
@@ -161,7 +161,8 @@ function AppShell() {
                 to="/app/settings"
                 className="block rounded-lg px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted"
               >
-                {t('編輯名字')}
+                {/* 這一頁除了名字還有登入密碼，標成「編輯名字」的話學員找不到密碼設定 */}
+                {t('個人資料')}
               </Link>
               <div className="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-foreground">
                 <span>{t('語言')}</span>
