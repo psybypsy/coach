@@ -16,10 +16,12 @@ export const Route = createFileRoute('/login')({
 
 type Step = 'email' | 'sent'
 // 兩種登入方式並存：
-//   code     —— 寄 6 位數驗證碼（預設，不必記密碼）
-//   password —— email + 密碼，完全不碰 email
-// 密碼這條路是給「公司郵件閘道會攔截或延遲放行」的學員用的：信收不到就登入不了，
-// 而報告信被擋是另一件事（見 docs/email-deliverability-plan.html），不能靠登入方式解決。
+//   password —— email + 密碼（預設），完全不碰 email
+//   code     —— 寄 6 位數驗證碼，收在底部的切換連結後面
+// 預設走密碼，是因為學員的公司郵件閘道（Ipsen）會攔截或延遲放行驗證碼信，
+// 等收到時碼已過期；密碼完全不碰 email，擋不到。驗證碼仍保留，因為
+// 「還沒設過密碼」的帳號只能靠它進來設第一組密碼。
+// 報告信被擋是另一件事（見 docs/email-deliverability-plan.html），不能靠登入方式解決。
 type Mode = 'code' | 'password'
 
 function getSavedEmails(): string[] {
@@ -53,7 +55,7 @@ function LoginPage() {
   const [savedEmails] = useState(getSavedEmails())
   const [code, setCode] = useState('')
   const [verifying, setVerifying] = useState(false)
-  const [mode, setMode] = useState<Mode>('code')
+  const [mode, setMode] = useState<Mode>('password')
   const [password, setPassword] = useState('')
 
   useEffect(() => {
