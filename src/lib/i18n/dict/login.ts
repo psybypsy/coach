@@ -37,4 +37,17 @@ export const login: Record<string, Translation> = {
   '登入連結已失效或發生錯誤，請重新輸入 email 再試一次。': {
     en: 'The login link has expired or failed. Please enter your email again.',
   },
+
+  // 密碼登入（與驗證碼並存）
+  '密碼': { en: 'Password' },
+  '登入': { en: 'Sign in' },
+  '登入中…': { en: 'Signing in…' },
+  '改用密碼登入': { en: 'Use a password instead' },
+  '改用 email 驗證碼登入': { en: 'Use an email code instead' },
+  '沒設定過密碼？先用驗證碼登入一次，再到「個人資料」設定密碼。': {
+    en: 'No password yet? Sign in once with an email code, then set one under Profile.',
+  },
+  'email 或密碼錯誤。如果你還沒設定過密碼，請改用驗證碼登入，之後到「個人資料」設定密碼。': {
+    en: 'Wrong email or password. If you have not set a password yet, sign in with an email code first, then set one under Profile.',
+  },
 }

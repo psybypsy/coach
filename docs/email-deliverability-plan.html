@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Email 送達問題排除計畫書｜Ipsen Taiwan × Tan Yee Ming 八週 PERMA 課程</title>
+<style>
+:root{
+  --ink:#1B2430; --soft:#54606E; --muted:#8A94A1;
+  --card:#FFFFFF; --card2:#F7F9FB; --border:#E3E7EC; --border2:#CDD4DC;
+  --navy:#1F3A5C; --navy2:#2E5486; --navy-bg:#EDF2F8;
+  --warn:#8A6A26; --warn-bg:#F8F1DE; --warn-bd:#E4CF9E;
+  --ok:#2E7057; --ok-bg:#E6F1EA; --ok-bd:#BCD3C8;
+  --risk:#9A3412; --risk-bg:#FBEDE6; --risk-bd:#EBCBB8;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Segoe UI",Roboto,sans-serif;
+  --mono:"SF Mono",Menlo,Consolas,"Courier New",monospace;
+}
+@page{ size:A4; margin:16mm 15mm 18mm; }
+*{ box-sizing:border-box; }
+body{
+  font-family:var(--font); color:var(--ink); background:#fff;
+  font-size:10.2pt; line-height:1.68; margin:0; -webkit-font-smoothing:antialiased;
+}
+
+/* ── 封面 ── */
+.cover{ page-break-after:always; padding-top:26mm; }
+.eyebrow{ font-size:8.6pt; letter-spacing:.18em; color:var(--navy2); font-weight:700; text-transform:uppercase; }
+.cover h1{ font-size:26pt; line-height:1.24; margin:10px 0 6px; letter-spacing:-.01em; }
+.cover .sub{ font-size:12pt; color:var(--soft); font-weight:500; margin:0 0 26px; }
+.rule{ height:4px; width:76px; background:linear-gradient(90deg,var(--navy),var(--navy2)); border-radius:2px; margin:0 0 26px; }
+.meta{ border-top:1px solid var(--border); padding-top:14px; font-size:9.4pt; color:var(--soft); }
+.meta div{ display:flex; gap:14px; padding:3px 0; }
+.meta b{ color:var(--ink); font-weight:600; min-width:74px; }
+.tl-dr{
+  margin-top:30px; background:var(--navy-bg); border:1px solid #D6E1EE;
+  border-left:4px solid var(--navy); border-radius:8px; padding:16px 18px;
+}
+.tl-dr h2{ font-size:10.6pt; margin:0 0 8px; color:var(--navy); letter-spacing:.02em; }
+.tl-dr p{ margin:0 0 8px; font-size:10pt; }
+.tl-dr p:last-child{ margin-bottom:0; }
+
+/* ── 內文 ── */
+h2.sec{
+  font-size:14pt; margin:0 0 4px; padding-top:2px; letter-spacing:-.005em;
+  page-break-after:avoid;
+}
+h2.sec .num{ color:var(--navy2); font-variant-numeric:tabular-nums; margin-right:9px; }
+.sec-line{ height:2px; background:var(--border2); margin:0 0 16px; }
+section{ margin-bottom:26px; page-break-inside:auto; }
+h3{ font-size:10.8pt; margin:18px 0 7px; color:var(--navy); page-break-after:avoid; }
+p{ margin:0 0 10px; }
+ul,ol{ margin:0 0 10px; padding-left:19px; }
+li{ margin-bottom:5px; }
+code{ font-family:var(--mono); font-size:8.9pt; background:var(--card2); border:1px solid var(--border);
+      border-radius:4px; padding:1px 5px; color:var(--navy); white-space:nowrap; }
+strong{ font-weight:650; }
+
+table{ width:100%; border-collapse:collapse; margin:6px 0 12px; font-size:9.3pt; page-break-inside:avoid; }
+th{ background:var(--card2); text-align:left; font-weight:650; color:var(--navy);
+    border-bottom:1.5px solid var(--border2); padding:7px 9px; }
+td{ border-bottom:1px solid var(--border); padding:7px 9px; vertical-align:top; }
+tr:last-child td{ border-bottom:1.5px solid var(--border2); }
+td code{ white-space:normal; }
+.nowrap{ white-space:nowrap; }
+
+.callout{ border-radius:8px; padding:11px 14px; margin:10px 0 14px; font-size:9.5pt; page-break-inside:avoid; }
+.callout .lbl{ font-weight:700; display:block; margin-bottom:3px; font-size:9pt; letter-spacing:.03em; }
+.callout p:last-child{ margin-bottom:0; }
+.warn{ background:var(--warn-bg); border:1px solid var(--warn-bd); }
+.warn .lbl{ color:var(--warn); }
+.ok{ background:var(--ok-bg); border:1px solid var(--ok-bd); }
+.ok .lbl{ color:var(--ok); }
+.risk{ background:var(--risk-bg); border:1px solid var(--risk-bd); }
+.risk .lbl{ color:var(--risk); }
+
+.step{ page-break-inside:avoid; margin-bottom:16px; }
+.step-hd{ display:flex; align-items:baseline; gap:10px; margin-bottom:5px; }
+.step-n{ flex:none; width:21px; height:21px; border-radius:50%; background:var(--navy); color:#fff;
+         font-size:9pt; font-weight:700; text-align:center; line-height:21px; }
+.step-t{ font-size:10.8pt; font-weight:650; color:var(--navy); }
+.step-b{ padding-left:31px; }
+.path{ font-family:var(--mono); font-size:8.8pt; background:var(--card2); border:1px solid var(--border);
+       border-radius:5px; padding:6px 9px; margin:5px 0 8px; color:var(--navy); line-height:1.5; }
+
+pre{ font-family:var(--mono); font-size:8.6pt; background:var(--card2); border:1px solid var(--border);
+     border-radius:6px; padding:10px 12px; margin:6px 0 12px; overflow:visible;
+     white-space:pre-wrap; word-break:break-word; line-height:1.55; page-break-inside:avoid; }
+
+.letter{ background:var(--card2); border:1px solid var(--border2); border-radius:8px;
+         padding:16px 18px; font-size:9.4pt; page-break-inside:avoid; }
+.letter .fld{ color:var(--soft); font-size:8.8pt; margin-bottom:2px; }
+.letter hr{ border:0; border-top:1px solid var(--border); margin:11px 0; }
+
+.pill{ display:inline-block; font-size:8.2pt; font-weight:700; padding:1px 7px; border-radius:999px;
+       letter-spacing:.03em; vertical-align:1px; }
+.p1{ background:#DDE9F6; color:#1F3A5C; }
+.p2{ background:#E6F1EA; color:#2E7057; }
+.p3{ background:#F8F1DE; color:#8A6A26; }
+.p4{ background:#EFEFF3; color:#54606E; }
+
+footer{ margin-top:26px; border-top:1px solid var(--border); padding-top:10px;
+        font-size:8.6pt; color:var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="eyebrow">技術計畫書 · Technical Plan</div>
+  <h1>Email 送達問題排除計畫書</h1>
+  <p class="sub">學員收不到（或太晚收到）登入驗證碼與每週報告信</p>
+  <div class="rule"></div>
+
+  <div class="meta">
+    <div><b>專案</b><span>Ipsen Taiwan × Tan Yee Ming 八週 PERMA 幸福感課程</span></div>
+    <div><b>系統</b><span>coach 平台（Vercel 前端 · Render 後端 · Supabase 資料庫與認證）</span></div>
+    <div><b>日期</b><span>2026 年 8 月 3 日</span></div>
+    <div><b>版本</b><span>v1.0</span></div>
+  </div>
+
+  <div class="tl-dr">
+    <h2>一頁摘要</h2>
+    <p><b>問題：</b>學員的登入驗證碼被公司郵件閘道攔截或延遲放行，等收到時驗證碼已過期（預設 1 小時）而無法登入。</p>
+    <p><b>根因：</b>驗證碼信目前由 Supabase 內建寄信服務發出，寄件網域是共用的 <code>supabase.io</code>，
+       <b>沒有本專案的 SPF／DKIM／DMARC 簽章</b>，企業級郵件閘道（藥廠標配）會直接隔離。
+       這與後端每週報告信是<b>兩條不同的管道</b>——報告信已走自有網域，驗證碼信沒有。</p>
+    <p><b>建議：</b>把 Supabase 認證信改走已完成網域驗證的 Brevo（<code>psybypsy.com</code>），
+       與報告信使用同一組 DKIM 簽章。預估 <b>30 分鐘</b>，不需改動任何程式碼、不需資料庫遷移、可隨時回滾。
+       另外三項輔助措施合計約 10 分鐘。</p>
+  </div>
+</div>
+
+<section>
+  <h2 class="sec"><span class="num">01</span>現況與影響</h2>
+  <div class="sec-line"></div>
+
+  <p>本平台採無密碼登入：學員輸入 email，系統寄出一封含 6 位數驗證碼的信，
+     輸入驗證碼即完成登入。這個設計本身是為了解決「手機 email App 內建瀏覽器導致 session 留不住」的問題，
+     方向沒有錯，但它把<b>登入的成敗完全綁在信件送達率上</b>。</p>
+
+  <p>目前回報的狀況是：信件被對方公司的郵件系統攔下，等到實際收到時驗證碼已經失效。</p>
+
+  <table>
+    <thead><tr><th style="width:26%">受影響環節</th><th style="width:16%">目前狀態</th><th>後果</th></tr></thead>
+    <tbody>
+      <tr><td>登入驗證碼</td><td><b>已發生問題</b></td><td>學員無法登入，等同無法使用整個平台</td></tr>
+      <tr><td>每週報告信（含 PDF）</td><td><b>風險相同</b></td><td>課程的核心交付物送不到，學員感受不到課程價值</td></tr>
+      <tr><td>每週書寫提醒信</td><td><b>風險相同</b></td><td>學員忘記書寫，週報告與教練深度分析都跟著缺一週</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <span class="lbl">關鍵認知</span>
+    <p>這不是「驗證碼有效期太短」的問題，而是<b>整個專案的信件送達率</b>問題。
+       就算把驗證碼有效期延長，報告信與提醒信一樣會被擋。
+       因此本計畫的第一優先是修送達率，不是修有效期。</p>
+  </div>
+</section>
+
+<section>
+  <h2 class="sec"><span class="num">02</span>根因分析</h2>
+  <div class="sec-line"></div>
+
+  <p>本專案目前有<b>兩條各自獨立的寄信管道</b>，兩條的健康狀況完全不同，這是問題的核心：</p>
+
+  <table>
+    <thead><tr><th style="width:20%">信件種類</th><th style="width:24%">目前走哪條路</th><th style="width:20%">寄件網域</th><th>驗證狀態</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>每週報告信<br>每週提醒信</td>
+        <td>後端 <code>backend/app.py</code><br>→ Brevo HTTP API</td>
+        <td><code>psybypsy.com</code></td>
+        <td class="nowrap"><b>SPF／DKIM／DMARC 已驗證</b></td>
+      </tr>
+      <tr>
+        <td><b>登入驗證碼</b></td>
+        <td>Supabase Auth<br>→ <b>內建寄信服務</b></td>
+        <td><code>mail.app.supabase.io</code></td>
+        <td><b>無本專案簽章（共用網域）</b></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>為什麼內建服務註定被擋</h3>
+  <p>Supabase 官方文件對內建寄信服務有三項明確限制：只寄給專案團隊成員的預授權地址、
+     <b>每小時上限 2 封</b>、<b>不提供任何投遞或運作時間的 SLA</b>，並直接註明「不適合正式環境使用」。</p>
+  <p>對郵件閘道而言，一封來自共用網域、沒有寄件方 DKIM 簽章、內容含有登入連結的信，
+     命中釣魚特徵的分數很高。藥廠的資安政策通常比一般企業更嚴格，隔離幾乎是必然結果。</p>
+
+  <h3>第二個獨立成因：連結預抓</h3>
+  <p>Supabase 官方把 <b>email 預抓（prefetching）</b>列為驗證碼失效錯誤的首要原因。
+     企業郵件安全服務（如 Microsoft Defender Safe Links）會自動點開信中每一條連結做威脅檢測。</p>
+  <p>本專案的信件樣板<b>同時包含 magic link 與 6 位數驗證碼，兩者共用同一個 token</b>。
+     掃描器點開連結時 token 即被消耗，<b>同一封信裡的驗證碼也一併失效</b>。
+     學員看到的現象是「信明明剛收到，輸入驗證碼卻說已過期」——這種情況延長有效期完全無效。</p>
+</section>
+
+<section>
+  <h2 class="sec"><span class="num">03</span>行動計畫</h2>
+  <div class="sec-line"></div>
+
+  <table>
+    <thead>
+      <tr><th style="width:8%">優先</th><th style="width:30%">工作項目</th><th style="width:12%">預估</th><th>解決什麼</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="pill p1">P1</span></td>
+        <td><b>Supabase 認證信改走 Brevo SMTP</b></td>
+        <td class="nowrap">30 分鐘</td>
+        <td>治本。驗證碼信改用已驗證網域與 DKIM 簽章，與報告信同一條信譽基礎</td>
+      </tr>
+      <tr>
+        <td><span class="pill p2">P2</span></td>
+        <td>信件樣板移除 magic link，只保留驗證碼</td>
+        <td class="nowrap">5 分鐘</td>
+        <td>杜絕掃描器預抓消耗 token；同時降低釣魚判定分數</td>
+      </tr>
+      <tr>
+        <td><span class="pill p3">P3</span></td>
+        <td>驗證碼有效期 1 小時 → 24 小時</td>
+        <td class="nowrap">2 分鐘</td>
+        <td>吸收閘道「先隔離、稍後放行」造成的延遲</td>
+      </tr>
+      <tr>
+        <td><span class="pill p4">P4</span></td>
+        <td>請 Ipsen IT 將寄件網域加入允許清單</td>
+        <td class="nowrap">依對方</td>
+        <td>唯一能「保證」不被攔截的手段；範本見附錄 A</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout ok">
+    <span class="lbl">實施條件</span>
+    <p>P1 至 P3 <b>皆不需改動任何程式碼、不需資料庫遷移、不影響已登入的學員</b>，
+       全部在 Supabase 與 Brevo 的後台完成，且可隨時關閉回到原狀。</p>
+  </div>
+
+  <p>P4 需要對方公司配合，時程不可控，因此不列為前置條件。
+     P1 至 P3 完成後應先實測，若仍被攔截再啟動 P4。</p>
+</section>
+
+<section>
+  <h2 class="sec"><span class="num">04</span>P1 詳細操作步驟</h2>
+  <div class="sec-line"></div>
+
+  <p><b>前提：</b>Brevo 帳號已開通 transactional、<code>psybypsy.com</code> 網域驗證已完成。
+     後端報告信目前寄得出去，即代表這兩項皆已滿足。</p>
+
+  <div class="callout warn">
+    <span class="lbl">先釐清一個容易混淆的點</span>
+    <p>後端報告信走的是 Brevo 的 <b>HTTP API</b>（因為 Render 免費方案封鎖 SMTP 埠 25／465／587）。
+       本步驟要設定的是 Supabase 走 Brevo 的 <b>SMTP</b>。兩條路並存、互不影響，
+       <code>backend/app.py</code> 一行都不需要改。Supabase 的寄信伺服器不在 Render 上，連 SMTP 埠沒有問題。</p>
+  </div>
+
+  <div class="step">
+    <div class="step-hd"><span class="step-n">1</span><span class="step-t">在 Brevo 取得 SMTP 憑證</span></div>
+    <div class="step-b">
+      <div class="path">Brevo → 右上頭像選單 → SMTP &amp; API → <b>SMTP</b> 分頁</div>
+      <p>這一頁提供兩個值：<b>SMTP 登入帳號</b>（格式類似 <code>9xxxxx001@smtp-brevo.com</code>）與
+         <b>SMTP key</b>（按 Generate a new SMTP key 產生，產生後立即複製，關閉即無法再檢視）。</p>
+      <div class="callout warn" style="margin-bottom:0">
+        <span class="lbl">最常見的錯誤</span>
+        <p><b>SMTP key 不是 API key。</b>Brevo 介面上兩者位置相鄰、外觀相似。
+           後端目前使用的那把是 API key，<b>不能用在這裡</b>。拿錯會得到 <code>535</code> 認證失敗。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-hd"><span class="step-n">2</span><span class="step-t">確認 IP 封鎖對 SMTP 也已停用</span></div>
+    <div class="step-b">
+      <div class="path">Brevo → Settings → Security → <b>Authorized IPs</b></div>
+      <p>先前為了後端 API 已停用過 IP 封鎖，但 <b>SMTP 是獨立的一列，必須再確認一次</b>。</p>
+      <p>Supabase 的寄信伺服器使用雲端浮動 IP，無法列入白名單。此項未停用時的症狀同樣是
+         <code>535</code>，且錯誤訊息不會指出是 IP 問題，極難自行判讀。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-hd"><span class="step-n">3</span><span class="step-t">在 Supabase 啟用 Custom SMTP</span></div>
+    <div class="step-b">
+      <div class="path">Supabase Dashboard → Authentication → Emails → SMTP Settings → 開啟 <b>Enable Custom SMTP</b></div>
+      <table>
+        <thead><tr><th style="width:32%">欄位</th><th>填入值</th></tr></thead>
+        <tbody>
+          <tr><td>Sender email</td><td><code>report@psybypsy.com</code>（或另建 <code>login@psybypsy.com</code>，須在同一已驗證網域下）</td></tr>
+          <tr><td>Sender name</td><td>與每週報告信一致</td></tr>
+          <tr><td>Host</td><td><code>smtp-relay.brevo.com</code></td></tr>
+          <tr><td>Port number</td><td><code>587</code>（STARTTLS）</td></tr>
+          <tr><td>Username</td><td>步驟 1 的 SMTP 登入帳號</td></tr>
+          <tr><td>Password</td><td>步驟 1 的 SMTP key</td></tr>
+        </tbody>
+      </table>
+      <p>貼上 key 時<b>不可帶入前後空白或換行</b>，多一個字元即為 <code>535</code>，
+         且錯誤訊息同樣模糊。建議貼上後以 End 鍵確認游標落點。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-hd"><span class="step-n">4</span><span class="step-t">調高寄信速率上限</span></div>
+    <div class="step-b">
+      <div class="path">Supabase → Authentication → Rate Limits → Rate limit for sending emails</div>
+      <p>啟用 Custom SMTP 後 Supabase 預設為<b>每小時 30 封</b>。同一梯次學員集中登入時可能不足，
+         建議調整為 100。Brevo 免費方案為每日 300 封，登入信與報告信共用此額度，以目前規模仍寬裕。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-hd"><span class="step-n">5</span><span class="step-t">移除樣板中的 magic link（P2）</span></div>
+    <div class="step-b">
+      <div class="path">Supabase → Authentication → Emails → Magic Link 樣板</div>
+      <p>刪除連結，僅保留驗證碼：</p>
+<pre>&lt;p&gt;你的登入驗證碼：&lt;/p&gt;
+&lt;p style="font-size:24px;font-weight:bold;letter-spacing:4px"&gt;{{ .Token }}&lt;/p&gt;</pre>
+      <p>沒有連結可供掃描，token 就只有學員本人用得到。
+         另可參考 <code>docs/persistent-login.md</code>：magic link 在手機上會開啟於 email App 的內建瀏覽器、
+         session 留不住，本來就不是建議的登入路徑。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-hd"><span class="step-n">6</span><span class="step-t">延長驗證碼有效期（P3）</span></div>
+    <div class="step-b">
+      <div class="path">Supabase → Authentication → Sign In / Providers → Email → Email OTP expiration</div>
+      <p>由預設 <code>3600</code>（1 小時）改為 <code>86400</code>（24 小時）。</p>
+      <p>這是 Supabase 允許的上限——超過一天只能透過 Management API 設定，且官方強烈不建議
+         （有效期越長，暴力破解的時間窗越大）。<b>「永不過期」沒有這個選項。</b></p>
+      <p>此設定同時作用於 magic link、註冊確認信、邀請信與重設密碼連結。
+         Supabase 的 Security Advisor 會對超過 1 小時的設定顯示警告，該警告不會阻擋功能。</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="sec"><span class="num">05</span>驗收標準</h2>
+  <div class="sec-line"></div>
+
+  <p>依序完成四項檢查，<b>前三項只證明設定正確，第四項才是真正的驗收</b>：</p>
+
+  <table>
+    <thead><tr><th style="width:6%">#</th><th style="width:34%">檢查動作</th><th>通過條件</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>用自有 Gmail 於登入頁請求驗證碼</td><td>收得到信</td></tr>
+      <tr><td>2</td><td>檢視該信的寄件者</td><td>網域為 <code>psybypsy.com</code>，<b>不是</b> <code>supabase.io</code></td></tr>
+      <tr><td>3</td><td>Brevo → Transactional → Logs</td><td>該封信出現在紀錄中，狀態為 <code>delivered</code></td></tr>
+      <tr><td>4</td><td><b>用 Ipsen 的信箱實測一次</b></td><td>於有效期內收到並成功登入</td></tr>
+    </tbody>
+  </table>
+
+  <p>若第 3 項有紀錄、第 4 項仍未收到，即可確認信件已成功送出、是對方端攔截，
+     排查範圍縮小至 Ipsen 的郵件政策，此時啟動 P4（附錄 A）。</p>
+
+  <h3>疑難排解對照</h3>
+  <table>
+    <thead><tr><th style="width:38%">症狀</th><th>原因</th></tr></thead>
+    <tbody>
+      <tr><td><code>535 authentication failed</code></td><td>拿到 API key 而非 SMTP key；或 key 含多餘空白；或步驟 2 的 IP 封鎖未停用</td></tr>
+      <tr><td>Supabase 顯示已寄出，Brevo Logs 無紀錄</td><td>認證未通過，同上一列處理</td></tr>
+      <tr><td>Brevo Logs 顯示 <code>blocked</code> 或 <code>hard bounce</code></td><td>收件端拒收，與本端設定無關，須走 P4 白名單</td></tr>
+      <tr><td>寄件者仍為 <code>supabase.io</code></td><td>Custom SMTP 未儲存成功，回步驟 3 確認開關狀態</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2 class="sec"><span class="num">06</span>風險與回滾</h2>
+  <div class="sec-line"></div>
+
+  <table>
+    <thead><tr><th style="width:30%">風險</th><th style="width:12%">程度</th><th>處置</th></tr></thead>
+    <tbody>
+      <tr><td>SMTP 憑證設定錯誤導致所有認證信中斷</td><td>中</td><td>驗收第 1 至 3 項會立即發現；關閉 Custom SMTP 即刻復原</td></tr>
+      <tr><td>Brevo 每日 300 封額度被登入信與報告信共同耗盡</td><td>低</td><td>以現行學員規模不會觸及；如需擴大梯次再評估付費方案</td></tr>
+      <tr><td>驗證碼有效期 24 小時降低安全強度</td><td>低</td><td>屬 Supabase 官方允許範圍上限；驗證碼為單次使用，且本專案有 <code>allowed_emails</code> 白名單把關</td></tr>
+      <tr><td>Ipsen IT 拒絕加入白名單</td><td>中</td><td>見第 07 節備案</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout ok">
+    <span class="lbl">回滾方式</span>
+    <p>關閉 <b>Enable Custom SMTP</b> 即回到內建服務。不影響資料庫、不影響已登入的 session、
+       不需重新部署前後端。三項設定皆可獨立回復。</p>
+  </div>
+</section>
+
+<section>
+  <h2 class="sec"><span class="num">07</span>備案：改採帳號密碼登入</h2>
+  <div class="sec-line"></div>
+
+  <p>若 P1 至 P4 全數執行後仍無法穩定送達，可評估改用密碼登入，使<b>登入環節完全不依賴 email</b>。
+     本專案已具備 <code>allowed_emails</code> 白名單與 <code>handle_new_user()</code> trigger，
+     為封閉制梯次，架構上適合密碼登入。</p>
+
+  <div class="callout risk">
+    <span class="lbl">但必須認清其範圍</span>
+    <p>密碼登入<b>只解決登入</b>。每週報告信與提醒信仍走 email，
+       所以 P1 的 Brevo 設定<b>無論如何都必須完成</b>，不能以密碼登入取代。</p>
+  </div>
+
+  <table>
+    <thead><tr><th style="width:34%">衍生問題</th><th>因應</th></tr></thead>
+    <tbody>
+      <tr><td>初始密碼如何交付</td><td>由管理者以 Admin API 預建帳號並設定初始密碼，<b>透過 email 以外的管道</b>交付（現場、通訊軟體、簡訊）。若仍以 email 寄送則問題原封不動</td></tr>
+      <tr><td>忘記密碼</td><td>重設信同樣會被攔截，只能人工重設。八週梯次期間必然發生，屬長期營運負擔</td></tr>
+      <tr><td>安全強度</td><td>無 MFA、可能使用弱密碼。須開啟 Supabase 的 Leaked Password Protection 並設定最短長度</td></tr>
+    </tbody>
+  </table>
+
+  <p><b>建議做法為兩者並存而非二擇一。</b>Supabase 同一個 Email provider 同時支援
+     <code>verifyOtp</code> 與 <code>signInWithPassword</code>，可讓收得到信的學員繼續使用驗證碼，
+     被攔截的學員改用密碼。前端改動集中於 <code>src/routes/login.tsx</code>，
+     連同首次登入強制改密碼的流程，預估半天至一天。</p>
+</section>
+
+<section style="page-break-before:always">
+  <h2 class="sec"><span class="num">附錄 A</span>致 Ipsen IT 的白名單申請範本</h2>
+  <div class="sec-line"></div>
+
+  <p>P4 使用。以下內容可直接複製寄給對方 IT 窗口，已包含資安人員判斷所需的資訊。</p>
+
+  <div class="letter">
+    <div class="fld">主旨</div>
+    <p style="margin-bottom:11px"><b>申請將 psybypsy.com 加入郵件允許清單（員工健康課程系統通知信）</b></p>
+    <hr>
+    <p>您好，</p>
+    <p>敝單位為貴公司同仁提供為期八週的職場幸福感（PERMA）課程，
+       課程平台需寄送兩類信件給參與的同仁，目前疑似遭郵件閘道攔截或延遲放行，
+       導致同仁無法完成登入。懇請協助評估將本寄件網域加入允許清單。</p>
+
+    <p style="margin-bottom:4px"><b>寄件資訊</b></p>
+    <ul style="margin-bottom:11px">
+      <li>寄件網域：<code>psybypsy.com</code></li>
+      <li>寄件位址：<code>report@psybypsy.com</code></li>
+      <li>寄送服務商：Brevo（transactional email）</li>
+      <li>驗證狀態：SPF、DKIM、DMARC 均已於該網域完成設定並通過驗證</li>
+    </ul>
+
+    <p style="margin-bottom:4px"><b>信件用途</b></p>
+    <ul style="margin-bottom:11px">
+      <li>登入驗證碼：6 位數一次性密碼，同仁主動於登入頁請求時才寄出</li>
+      <li>每週個人回顧報告：附 PDF，一位同仁每週一封</li>
+    </ul>
+
+    <p style="margin-bottom:4px"><b>其他說明</b></p>
+    <ul style="margin-bottom:11px">
+      <li>收件對象僅限已報名本課程的同仁，非群發、非行銷性質</li>
+      <li>預估總量低於每月 100 封</li>
+      <li>信件內不含外部登入連結（僅含純文字驗證碼），以避免與貴公司的連結掃描機制衝突</li>
+    </ul>
+
+    <p>如需補充任何技術資訊或安排測試信，敬請告知，我方可全力配合。</p>
+    <p style="margin-bottom:0">謝謝您的協助。</p>
+  </div>
+
+  <div class="callout warn">
+    <span class="lbl">寄送前請確認</span>
+    <p>最後一項「信件內不含外部登入連結」的前提是 <b>P2 已完成</b>（樣板已移除 magic link）。
+       若尚未執行，請先完成 P2 再寄出本信，避免對方測試時發現與說明不符。</p>
+  </div>
+</section>
+
+<section style="page-break-inside:avoid">
+  <h2 class="sec"><span class="num">附錄 B</span>相關文件與程式位置</h2>
+  <div class="sec-line"></div>
+
+  <table>
+    <thead><tr><th style="width:42%">項目</th><th>位置</th></tr></thead>
+    <tbody>
+      <tr><td>Brevo 帳號與網域驗證設定紀錄</td><td><code>docs/brevo-setup.md</code></td></tr>
+      <tr><td>持久登入與 session 設定說明</td><td><code>docs/persistent-login.md</code></td></tr>
+      <tr><td>報告產生與寄送流程</td><td><code>docs/report-flow.md</code></td></tr>
+      <tr><td>登入頁（驗證碼與 magic link 兩條路徑）</td><td><code>src/routes/login.tsx</code></td></tr>
+      <tr><td>後端寄信（Brevo HTTP API）</td><td><code>backend/app.py</code> — <code>_mail_channel()</code>、<code>_email_report()</code></td></tr>
+      <tr><td>Email 白名單與新使用者 trigger</td><td><code>supabase/schema.sql</code> — <code>allowed_emails</code>、<code>handle_new_user()</code></td></tr>
+    </tbody>
+  </table>
+
+  <footer>
+    Email 送達問題排除計畫書 v1.0 · 2026 年 8 月 3 日 ·
+    Ipsen Taiwan × Tan Yee Ming 八週 PERMA 課程 · coach 平台
+  </footer>
+</section>
+
+</body>
+</html>

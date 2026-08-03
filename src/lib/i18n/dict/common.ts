@@ -15,6 +15,24 @@ export const common: Record<string, Translation> = {
   '已儲存': { en: 'Saved' },
   '儲存失敗，請再試一次。': { en: 'Could not save. Please try again.' },
 
+  // ── 登入密碼（個人資料頁）──
+  '登入密碼': { en: 'Sign-in password' },
+  '設定密碼後，登入頁就能用 email + 密碼直接登入，不必等驗證碼信。原本的驗證碼登入仍然可以用。': {
+    en: 'Once set, you can sign in with your email and password — no waiting for a code. Code sign-in still works.',
+  },
+  '新密碼': { en: 'New password' },
+  '至少 8 個字元': { en: 'At least 8 characters' },
+  '目前': { en: 'now' },
+  '再輸入一次': { en: 'Confirm password' },
+  '設定密碼': { en: 'Set password' },
+  '設定中…': { en: 'Setting…' },
+  '密碼已設定，下次可以直接用密碼登入': { en: 'Password set — you can sign in with it next time' },
+  '密碼至少要 8 個字元。': { en: 'Password must be at least 8 characters.' },
+  '兩次輸入的密碼不一樣。': { en: 'The two passwords do not match.' },
+  '設定失敗，請再試一次。密碼太簡單或曾經外洩過都會被拒絕。': {
+    en: 'Could not set the password. Passwords that are too weak or known to be breached are rejected.',
+  },
+
   // ── 頂部工具列 / 選單 ──
   '重新整理': { en: 'Refresh' },
   '選單': { en: 'Menu' },
