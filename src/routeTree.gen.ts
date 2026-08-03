@@ -21,6 +21,7 @@ import { Route as AppJournalRouteImport } from './routes/app.journal'
 import { Route as AppReportRouteImport } from './routes/app.report'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppWelcomeRouteImport } from './routes/app.welcome'
+import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as AppCoachIndexRouteImport } from './routes/app.coach.index'
 import { Route as AppCoachMemberIdRouteImport } from './routes/app.coach.member.$id'
 
@@ -84,6 +85,11 @@ const AppWelcomeRoute = AppWelcomeRouteImport.update({
   path: '/welcome',
   getParentRoute: () => AppRoute,
 } as any)
+const AuthCallbackRoute = AuthCallbackRouteImport.update({
+  id: '/auth/callback',
+  path: '/auth/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppCoachIndexRoute = AppCoachIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/app/report': typeof AppReportRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/welcome': typeof AppWelcomeRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/app/coach/': typeof AppCoachIndexRoute
   '/app/coach/member/$id': typeof AppCoachMemberIdRoute
 }
@@ -123,6 +130,7 @@ export interface FileRoutesByTo {
   '/app/report': typeof AppReportRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/welcome': typeof AppWelcomeRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/app/coach': typeof AppCoachIndexRoute
   '/app/coach/member/$id': typeof AppCoachMemberIdRoute
 }
@@ -140,6 +148,7 @@ export interface FileRoutesById {
   '/app/report': typeof AppReportRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/welcome': typeof AppWelcomeRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/app/coach/': typeof AppCoachIndexRoute
   '/app/coach/member/$id': typeof AppCoachMemberIdRoute
 }
@@ -158,6 +167,7 @@ export interface FileRouteTypes {
     | '/app/report'
     | '/app/settings'
     | '/app/welcome'
+    | '/auth/callback'
     | '/app/coach/'
     | '/app/coach/member/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -173,6 +183,7 @@ export interface FileRouteTypes {
     | '/app/report'
     | '/app/settings'
     | '/app/welcome'
+    | '/auth/callback'
     | '/app/coach'
     | '/app/coach/member/$id'
   id:
@@ -189,6 +200,7 @@ export interface FileRouteTypes {
     | '/app/report'
     | '/app/settings'
     | '/app/welcome'
+    | '/auth/callback'
     | '/app/coach/'
     | '/app/coach/member/$id'
   fileRoutesById: FileRoutesById
@@ -198,6 +210,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
+  AuthCallbackRoute: typeof AuthCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -286,6 +299,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWelcomeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/auth/callback': {
+      id: '/auth/callback'
+      path: '/auth/callback'
+      fullPath: '/auth/callback'
+      preLoaderRoute: typeof AuthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app/coach/': {
       id: '/app/coach/'
       path: '/'
@@ -346,6 +366,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
+  AuthCallbackRoute: AuthCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
