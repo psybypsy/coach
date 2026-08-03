@@ -44,8 +44,8 @@ export const login: Record<string, Translation> = {
   '登入中…': { en: 'Signing in…' },
   '改用密碼登入': { en: 'Use a password instead' },
   '改用 email 驗證碼登入': { en: 'Use an email code instead' },
-  '沒設定過密碼？先用驗證碼登入一次，再到「個人資料」設定密碼。': {
-    en: 'No password yet? Sign in once with an email code, then set one under Profile.',
+  '沒設定過密碼？先用預設密碼登入一次，再到「個人資料」設定你的密碼。': {
+    en: 'No password of your own yet? Sign in once with the password you were given, then set your own under Profile.',
   },
   'email 或密碼錯誤。如果你還沒設定過密碼，請改用驗證碼登入，之後到「個人資料」設定密碼。': {
     en: 'Wrong email or password. If you have not set a password yet, sign in with an email code first, then set one under Profile.',

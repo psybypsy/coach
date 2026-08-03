@@ -275,7 +275,7 @@ function LoginPage() {
                 </button>
                 <p className="mt-2 text-center text-xs leading-relaxed text-muted-foreground">
                   {mode === 'password'
-                    ? t('沒設定過密碼？先用驗證碼登入一次，再到「個人資料」設定密碼。')
+                    ? t('沒設定過密碼？先用預設密碼登入一次，再到「個人資料」設定你的密碼。')
                     : t('只有邀請名單內的 email 才能登入')}
                 </p>
               </div>
