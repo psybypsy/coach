@@ -44,6 +44,10 @@ function AppShell() {
       setDisplayName(data?.display_name ?? '')
       const coach = data?.role === 'coach'
       setIsCoach(coach)
+      // 個人資料頁不受 onboarding 導引管轄。那一頁是設定登入密碼的地方，而學員拿到
+      // 教練發的預設密碼後第一件事就是進來換成自己的密碼——這時他通常還沒填名字、
+      // 也還沒填起始分數，照原本的規則會被導去 welcome／baseline，等於永遠改不了密碼。
+      if (pathname.startsWith('/app/settings')) return
       // 首次登入尚未設定名字 → 導去歡迎頁設定；設定過就不再出現。
       if (data && !data.has_set_name && !pathname.startsWith('/app/welcome')) {
         void navigate({ to: '/app/welcome' })
@@ -159,10 +163,6 @@ function AppShell() {
               )}
               <Link
                 to="/app/settings"
-                // 一定要關掉選單：上面那層 `fixed inset-0` 的關閉遮罩是跟著 panel 狀態走的，
-                // 而換頁不會重置它（這個 layout 不會重新掛載）。不關的話遮罩會留在
-                // 個人資料頁上面蓋住整個畫面，變成「頁面點不動，隨便點一下只是把選單關掉」。
-                onClick={() => setPanel('none')}
                 className="block rounded-lg px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted"
               >
                 {/* 這一頁除了名字還有登入密碼，標成「編輯名字」的話學員找不到密碼設定 */}
