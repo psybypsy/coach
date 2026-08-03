@@ -159,6 +159,10 @@ function AppShell() {
               )}
               <Link
                 to="/app/settings"
+                // 一定要關掉選單：上面那層 `fixed inset-0` 的關閉遮罩是跟著 panel 狀態走的，
+                // 而換頁不會重置它（這個 layout 不會重新掛載）。不關的話遮罩會留在
+                // 個人資料頁上面蓋住整個畫面，變成「頁面點不動，隨便點一下只是把選單關掉」。
+                onClick={() => setPanel('none')}
                 className="block rounded-lg px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted"
               >
                 {/* 這一頁除了名字還有登入密碼，標成「編輯名字」的話學員找不到密碼設定 */}
