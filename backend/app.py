@@ -1407,11 +1407,12 @@ async def coach_report_completed_webhook(
     request: Request,
     x_report_webhook_secret: str = Header(default="", alias="X-Report-Webhook-Secret"),
 ):
-    """Supabase Database Webhook：學員把某一週的 P／E／R／M／A 全部寫完後自動產生報告。
+    """Supabase Database Webhook：學員每寫完一篇週記（P／E／R／M／A 全部填完）就自動產生報告。
 
     這條路徑存在的理由是可靠性——前端呼叫 /api/member/report 是「射後不理」，
     學員關掉分頁請求就斷了。webhook 在伺服器端跑，不受瀏覽器影響。
-    與前端呼叫共用 _ensure_member_report，兩邊都具冪等性，重複觸發不會產生兩份。
+    與前端呼叫共用 _ensure_member_report，兩邊都用 post_id 去重，同一篇週記
+    不會被前端+webhook 觸發出兩份，但同一週不同篇週記還是各自出一份。
     """
     if not REPORT_WEBHOOK_SECRET or not hmac.compare_digest(x_report_webhook_secret, REPORT_WEBHOOK_SECRET):
         raise HTTPException(status_code=401, detail="Webhook 驗證失敗")
@@ -1420,11 +1421,12 @@ async def coach_report_completed_webhook(
     record = payload.get("record") or payload.get("new") or {}
     member_id = str(record.get("user_id") or "").strip()
     week_start = str(record.get("week_start") or "").strip()
-    if not member_id or not week_start:
-        raise HTTPException(status_code=400, detail="Webhook 缺少 record.user_id 或 record.week_start")
+    post_id = str(record.get("id") or "").strip()
+    if not member_id or not week_start or not post_id:
+        raise HTTPException(status_code=400, detail="Webhook 缺少 record.user_id、record.week_start 或 record.id")
 
     try:
-        report = await _ensure_member_report(member_id, week_start, member_id)
+        report = await _ensure_member_report(member_id, week_start, member_id, post_id)
     except HTTPException as exc:
         # 這一週還沒寫滿五題是正常狀態，不是錯誤——回 200 讓 Supabase 不要重試。
         if exc.status_code == 409:
@@ -1465,7 +1467,8 @@ async def coach_weekly_reports_generate(req: CoachMemberRequest, authorization: 
     results = []
     for week_start in sorted(by_week):
         try:
-            report = await _ensure_member_report(member_id, week_start, member_id)
+            post = by_week[week_start]
+            report = await _ensure_member_report(member_id, week_start, member_id, str(post.get("id") or ""))
             results.append({
                 "week_start": week_start,
                 "week_number": report.get("week_number"),
@@ -2462,15 +2465,19 @@ async def _accumulated_sessions(user_id: str, upto_week_start: str) -> list[dict
     return out
 
 
-async def _ensure_member_report(user_id: str, week_start: str, actor_id: str) -> dict:
-    """產生（或取回）某位學員某一週的報告。三個觸發點共用這一支，且具冪等性：
+async def _ensure_member_report(user_id: str, week_start: str, actor_id: str, post_id: str) -> dict:
+    """產生（或取回）某篇週記的報告。三個觸發點共用這一支，去重單位是 post_id：
 
     1. 學員在前端填完五題後呼叫 /api/member/report
     2. Supabase Database Webhook 在週記寫入後自動觸發（不依賴瀏覽器留著）
     3. 學員在報告頁按「產生我的報告」補救先前失敗的週次
 
-    內容用 _weekly_client_analysis_system：只分析這一週、直接用第二人稱寫給
-    學員本人（含優勢與內在資源、金句），因此不需要再跑一次改寫，一週只花一次 AI 呼叫。
+    同一篇週記被前端與 webhook 兩條路徑重複觸發時只會產生一份報告；但同一週
+    學員想填幾篇週記都可以，每篇各自出一份報告、各花一次 AI 呼叫——不再是
+    「一週只出一份」。
+
+    內容用 _weekly_client_analysis_system：只分析這一篇、直接用第二人稱寫給
+    學員本人（含優勢與內在資源、金句），因此不需要再跑一次改寫。
 
     第 4、8 週產生的是草稿（pending_coach）——學員看不到，也不寄信，
     等教練在後台親自編輯確認後按「發布」才轉成 published。
@@ -2479,13 +2486,13 @@ async def _ensure_member_report(user_id: str, week_start: str, actor_id: str) ->
     if week_number < 1:
         raise HTTPException(status_code=400, detail="這一週在課程開始之前")
 
-    # 已經有這週的報告就直接回傳，不重複花錢跑分析。
+    # 已經有這篇週記的報告就直接回傳，不重複花錢跑分析。
     existing_resp = await db().get(
         f"{SUPABASE_REST}/member_reports",
         headers=SUPABASE_HEADERS,
         params=[
             ("user_id", f"eq.{user_id}"),
-            ("week_start", f"eq.{week_start}"),
+            ("post_id", f"eq.{post_id}"),
             ("select", "*"),
             ("limit", "1"),
         ],
@@ -2503,16 +2510,16 @@ async def _ensure_member_report(user_id: str, week_start: str, actor_id: str) ->
             and report.get("email_error")
         ):
             _spawn_background(_email_report(report))
-        # 報告已存在也要檢查教練端分析是否落後：學員某一週的報告可能早就產生過
+        # 報告已存在也要檢查教練端分析是否落後：學員某篇週記的報告可能早就產生過
         # （重複觸發、或由別的路徑補產生），但那時 coach_analyses 沒跟著更新。
         # 只有真的落後才會花 AI 費用，見 _coach_analysis_is_stale。
         _spawn_background(_auto_refresh_coach_analysis(user_id))
         return report
 
     posts = await _fetch_member_posts(user_id)
-    post = next((p for p in posts if str(p.get("week_start") or "") == week_start), None)
+    post = next((p for p in posts if str(p.get("id") or "") == post_id), None)
     if not post:
-        raise HTTPException(status_code=409, detail="這一週還沒有週記")
+        raise HTTPException(status_code=409, detail="找不到這篇週記")
     if not all(str(post.get(f"{k.lower()}_content") or "").strip() for k in _PERMA_KEYS):
         raise HTTPException(status_code=409, detail="這一週的 P／E／R／M／A 還沒全部完成")
 
@@ -2552,7 +2559,7 @@ async def _ensure_member_report(user_id: str, week_start: str, actor_id: str) ->
     saved = insert_resp.json()[0]
     # 教練端的深度分析跟著一起重跑，教練不必手動點「重新生成分析」。
     # 放在這裡（而非 webhook 或前端）是因為三個觸發點都走這支，且上面已經
-    # 用「報告已存在就直接回傳」擋掉重複，所以只有真的新增一週才會多花一次分析。
+    # 用「報告已存在就直接回傳」擋掉重複，所以只有真的新增一篇週記才會多花一次分析。
     _spawn_background(_auto_refresh_coach_analysis(user_id))
     # 自動發布的週次才寄信；第 4／8 週等教練按「發布給學員」時才寄。
     # 用 create_task 讓寄信在背景執行、不 await——Render 對外的 SMTP 連線
@@ -2567,6 +2574,7 @@ async def _ensure_member_report(user_id: str, week_start: str, actor_id: str) ->
 
 class MemberReportRequest(BaseModel):
     week_start: str  # 該週的週一（YYYY-MM-DD）
+    post_id: str  # 剛送出的那篇週記；報告去重的單位，見 _ensure_member_report
 
 
 @app.post("/api/member/report")
@@ -2574,14 +2582,14 @@ class MemberReportRequest(BaseModel):
 async def member_report(
     request: Request, req: MemberReportRequest, authorization: str = Header(...)
 ):
-    """學員填完當週五題後產生自己的 PERMA 報告。"""
+    """學員填完週記後產生這篇的 PERMA 報告。"""
     token = authorization.removeprefix("Bearer ").strip()
     user_id = await get_user_id(token)
     try:
         _program_week_number(req.week_start)
     except ValueError:
         raise HTTPException(status_code=400, detail="週次日期格式錯誤")
-    return await _ensure_member_report(user_id, req.week_start, user_id)
+    return await _ensure_member_report(user_id, req.week_start, user_id, req.post_id)
 
 
 

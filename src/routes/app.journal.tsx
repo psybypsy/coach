@@ -116,27 +116,31 @@ function JournalWizard() {
       }
 
       // 2) 寫入 1 列 journal_posts（社群牆的一則週記合併貼文，同一週可多則）。
-      const { error: postError } = await supabase.from('journal_posts').insert({
-        user_id: userId,
-        week_start: weekStart,
-        p_content: answers.P.trim(),
-        e_content: answers.E.trim(),
-        r_content: answers.R.trim(),
-        m_content: answers.M.trim(),
-        a_content: answers.A.trim(),
-        is_public: isPublic,
-        visibility,
-        anon_alias: visibility === 'anonymous' ? anonAlias : null,
-      })
+      const { data: postRow, error: postError } = await supabase
+        .from('journal_posts')
+        .insert({
+          user_id: userId,
+          week_start: weekStart,
+          p_content: answers.P.trim(),
+          e_content: answers.E.trim(),
+          r_content: answers.R.trim(),
+          m_content: answers.M.trim(),
+          a_content: answers.A.trim(),
+          is_public: isPublic,
+          visibility,
+          anon_alias: visibility === 'anonymous' ? anonAlias : null,
+        })
+        .select('id')
+        .single()
       if (postError) {
         throw new Error(`Failed to save post: ${postError.message}`)
       }
 
       clearDraft(userId, weekStart)
-      // 觸發本週報告生成後就先去社群（分析要跑約半分鐘，不讓使用者空等）。
+      // 觸發這篇週記的報告生成後就先去社群（分析要跑約半分鐘，不讓使用者空等）。
       // 失敗不影響發布本身——報告完成後會自動出現在「我的報告」，也會自動寄信；
       // 萬一真的沒觸發成功，「我的報告」頁面有補救按鈕。
-      void requestWeeklyReport(weekStart)
+      void requestWeeklyReport(weekStart, postRow.id)
       void navigate({ to: '/app/community' })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
