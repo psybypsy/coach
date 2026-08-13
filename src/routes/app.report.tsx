@@ -105,7 +105,7 @@ function ReportPage() {
     const doneWeeks = new Set(list.map((r) => r.week_start))
     const journalWeeks = [...new Set(((posts as { week_start: string }[] | null) ?? []).map((p) => p.week_start))]
     const missing = journalWeeks
-      .filter((w) => !doneWeeks.has(w) && !needsCoachReview(programWeekNumber(w)))
+      .filter((w) => !doneWeeks.has(w) && programWeekNumber(w) >= 1 && !needsCoachReview(programWeekNumber(w)))
       .sort((a, b) => b.localeCompare(a))
     setMissingWeeks(missing)
     setLoading(false)
