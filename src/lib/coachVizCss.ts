@@ -62,8 +62,13 @@ export const COACH_VIZ_CSS = `
 .cv-md{font-size:13px;line-height:1.8;color:#2B3440}
 .cv-md p{margin:0 0 9px}
 .cv-md h2,.cv-md h3{font-size:14px;font-weight:800;margin:13px 0 6px;color:#1C2530}
-.cv-md strong{font-weight:800;color:#8A6A26}
+.cv-md strong{font-weight:800;color:#1F3A5C}
 .cv-md em{color:#54606E}
+/* 報告內文只有兩種強調，顏色對應語意而不是輕重：
+   strong（面向標題、優勢名稱）＝深藍，系統寫的結構標籤；
+   .cv-q（mdToHtml 的 markQuotes）＝金色，學員自己說的話，全篇唯一的暖色。
+   兩者都用 800，靠色相區分；同色不同粗在中文字級下分不出來。 */
+.cv-q{color:#8A6A26;font-weight:800}
 .cv-block-actions{display:flex;gap:8px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid #E2E5EA;justify-content:space-between}
 .cv-block-edit{font-size:11.5px;font-weight:700;color:#1F3A5C;cursor:pointer}
 .cv-block-edit:hover{text-decoration:underline}
@@ -80,7 +85,7 @@ export const COACH_VIZ_CSS = `
 .cv-doc h2{font-size:16px;font-weight:800;margin:20px 0 8px;padding-bottom:6px;border-bottom:1px solid #E2E5EA}
 .cv-doc h3{font-size:14px;font-weight:800;margin:16px 0 6px}
 .cv-doc p{margin:0 0 12px;font-size:14px}
-.cv-doc strong{font-weight:800;color:#8A6A26}
+.cv-doc strong{font-weight:800;color:#1F3A5C}
 .cv-doc-sign{margin-top:26px;padding-top:16px;border-top:1px solid #E2E5EA;font-size:13px;color:#54606E}
 .cv-doc-charts{margin-top:8px;font-family:-apple-system,'PingFang TC','Noto Sans TC',sans-serif}
 /* 客戶文件內的圖表要縮進頁寬，避免 PDF／Word 右側被裁切、比例跑掉。

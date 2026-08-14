@@ -12,6 +12,7 @@ export const Route = createFileRoute('/app/coach/')({
 interface MemberRow {
   id: string
   display_name: string
+  totalCount: number
   weekCount: number
   lastEntryAt: string | null
 }
@@ -21,6 +22,7 @@ function CoachDashboard() {
   const navigate = useNavigate()
   const [checking, setChecking] = useState(true)
   const [members, setMembers] = useState<MemberRow[]>([])
+  const [totalAll, setTotalAll] = useState(0)
   const [totalThisWeek, setTotalThisWeek] = useState(0)
   const [dimDist, setDimDist] = useState<Record<DimensionKey, number>>({ P: 0, E: 0, R: 0, M: 0, A: 0 })
   const [loading, setLoading] = useState(true)
@@ -73,51 +75,59 @@ function CoachDashboard() {
   async function load() {
     setLoading(true)
 
-    // 全部指標改以 journal_posts（每次週記＝1 列）為真實來源：
-    // - 本週全群書寫＝本週週記篇數（不再把一次書寫算成 5 列 perma_entries）
-    // - 五維度分布＝本週各面向實際書寫的字數量（因為每篇都必填 5 題，用「篇數」永遠是平的，
-    //   改用字數才反映這週大家在哪個面向著墨最深）
-    const [{ data: profileRows }, { data: weekPosts }, { data: recentPosts }] = await Promise.all([
+    // 全部指標改以 journal_posts（每次週記＝1 列）為真實來源，且一律以「全部歷史」為主、
+    // 「本週」為輔——教練一打開儀表板，最先看到的應該是累計進度，不是本週還沒交的 0。
+    // 不加 limit：500 筆上限會低估開課較久的梯次。
+    const [{ data: profileRows }, { data: allPosts }] = await Promise.all([
       supabase.from('profiles').select('id,display_name').eq('role', 'member').order('display_name'),
       supabase
         .from('journal_posts')
-        .select('user_id,p_content,e_content,r_content,m_content,a_content')
-        .gte('created_at', `${weekStart}T00:00:00`)
-        .lte('created_at', `${weekEnd}T23:59:59`),
-      supabase
-        .from('journal_posts')
-        .select('user_id,created_at')
-        .order('created_at', { ascending: false })
-        .limit(500),
+        .select('user_id,created_at,p_content,e_content,r_content,m_content,a_content')
+        .order('created_at', { ascending: false }),
     ])
 
     // 只統計「成員」的書寫（排除教練自己等非成員），全群數字才正確。
     const memberIds = new Set((profileRows ?? []).map((p) => p.id))
-    const weekCountByUser: Record<string, number> = {}
-    const dist: Record<DimensionKey, number> = { P: 0, E: 0, R: 0, M: 0, A: 0 }
-    let totalThisWeekMembers = 0
     const len = (s: string | null) => (s ?? '').replace(/\s/g, '').length
-    for (const p of weekPosts ?? []) {
+
+    // created_at 是 timestamptz，PostgREST 一律回 UTC；weekStart／weekEnd 則是本機（UTC+8）
+    // 的日期。直接把兩者當字串比會整整差 8 小時——台灣時間週一 00:00–07:59 寫的那幾篇，
+    // UTC 還停在週日，會被算進上一週（而週一早上正是最常補寫週記的時段）。
+    // 先用不帶 Z 的字串建 Date（會依本機時區解析），再 toISOString() 換成同一個 UTC 瞬間。
+    const weekStartUtc = new Date(`${weekStart}T00:00:00`).toISOString()
+    const weekEndUtc = new Date(`${weekEnd}T23:59:59.999`).toISOString()
+    const isThisWeek = (createdAt: string) => createdAt >= weekStartUtc && createdAt <= weekEndUtc
+
+    const totalCountByUser: Record<string, number> = {}
+    const weekCountByUser: Record<string, number> = {}
+    const lastEntryByUser: Record<string, string> = {}
+    const dist: Record<DimensionKey, number> = { P: 0, E: 0, R: 0, M: 0, A: 0 }
+    let totalAllMembers = 0
+    let totalThisWeekMembers = 0
+    for (const p of allPosts ?? []) {
       if (!memberIds.has(p.user_id)) continue
-      totalThisWeekMembers += 1
-      weekCountByUser[p.user_id] = (weekCountByUser[p.user_id] ?? 0) + 1
+      totalAllMembers += 1
+      totalCountByUser[p.user_id] = (totalCountByUser[p.user_id] ?? 0) + 1
+      if (!lastEntryByUser[p.user_id]) lastEntryByUser[p.user_id] = p.created_at
+      // 五維度分布看全部歷史的字數量（因為每篇都必填 5 題，用「篇數」永遠是平的）。
       dist.P += len(p.p_content)
       dist.E += len(p.e_content)
       dist.R += len(p.r_content)
       dist.M += len(p.m_content)
       dist.A += len(p.a_content)
+      if (isThisWeek(p.created_at)) {
+        totalThisWeekMembers += 1
+        weekCountByUser[p.user_id] = (weekCountByUser[p.user_id] ?? 0) + 1
+      }
     }
     setDimDist(dist)
     setTotalThisWeek(totalThisWeekMembers)
-
-    const lastEntryByUser: Record<string, string> = {}
-    for (const e of recentPosts ?? []) {
-      if (!lastEntryByUser[e.user_id]) lastEntryByUser[e.user_id] = e.created_at
-    }
+    setTotalAll(totalAllMembers)
 
     const rows: MemberRow[] = (profileRows ?? []).map((p) => ({
       id: p.id,
       display_name: p.display_name,
+      totalCount: totalCountByUser[p.id] ?? 0,
       weekCount: weekCountByUser[p.id] ?? 0,
       lastEntryAt: lastEntryByUser[p.id] ?? null,
     }))
@@ -140,24 +150,29 @@ function CoachDashboard() {
         <>
           <section className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
             <div className="rounded-xl border border-border bg-card p-4 shadow-soft">
-              <p className="text-xs text-muted-foreground">{t('本週全群書寫')}</p>
-              <p className="font-heading mt-1 text-2xl text-foreground">{totalThisWeek}</p>
+              <p className="text-xs text-muted-foreground">{t('全群總篇數')}</p>
+              <p className="font-heading mt-1 text-2xl text-foreground">{totalAll}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {t('本週')} {totalThisWeek}
+              </p>
             </div>
             <div className="col-span-2 rounded-xl border border-border bg-card p-4 shadow-soft sm:col-span-2">
-              <p className="mb-2 text-xs text-muted-foreground">{t('五維度分布')}</p>
-              <div className="flex items-end gap-3">
+              <p className="mb-2 text-xs text-muted-foreground">
+                {t('五維度分布')}（{t('累計')}・{t('字數')}）
+              </p>
+              <div className="flex items-end justify-center gap-5">
                 {DIMENSION_ORDER.map((key) => {
                   const dim = DIMENSION_CONFIGS[key]
                   const max = Math.max(1, ...Object.values(dimDist))
                   const height = 8 + (dimDist[key] / max) * 40
                   return (
-                    <div key={key} className="flex flex-col items-center gap-1">
+                    <div key={key} className="flex w-14 flex-col items-center gap-1">
                       <div
                         className={`w-6 rounded-t ${dim.bgMed}`}
                         style={{ height: `${height}px` }}
                       />
-                      <span className={`text-[11px] font-semibold ${dim.textColor}`}>
-                        {language === 'en' ? key : dim.label.slice(0, 1)}
+                      <span className={`text-center text-[11px] font-semibold leading-tight ${dim.textColor}`}>
+                        {language === 'en' ? dim.sublabel : dim.label}
                       </span>
                       <span className="text-[10px] text-muted-foreground">{dimDist[key]}</span>
                     </div>
@@ -172,6 +187,7 @@ function CoachDashboard() {
               <thead>
                 <tr className="border-b border-border text-xs text-muted-foreground">
                   <th className="px-4 py-3 font-medium">{t('成員')}</th>
+                  <th className="px-4 py-3 font-medium">{t('總篇數')}</th>
                   <th className="px-4 py-3 font-medium">{t('本週篇數')}</th>
                   <th className="px-4 py-3 font-medium">{t('最近書寫')}</th>
                 </tr>
@@ -184,6 +200,7 @@ function CoachDashboard() {
                         {m.display_name}
                       </Link>
                     </td>
+                    <td className="px-4 py-3 text-foreground-soft">{m.totalCount}</td>
                     <td className="px-4 py-3 text-foreground-soft">{m.weekCount}</td>
                     <td className="px-4 py-3 text-foreground-soft">
                       {m.lastEntryAt ? new Date(m.lastEntryAt).toLocaleDateString(language === 'en' ? 'en-US' : 'zh-TW') : '—'}

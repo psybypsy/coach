@@ -488,6 +488,9 @@ _MEMBER_CHART_DEFAULTS = {**_CLIENT_CHART_DEFAULTS, "cloud": True}
 PROGRAM_WEEK_1_START = "2026-07-27"
 PROGRAM_WEEK_2_START = "2026-08-10"
 COACH_REVIEW_WEEKS = {4, 8}
+# 課程總長度（與前端 src/lib/week.ts 的 PROGRAM_TOTAL_WEEKS 一致）。
+# 最後一週的信不該再說「下週見」，所以寄信時要看得到這個數字。
+PROGRAM_TOTAL_WEEKS = 8
 
 
 def _program_week_number(week_start: str) -> int:
@@ -782,6 +785,32 @@ def _plain_markdown(value: str) -> str:
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     text = re.sub(r"(?<!\*)\*(.+?)\*(?!\*)", r"\1", text)
     return text.strip()
+
+
+# PDF 內文的兩種強調，與網頁報告（coachVizCss 的 .cv-doc strong / .cv-q）用同一組色：
+# 深藍＝系統寫的標籤，金色＝學員自己說的話。
+# 六字門檻與前端 markQuotes 一致——AI 拿引號當強調時幾乎都是兩三個字，那些不是原話。
+# （信件的 _member_quotes 用更嚴的十字，理由見那支函式：信裡沒有上下文。）
+_PDF_LABEL_COLOR = "#1F3A5C"
+_PDF_QUOTE_COLOR = "#8A6A26"
+
+
+def _pdf_markdown_lines(value: str) -> list[str]:
+    """PDF 用的行陣列：只脫掉標題符號，保留 ** 與 「」 交給 _pdf_inline 上色。"""
+    return re.sub(r"^#{1,3}\s+", "", value or "", flags=re.MULTILINE).strip().split("\n")
+
+
+def _pdf_inline(text: str) -> str:
+    """一行 Markdown → reportlab 的 inline 標記（跳脫也在這裡做，呼叫端不要再 escape）。
+
+    * 斜體 * 只脫掉星號：NotoSansTC 沒有斜體字重，reportlab 也沒有字型 fallback，
+    真的送 <i> 只會拿到假斜體或缺字。
+    """
+    out = html.escape(text)
+    out = re.sub(r"\*\*(.+?)\*\*", rf'<font color="{_PDF_LABEL_COLOR}"><b>\1</b></font>', out)
+    out = re.sub(r"(?<!\*)\*(?!\*)(.+?)\*(?!\*)", r"\1", out)
+    out = re.sub(r"「([^」]{6,})」", rf'<font color="{_PDF_QUOTE_COLOR}"><b>「\1」</b></font>', out)
+    return out
 
 
 async def _member_identity(member_id: str) -> tuple[str, str]:
@@ -1215,6 +1244,26 @@ def _build_weekly_report_pdf(
     except KeyError:
         pdfmetrics.registerFont(TTFont(font_name, font_path))
 
+    bold_font_name = "NotoSansTC-Bold"
+    bold_font_path = os.path.join(os.path.dirname(__file__), "assets", "fonts", "NotoSansTC-Bold.ttf")
+    try:
+        pdfmetrics.getFont(bold_font_name)
+    except KeyError:
+        try:
+            pdfmetrics.registerFont(TTFont(bold_font_name, bold_font_path))
+        except Exception as exc:
+            # 粗體字型檔沒跟著部署上去時，整份 PDF 不該就這樣生不出來（沒 PDF 就沒信）。
+            # 退回 Regular：顏色照樣有，只是粗細沒了，至少學員拿得到報告。
+            logger.warning("粗體字型載入失敗，PDF 改用 Regular [%s]: %s", type(exc).__name__, exc)
+            bold_font_name = font_name
+
+    # <b> 要有 family 對應才會換到粗體檔，否則 reportlab 會拿 Regular 硬畫假粗體。
+    # 沒有斜體檔，italic 一律指回 Regular。
+    pdfmetrics.registerFontFamily(
+        font_name, normal=font_name, bold=bold_font_name,
+        italic=font_name, boldItalic=bold_font_name,
+    )
+
     # NotoSansTC 是繁中字型，少數「簡體專用」字（例：鹏 U+9E4F、陈 U+9648）不在字符集裡，
     # reportlab 沒有字型 fallback，缺字會靜靜地畫成空白方框 ▯。這裡至少讓它留下紀錄，
     # 不然學員名字變成方框也沒人會發現。要根治得換成同時涵蓋繁簡的 Noto Sans CJK。
@@ -1252,7 +1301,7 @@ def _build_weekly_report_pdf(
     dims = session.get("dims") or {}
 
     quote_style = ParagraphStyle(
-        "WeeklyQuoteZH", parent=body, fontSize=12, leading=20, alignment=TA_CENTER,
+        "WeeklyQuoteZH", parent=body, fontName=bold_font_name, fontSize=12, leading=20, alignment=TA_CENTER,
         textColor=colors.HexColor("#1F3A5C"), spaceBefore=8, spaceAfter=8,
         leftIndent=10 * mm, rightIndent=10 * mm, borderPadding=6,
         backColor=colors.HexColor("#F1F4F8"),
@@ -1289,37 +1338,37 @@ def _build_weekly_report_pdf(
         story.extend([Paragraph("本週情緒詞雲", heading), wordcloud, Spacer(1, 4 * mm)])
 
     story.append(Paragraph("本週 PERMA 五面向回顧", heading))
-    for raw_line in _plain_markdown(str(block.get("body") or "")).split("\n"):
+    for raw_line in _pdf_markdown_lines(str(block.get("body") or "")):
         line = raw_line.rstrip()
         if not line.strip():
             continue
         indent = len(line) - len(line.lstrip())
         text = line.strip()
         if text.startswith(">"):  # 金句：置中、淺底色框，作為整份報告的收束
-            story.append(Paragraph(html.escape(text.lstrip("> ").strip()), quote_style))
+            story.append(Paragraph(_pdf_inline(text.lstrip("> ").strip()), quote_style))
         elif text.startswith("- ") and indent >= 2:  # 縮排子條列＝該面向的具體觀察
-            story.append(Paragraph("・" + html.escape(text[2:].strip()), sub_style))
+            story.append(Paragraph("・" + _pdf_inline(text[2:].strip()), sub_style))
         elif text.startswith("- "):  # 面向標籤
-            story.append(Paragraph(html.escape(text[2:].strip()), dim_style))
+            story.append(Paragraph(_pdf_inline(text[2:].strip()), dim_style))
         else:
-            story.append(Paragraph(html.escape(text), body))
+            story.append(Paragraph(_pdf_inline(text), body))
 
     # 優勢與內在資源（取自教練深度分析，跨全部週）；有內容才附上
     if strengths_body.strip():
         story.append(Spacer(1, 4 * mm))
         story.append(Paragraph("優勢與內在資源", heading))
-        for raw_line in _plain_markdown(strengths_body).split("\n"):
+        for raw_line in _pdf_markdown_lines(strengths_body):
             line = raw_line.rstrip()
             if not line.strip():
                 continue
             indent = len(line) - len(line.lstrip())
             text = line.strip()
             if text.startswith("- ") and indent >= 2:
-                story.append(Paragraph("・" + html.escape(text[2:].strip()), sub_style))
+                story.append(Paragraph("・" + _pdf_inline(text[2:].strip()), sub_style))
             elif text.startswith("- "):
-                story.append(Paragraph(html.escape(text[2:].strip()), dim_style))
+                story.append(Paragraph(_pdf_inline(text[2:].strip()), dim_style))
             else:
-                story.append(Paragraph(html.escape(text), body))
+                story.append(Paragraph(_pdf_inline(text), body))
 
     story.extend([
         Spacer(1, 6 * mm),
@@ -1361,22 +1410,207 @@ def _weekly_email_subject(week_number: int) -> str:
     return f"你的第 {week_number} 週 PERMA 幸福感回顧"
 
 
-def _weekly_email_html(member_name: str, report_url: str = "") -> str:
-    """每週報告的信件內文（教練提供的固定模板）。
-    預覽與實際寄送共用這個函式，確保教練看到的就是學員收到的。"""
+def _member_quotes(body_md: str, limit: int = 3) -> list[str]:
+    """從報告內文抽出 AI 引用的學員原話（「」裡的內容）。
+
+    分析的 prompt 要求每一點觀察都要引用原話當證據，所以這些引號裡的字就是學員
+    自己寫的句子。抽出來放進信裡，收信的人一眼就知道這封信是讀過他的東西才寫的。
+
+    門檻比報告畫面上的標記（六字）嚴：信裡只放三句、又沒有上下文，抽到
+    「當下怎麼回的」這種半截片語會讓整封信顯得是機器湊的，正好毀掉這段要的效果。
+    十個字以上才收得到完整的意思。
+
+    抽到超過 limit 句時平均取樣，讓引用橫跨 P/E/R/M/A 而不是全擠在第一個面向。
+    """
+    seen: list[str] = []
+    for raw in re.findall(r"「([^」]+)」", body_md or ""):
+        q = raw.strip()
+        if len(q) < 10 or q in seen:
+            continue
+        seen.append(q)
+    if len(seen) <= limit:
+        return seen
+    step = len(seen) / limit
+    return [seen[int(i * step)] for i in range(limit)]
+
+
+def _weekly_email_note_system() -> str:
+    """信件開頭那段短文的 prompt。刻意與報告分析分開：報告是分析，這段是「有人讀過你」。"""
+    return """你是教練 Yee Ming Tan 的信件寫手。你會收到一位成員這一週的 PERMA 週記原文。
+請寫一段放在每週報告信件開頭的短文，讓他一讀就知道這封信是有人真的讀完他寫的東西才寄出的，而不是群發。
+
+長度：120 到 160 個字（含標點），三到四句話。寫完數一次，明顯超出就刪掉一句再回。
+
+規則：
+- **以他這週寫的其中一件事為主軸**，挑最具體、最有畫面的那一件。
+  另一件事如果和它真的有關聯（是它的原因、後果或對照），可以帶進來一起講；
+  但不要五個面向各提一句，那會變成摘要，不是一段話。
+- 寄件方一律自稱「我們」、稱呼他用「你」，與信件其餘段落一致。
+- **不要描述我們的感受或喜好**：「我們喜歡這種細節」「我們很感動」「讀著特別鮮明」這類寫法把重量放錯地方，
+  他要的是自己被看見，不是知道我們的心情。要點出一個細節值得停留，就寫「這種細節很值得留意」
+  「這一點值得記著」這種把主詞交還給他的說法。
+- 自然融入一句他自己寫過的話，用「」標出來。引號裡逐字照抄他的原文，一個字都不能改寫或潤飾。
+- 他寫的是每週的 PERMA 書寫（週記），不是寫信給我們。不要出現「你在信裡」「你信中提到」這類說法。
+- 只寫他真的寫過的事，不補充、不推測、不延伸他沒提到的內容。
+- 不提問、不給建議、不評好壞、不下診斷、不用勵志口號、不使用任何 emoji。
+- 一段到底：不分段、不條列、不下標題、不加結尾祝福（信件後面已經有了）。
+- 只回傳這段文字本身，不要前言、不要標題，也不要用引號把整段包起來。
+
+語言：繁體中文（台灣）。"""
+
+
+# prompt 要的是 120–160 字。這個上限刻意留了緩衝：實測輸出穩定落在 170 上下，
+# 卡太緊等於每封信都重跑一次、白付一次 AI 費用，只有真的失控（實測看過 213 字）才值得重試。
+# 軟上限——超過也只是多試一次，不會讓整段被丟掉（見 _weekly_email_note）。
+_EMAIL_NOTE_MAX_CHARS = 190
+
+
+def _quotes_are_verbatim(note: str, material: str) -> list[str]:
+    """回傳短文裡「」內容不是原文逐字照抄的那幾句（空表示全部對得上）。
+
+    prompt 已經明令不得改寫，但實測還是會出現「去年那套衛教素材…」被寫成
+    「這套衛教素材…」這種順手潤飾。學員讀到自己名下一句沒說過的話，這段就從
+    「有人讀過我」變成「這是機器編的」，比長度超標嚴重得多，所以要程式端把關。
+
+    比對前把空白全部去掉：模型偶爾會在中英之間補空格，那不算改寫。
+    """
+    source = re.sub(r"\s", "", material)
+    return [q for q in re.findall(r"「([^」]+)」", note) if re.sub(r"\s", "", q) not in source]
+
+
+async def _weekly_email_note(post: dict | None, body_md: str, actor_id: str) -> str:
+    """把他這週寫的東西整理成一段短文，當作信件開頭。
+
+    素材優先用週記原文（他自己的字）；沒有才退回報告內文，那裡面也引用了他的原話。
+
+    每次呼叫都會重寫一次，所以教練預覽與實際寄出的用字可能略有出入（同一份素材、
+    同一個 prompt，講的事情會一樣）。sonnet-5 已經不吃 temperature，沒辦法完全固定。
+
+    兩道把關，寬嚴不同：
+
+    - 引號逐字比對原文（_quotes_are_verbatim）是**硬條件**。改寫過就重跑，
+      兩次都不合格就放棄這段，因為一句他沒說過的話會毀掉整封信的可信度。
+    - 長度是**軟條件**。超過 _EMAIL_NOTE_MAX_CHARS 會再試一次看看有沒有更短的，
+      但第二次還是太長就照用——內容正確而稍長，仍然遠勝退回罐頭條列。
+
+    呼叫本身失敗則回空字串，信件自動退回原話條列版，寄信不因為這段而中斷。
+    """
+    if post:
+        material = _posts_dump([post])
+    elif body_md.strip():
+        material = body_md
+    else:
+        return ""
+
+    too_long = ""  # 引言合格但超長的版本，留著當第二次也不理想時的備案
+    for attempt in range(2):
+        try:
+            msg = await claude().messages.create(
+                model=_COACH_ANALYSIS_MODEL,
+                max_tokens=500,
+                thinking={"type": "disabled"},
+                system=_weekly_email_note_system(),
+                messages=[{"role": "user", "content": f"成員這一週的書寫：\n\n{material}"}],
+            )
+            meter_claude("member-weekly-email-note", _COACH_ANALYSIS_MODEL, msg.usage, actor_id)
+        except Exception as exc:
+            logger.warning("信件短文產生失敗，改用原話條列 [%s]: %s", type(exc).__name__, exc)
+            return too_long
+
+        note = re.sub(r"\s*\n\s*", "", _msg_text(msg)).strip()
+        bad = _quotes_are_verbatim(note, material)
+        if bad:
+            logger.warning(
+                "信件短文的引言不是原文（第 %s 次）：%s", attempt + 1, "／".join(bad)[:200]
+            )
+            continue
+        if len(re.sub(r"\s", "", note)) <= _EMAIL_NOTE_MAX_CHARS:
+            return note
+        too_long = too_long or note
+    return too_long
+
+
+def _email_mark_quotes(text: str) -> str:
+    """信件內文的「原話」上金色粗體，與報告畫面、PDF 同一套視覺語言。"""
+    return re.sub(
+        r"「([^」]{6,})」",
+        rf'<b style="color:{_PDF_QUOTE_COLOR};">「\1」</b>',
+        html.escape(text),
+    )
+
+
+def _weekly_email_html(
+    member_name: str, report_url: str = "", body_md: str = "", note: str = "",
+    week_number: int = 0,
+) -> str:
+    """每週報告的信件內文。預覽與實際寄送共用這個函式。
+
+    整封信是繞著中間那段短文寫的：道謝一句，短文講他這週的一件事，
+    結尾從那件事走回附件與下一週。所以開頭刻意不寫「這是很扎實的開始」那類通用鼓勵——
+    那句話擺在一段真的讀過他的文字前面，只會顯得前面是客套。
+
+    也刻意不預告那段短文（「我們讀過了，有一段想先跟你說：」之類）：預告的主詞是我們，
+    等於讓他先讀一句關於我們的話，才讀到關於他的話。短文自己就是開場，不需要人引薦。
+
+    個人化的那一段有三個層級，由高到低退：
+
+    1. note（_weekly_email_note 產的 120–160 字短文）—— 讀起來像有人替他寫的
+    2. body_md 裡的原話條列 —— AI 呼叫失敗時的備援，至少還是他自己的字
+    3. 兩個都沒有 —— 開頭那句改回通用說法，不留空區塊
+
+    信件樣式一律寫成 inline style——Gmail 等客戶端會把 <style> 丟掉。
+    """
+    week_label = f"第 {week_number} 週" if week_number else "本週"
+
+    lead = f"<p>謝謝你完成{week_label}的書寫。</p>"
+    if note:
+        personal_block = f'<p style="line-height:1.9;">{_email_mark_quotes(note)}</p>'
+    else:
+        personal_block = (
+            "<p>我們花了些時間讀完你這一週留下的紀錄，也從中看到了一些日常裡幸福感起伏的痕跡。</p>"
+        )
+        quotes = _member_quotes(body_md)
+        if quotes:
+            lines = "".join(
+                '<div style="border-left:3px solid #8A6A26;padding:2px 0 2px 14px;margin:10px 0;'
+                'color:#8A6A26;font-weight:700;line-height:1.8;">'
+                f"「{html.escape(q)}」</div>"
+                for q in quotes
+            )
+            personal_block += f"<p>其中有幾句是你自己寫下的，我們讀的時候停了一下：</p>{lines}"
+
     link = (
         f'<p>也可以直接在網站上看：<a href="{html.escape(report_url)}">{html.escape(report_url)}</a></p>'
         if report_url
         else ""
     )
+
+    # 最後一週不再說「下週見」、也不再預告下次書寫——那時候課程已經結束了。
+    is_last_week = bool(week_number) and week_number >= PROGRAM_TOTAL_WEEKS
+    next_week_block = (
+        "" if is_last_week
+        else "<p>下週的五個問題會在同一個地方等你。</p>"
+    )
+    # 署名前的最後一句鼓勵。刻意寫成降低門檻，而不是「加油」「繼續保持」那類要求——
+    # 學員每週都要再寫一次，聽到的如果是期待，下一週就會變成一件有壓力的事。
+    encouragement = (
+        "八週的紀錄都在你手上了。哪一週想起什麼，回來翻翻就好。"
+        if is_last_week
+        else "不用每次都寫得完整——記得住的那件事，寫下來就已經夠了。"
+    )
+    closing = "謝謝你這八週的書寫，" if is_last_week else "下週見，"
+
+    # 報告結尾那句金句不進信裡：它是報告的收束，放進信會變成第二個結尾，
+    # 跟前面的短文搶同一個位置。學員打開附件就會讀到它。
     return f"""
     <p>{html.escape(member_name)}，你好：</p>
-    <p>謝謝你完成本週的 PERMA 書寫，這是很扎實的開始。</p>
-    <p>我們花了些時間讀完你這一週留下的紀錄，也從中看到了一些日常裡幸福感起伏的痕跡。</p>
-    <p>我們也整理了這週幸福感的變化趨勢（見附件），供你參考。建議你自己重新翻閱時，可以帶著兩個問題去看：這一週最讓你有感的收穫是什麼？如果重來一次，有沒有哪個部分想試著調整？</p>
-    <p>也提醒你，下週記得同步填寫 PERMA 的覺察練習，讓紀錄能更完整。</p>
+    {lead}
+    {personal_block}
+    <p>完整的{week_label}回顧放在附件的 PDF 裡：五個面向的觀察、你這週和起始狀態的比較，還有情緒的變化趨勢。你自己重看的時候，可以帶著兩個問題：這一週最讓你有感的收穫是什麼？如果重來一次，有沒有哪個部分想試著調整？</p>
+    {next_week_block}
     {link}
-    <p>一切安好，<br>{html.escape(EMAIL_SIGNATURE)}</p>
+    <p>{encouragement}</p>
+    <p>{closing}<br>{html.escape(EMAIL_SIGNATURE)}</p>
     """
 
 
@@ -1692,7 +1926,21 @@ async def coach_weekly_report_preview(req: CoachWeeklyPreviewRequest, authorizat
         "recipient_name": name,
         "recipient_email": email,
         "subject": _weekly_email_subject(week_number),
-        "email_html": _weekly_email_html(name, f"{APP_BASE_URL}/app/report"),
+        "email_html": _weekly_email_html(
+            name,
+            f"{APP_BASE_URL}/app/report",
+            str(row.get("body_md") or ""),
+            await _weekly_email_note(
+                next(
+                    (p for p in await _fetch_member_posts(req.member_id)
+                     if str(p.get("week_start") or "") == req.week_start),
+                    None,
+                ),
+                str(row.get("body_md") or ""),
+                req.member_id,
+            ),
+            week_number,
+        ),
         "pdf_filename": f"第{week_number}週-PERMA幸福感回顧.pdf",
         "pdf_base64": base64.b64encode(pdf_bytes).decode("ascii"),
         "emailed_at": row.get("emailed_at"),
@@ -2349,7 +2597,16 @@ async def _deliver_report_email(report: dict) -> bool:
         return await _fail(f"PDF 產生失敗 [{type(exc).__name__}]: {exc}")
 
     subject = _weekly_email_subject(week_number)
-    html_body = _weekly_email_html(display_name, f"{APP_BASE_URL}/app/report")
+    week_start = str(report.get("week_start") or "")
+    post = next(
+        (p for p in await _fetch_member_posts(user_id) if str(p.get("week_start") or "") == week_start),
+        None,
+    )
+    note = await _weekly_email_note(post, str(report.get("body_md") or ""), user_id)
+    html_body = _weekly_email_html(
+        display_name, f"{APP_BASE_URL}/app/report", str(report.get("body_md") or ""), note,
+        week_number,
+    )
     filename = f"第{week_number}週-PERMA幸福感回顧.pdf"
 
     # Render 對外的 SMTP 連線偶爾會逾時（實測遇過），值得重試一次；
