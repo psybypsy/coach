@@ -25,6 +25,7 @@ interface MemberReport {
   sessions: SessionScore[]
   baseline: BaselineScores | null
   created_at: string
+  post_id: string
 }
 
 function ReportPage() {
@@ -35,10 +36,10 @@ function ReportPage() {
   const [openIds, setOpenIds] = useState<string[]>([])
   const [displayName, setDisplayName] = useState('')
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
-  // 有寫週記、卻還沒有對應報告的週次（最新的排前面）。
-  // 正常情況下報告會在發布當下自動產生，這裡是萬一自動觸發失敗時的補救管道，
-  // 不是預期中每次都要用到的步驟。
-  const [missingWeeks, setMissingWeeks] = useState<string[]>([])
+  // 有寫週記、卻還沒有對應報告的篇數（最新的排前面）。同一週可能有好幾篇，
+  // 每篇各自算一筆缺報告。正常情況下報告會在發布當下自動產生，這裡是萬一
+  // 自動觸發失敗時的補救管道，不是預期中每次都要用到的步驟。
+  const [missingPosts, setMissingPosts] = useState<{ postId: string; weekStart: string }[]>([])
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState<string | null>(null)
   // 缺報告時先安靜地自動輪詢一段時間（報告很可能正在背景產生中），
@@ -48,11 +49,11 @@ function ReportPage() {
   const pollAttempts = useRef(0)
 
   const handleGenerate = async () => {
-    const week = missingWeeks[0]
-    if (!week) return
+    const target = missingPosts[0]
+    if (!target) return
     setGenerating(true)
     setGenError(null)
-    const ok = await requestWeeklyReport(week)
+    const ok = await requestWeeklyReport(target.weekStart, target.postId)
     if (ok) {
       await load()
     } else {
@@ -86,28 +87,34 @@ function ReportPage() {
     const [{ data: rows }, { data: profile }, { data: posts }] = await Promise.all([
       supabase
         .from('member_reports')
-        .select('id, week_start, week_number, body_md, charts, sessions, baseline, created_at')
+        .select('id, week_start, week_number, body_md, charts, sessions, baseline, created_at, post_id')
         .eq('user_id', uid)
-        .order('week_number', { ascending: false }),
+        .order('week_number', { ascending: false })
+        .order('created_at', { ascending: false }),
       supabase.from('profiles').select('display_name').eq('id', uid).single(),
-      supabase.from('journal_posts').select('week_start').eq('user_id', uid),
+      supabase.from('journal_posts').select('id, week_start').eq('user_id', uid),
     ])
 
     const list = (rows as MemberReport[] | null) ?? []
     setReports(list)
-    // 只展開最新一週；如果使用者已經手動展開過其他週次，保留那些狀態不動。
+    // 只展開最新一份；如果使用者已經手動展開過其他份，保留那些狀態不動。
     setOpenIds((prev) => (prev.length > 0 ? prev : list[0] ? [list[0].id] : []))
     setDisplayName(profile?.display_name ?? '')
 
-    // 有週記卻沒報告的週次。注意 member_reports 對學員只看得到 published，
-    // 所以第 4、8 週的草稿在這裡也會被算成「缺少」——那是教練還沒發布，
-    // 不該讓學員自己觸發，因此排除掉。
-    const doneWeeks = new Set(list.map((r) => r.week_start))
-    const journalWeeks = [...new Set(((posts as { week_start: string }[] | null) ?? []).map((p) => p.week_start))]
-    const missing = journalWeeks
-      .filter((w) => !doneWeeks.has(w) && !needsCoachReview(programWeekNumber(w)))
-      .sort((a, b) => b.localeCompare(a))
-    setMissingWeeks(missing)
+    // 有週記卻沒報告的篇數（同一週可能有好幾篇，各自缺各自的）。注意
+    // member_reports 對學員只看得到 published，所以第 4、8 週的草稿在這裡
+    // 也會被算成「缺少」——那是教練還沒發布，不該讓學員自己觸發，因此排除掉。
+    const donePostIds = new Set(list.map((r) => r.post_id))
+    const missing = (((posts as { id: string; week_start: string }[] | null) ?? [])
+      .filter(
+        (p) =>
+          !donePostIds.has(p.id) &&
+          programWeekNumber(p.week_start) >= 1 &&
+          !needsCoachReview(programWeekNumber(p.week_start)),
+      )
+      .map((p) => ({ postId: p.id, weekStart: p.week_start })))
+      .sort((a, b) => b.weekStart.localeCompare(a.weekStart))
+    setMissingPosts(missing)
     setLoading(false)
   }
 
@@ -115,9 +122,9 @@ function ReportPage() {
     void load()
   }, [])
 
-  // 有缺報告的週次時，每 5 秒重查一次（純讀取，不呼叫 AI、不花錢），
+  // 有缺報告的篇數時，每 5 秒重查一次（純讀取，不呼叫 AI、不花錢），
   // 最多輪詢 90 秒；報告在這段時間內自動出現就直接顯示，不逾時不會出現按鈕。
-  const hasMissing = missingWeeks.length > 0
+  const hasMissing = missingPosts.length > 0
   useEffect(() => {
     if (!hasMissing || pollTimedOut) {
       setAutoChecking(false)
@@ -148,7 +155,7 @@ function ReportPage() {
   }
 
   // 有週記待產生報告時的面板：安靜的補救入口，不是預期中的必經步驟。
-  const generatePanel = missingWeeks.length > 0 && (
+  const generatePanel = missingPosts.length > 0 && (
     <div className="mb-5 rounded-xl border border-gold/45 bg-gold/10 p-5 text-center">
       {autoChecking && !pollTimedOut ? (
         // 安靜輪詢中：不需要使用者按任何東西，報告出現時這個區塊會自動消失。
@@ -156,14 +163,14 @@ function ReportPage() {
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           <p className="text-sm leading-relaxed text-foreground-soft">
             {t('第 {n} 週的報告正在自動產生中，通常一分鐘內完成。', {
-              n: programWeekNumber(missingWeeks[0]),
+              n: programWeekNumber(missingPosts[0].weekStart),
             })}
           </p>
         </div>
       ) : (
         <>
           <p className="text-sm leading-relaxed text-foreground-soft">
-            {t('你第 {n} 週的記錄還沒產生報告。', { n: programWeekNumber(missingWeeks[0]) })}
+            {t('你第 {n} 週的記錄還沒產生報告。', { n: programWeekNumber(missingPosts[0].weekStart) })}
           </p>
           <button
             onClick={() => void handleGenerate()}
@@ -186,7 +193,7 @@ function ReportPage() {
       <div className="mx-auto max-w-3xl px-5 py-8">
         <h1 className="font-heading mb-2 text-xl text-foreground">{t('我的報告')}</h1>
         {generatePanel}
-        {missingWeeks.length === 0 && (
+        {missingPosts.length === 0 && (
           <div className="rounded-xl border border-border bg-card p-6 text-center shadow-soft">
             <p className="text-sm leading-relaxed text-foreground-soft">
               {t('完成本週的 PERMA 記錄後，這裡就會出現你的個人報告。')}
