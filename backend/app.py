@@ -459,6 +459,41 @@ _PERMA_DIM = {
     "P": "Positive Emotions", "E": "Engagement", "R": "Relationships",
     "M": "Meaning", "A": "Accomplishment",
 }
+
+# ── valence 分級（全站唯一來源）────────────────────────────────────
+# valence 是 −100～+100 的情緒效價，0 為中性。分級用「語意門檻」而不是照分佈切：
+# 同一個分數永遠對應同一個等級，跨學員、跨週次才能比較。
+# 學員版與教練版共用同一組用詞，避免兩邊講法不一致造成誤解。
+# 前端有一份對應實作 vLabel()（src/lib/coachViz.ts），改這裡要同步改那裡。
+# (下界, 等級數字, 內部描述)。Level 1 最低、Level 5 最高，報告上只顯示 "Level N"。
+# 描述詞不對外顯示，僅供程式碼與文件閱讀時對照。
+VALENCE_LEVELS: list[tuple[int, int, str]] = [
+    (60, 5, "充沛"),       # ≥ +60
+    (20, 4, "穩定"),       # +20 ~ +59
+    (-19, 3, "中性"),      # −19 ~ +19
+    (-59, 2, "低落"),      # −20 ~ −59
+    (-100, 1, "明顯低落"),  # ≤ −60
+]
+# 該面向整格沒寫時用這個，跟「寫了但低落（Level 1/2）」分開——兩者的教練意涵完全不同。
+VALENCE_ABSENT = "這週較少著墨"
+
+
+def valence_level_number(v: object) -> int | None:
+    """把 valence 分數轉成 1–5 的等級數字。非數字（未填）回傳 None。"""
+    try:
+        score = int(v)
+    except (TypeError, ValueError, OverflowError):  # None／空字串／nan／inf 都算沒資料
+        return None
+    for threshold, level, _ in VALENCE_LEVELS:
+        if score >= threshold:
+            return level
+    return VALENCE_LEVELS[-1][1]
+
+
+def valence_level(v: object) -> str:
+    """報告上顯示的等級標籤："Level 1"～"Level 5"；沒資料則為 VALENCE_ABSENT。"""
+    level = valence_level_number(v)
+    return VALENCE_ABSENT if level is None else f"Level {level}"
 _TOPIC_KEYS = ["work", "relationships", "health", "rest", "growth", "other"]
 # 已淘汰的情報簡報區塊：教練後台仍可能有舊資料，但一律不納入交付給客戶的版本。
 _REMOVED_BLOCK_TITLES = {
@@ -611,7 +646,7 @@ def _coach_analysis_system(week_count: int, language: str = "zh-TW") -> str:
 兩個區塊都必須：(a) 全程扣合此人的具體引文並註明第幾次；(b) 在內文最後另起一行、以「**參考文獻**」為小標，再用 - 條列 2 至 3 筆 APA 格式文獻（期刊名或書名以 * 斜體 * 標示），且只列與該區塊主題直接相關者，不得跨區塊混用。
 
 各區塊要求：
-- PERMA 五面向剖析：逐一分析 P/E/R/M/A 五面向，標飽滿度（充沛／穩定／稀薄／缺席）、變化與關鍵引文，並以 PERMA 觀點整合此人整體樣態。參考文獻可從下列擇要引用：Seligman, M. E. P. (2011). *Flourish: A visionary new understanding of happiness and well-being*. Free Press.；Fredrickson, B. L. (2001). The role of positive emotions in positive psychology: The broaden-and-build theory of positive emotions. *American Psychologist, 56*(3), 218–226.；Csikszentmihalyi, M. (1990). *Flow: The psychology of optimal experience*. Harper & Row.
+- PERMA 五面向剖析：逐一分析 P/E/R/M/A 五面向，標等級（依該面向跨全部週的 v 值平均：≥ 60 → Level 5；20~59 → Level 4；−19~19 → Level 3；−59~−20 → Level 2；≤ −60 → Level 1；完全沒寫 → 這週較少著墨）、變化與關鍵引文，並以 PERMA 觀點整合此人整體樣態。參考文獻可從下列擇要引用：Seligman, M. E. P. (2011). *Flourish: A visionary new understanding of happiness and well-being*. Free Press.；Fredrickson, B. L. (2001). The role of positive emotions in positive psychology: The broaden-and-build theory of positive emotions. *American Psychologist, 56*(3), 218–226.；Csikszentmihalyi, M. (1990). *Flow: The psychology of optimal experience*. Harper & Row.
 - 優勢與內在資源：辨識此人展現的性格優勢與可再次運用的內在資源，以 VIA 性格優勢架構的語彙命名（例如熱情與活力、好奇心、毅力、洞察力、社會智慧、感恩、自我調節、勇氣、仁慈、公平、幽默、希望）。每項優勢先用一行「- **優勢名稱**」當標籤，再用縮排兩格的子條列寫：扣合的原話證據（註明第幾次）、以及這項優勢可以再被動用在哪裡。跨全部週綜合判斷，挑 3 至 4 項最有證據支持者，不要窮舉。參考文獻可從下列擇要引用：Peterson, C., & Seligman, M. E. P. (2004). *Character strengths and virtues: A handbook and classification*. Oxford University Press.；Niemiec, R. M. (2018). *Character strengths interventions: A field guide for practitioners*. Hogrefe.；Linley, P. A., Nielsen, K. M., Gillett, R., & Biswas-Diener, R. (2010). Using signature strengths in pursuit of goals. *International Coaching Psychology Review, 5*(1), 6–15.
 語言：繁體中文（台灣）。全篇不得使用任何 emoji。語氣專業、精確，兼具實證理論素養，如資深教練結合學理的臨床筆記。"""
 
@@ -647,9 +682,9 @@ def _weekly_client_analysis_system() -> str:
 - 描述現象與可能性，不下診斷、不評好壞、不使用風險或病理語言。
 
 區塊內文格式：
-- 逐一走過 P/E/R/M/A 五面向。每個面向先一行「- **P（正向情緒）：飽滿度**」（飽滿度用：充沛／穩定／正在萌芽／這週較少著墨），再用縮排兩格的子條列「  - …」寫 1 至 2 點具體觀察，每點都扣合你引用的原話。
-- 五面向之後，另起一行「- **你的優勢與內在資源**」，接著用縮排兩格的子條列寫 2 至 3 點。每一點的寫法：先點名一項這週真的展現出來的性格優勢（用 VIA 性格優勢的語彙，例如：熱情與活力、好奇心、毅力、洞察力、社會智慧、感恩、自我調節、勇氣、仁慈、公平、幽默、希望），緊接著用他自己的原話當證據，最後一句點出這項優勢「還可以用在哪裡」，讓他知道這是可再次動用的資源，而不只是一個標籤。
-- 優勢之後，另起一行「- **這週的整體樣貌**」，用縮排子條列寫給客戶的總結：先點出這週最突出的能量來源，再指出一個溫和的觀察或邀請。
+- 逐一走過 P/E/R/M/A 五面向。每個面向先一行「- **P（正向情緒）：等級**」，「等級」要直接換成下表對應的字樣（依你在 SCORES 給該面向的 v 值決定，不要自己造詞、也不要照抄「等級」兩個字）：v ≥ 60 → Level 5；20 ≤ v ≤ 59 → Level 4；−19 ≤ v ≤ 19 → Level 3；−59 ≤ v ≤ −20 → Level 2；v ≤ −60 → Level 1；該面向完全沒寫 → 這週較少著墨。接著用縮排兩格的子條列「  - …」寫 1 至 2 點具體觀察，每點都扣合你引用的原話。
+- 五面向之後，另起一行寫「## 你的優勢與內在資源」（這是獨立的大章節標題，一定要用 ## 開頭，不要寫成 - **…**）。標題下直接用「- 」開頭的條列寫 2 至 3 項優勢，每一項的寫法：先用「- **優勢名稱**」點名一項這週真的展現出來的性格優勢（用 VIA 性格優勢的語彙，例如：熱情與活力、好奇心、毅力、洞察力、社會智慧、感恩、自我調節、勇氣、仁慈、公平、幽默、希望），再用縮排兩格的子條列寫兩點：一是他自己的原話當證據，二是這項優勢「還可以用在哪裡」——指出一個他日常生活中的具體場合（不只是工作），讓他知道這是可以再次動用的資源，而不只是一個標籤。這一段不要自己寫開場白或結語，系統會另外補上。
+- 優勢章節之後，另起一行寫「## 這週的整體樣貌」（同樣是大章節標題，用 ## 開頭），標題下用「- 」條列寫給客戶的總結：先點出這週最突出的能量來源，再指出一個溫和的觀察或邀請。
 - 總結的最後，另起一行單獨寫一句**金句**，格式為「> 一句話的金句」（以 > 開頭）。這句要短、有畫面、能帶來希望感，並且是從他這週自己的文字裡長出來的，不是空泛勵志語。
 - 最後另起一行，以「**參考文獻**」為小標，用 - 條列 2 至 3 筆 APA 格式文獻（期刊名或書名以 * 斜體 * 標示）。既然談了優勢，請至少納入一筆 VIA 性格優勢文獻。可從下列擇要引用：Peterson, C., & Seligman, M. E. P. (2004). *Character strengths and virtues: A handbook and classification*. Oxford University Press.；Niemiec, R. M. (2018). *Character strengths interventions: A field guide for practitioners*. Hogrefe.；Seligman, M. E. P. (2011). *Flourish: A visionary new understanding of happiness and well-being*. Free Press.；Fredrickson, B. L. (2001). The role of positive emotions in positive psychology: The broaden-and-build theory of positive emotions. *American Psychologist, 56*(3), 218–226.；Csikszentmihalyi, M. (1990). *Flow: The psychology of optimal experience*. Harper & Row.
 
@@ -796,8 +831,12 @@ _PDF_QUOTE_COLOR = "#8A6A26"
 
 
 def _pdf_markdown_lines(value: str) -> list[str]:
-    """PDF 用的行陣列：只脫掉標題符號，保留 ** 與 「」 交給 _pdf_inline 上色。"""
-    return re.sub(r"^#{1,3}\s+", "", value or "", flags=re.MULTILINE).strip().split("\n")
+    """PDF 用的行陣列：保留 ##／### 交給呼叫端判斷成大章節標題，
+    其餘（**、「」）交給 _pdf_inline 上色。
+
+    只脫掉 # 一級標題——報告內文不會用到它，留著反而會被誤判成章節。
+    """
+    return re.sub(r"^#\s+", "", value or "", flags=re.MULTILINE).strip().split("\n")
 
 
 def _pdf_inline(text: str) -> str:
@@ -935,7 +974,114 @@ def _parse_analysis(out: str) -> tuple[list, list]:
         if title.lower() in _ALLOWED_BLOCK_TITLES:
             blocks.append({"title": title, "body": body, "include": True})
 
+    _normalise_level_labels(sessions, blocks)
+    _inject_strengths_frame(blocks)
     return sessions, blocks
+
+
+def _inject_strengths_frame(blocks: list) -> None:
+    """在「你的優勢與內在資源」章節前後補上固定的前言與結語。
+
+    這兩段是固定衛教內容，每週都該一致，所以由程式插入而不是讓模型每次自己寫。
+    插進 body_md 之後，PDF 與網頁讀的是同一份文字，兩邊自然一致。
+
+    容錯：模型偶爾會把章節寫成「- **你的優勢與內在資源**」（舊格式）而不是
+    「## 你的優勢與內在資源」，這裡兩種都認，並統一改成 ## 大章節。
+    已經有前言的話不重複插入（避免重跑時疊加）。
+    """
+    for block in blocks:
+        body = block.get("body") or ""
+        if not body or STRENGTHS_INTRO[:12] in body:
+            continue
+        lines = body.split("\n")
+        start = None
+        for i, line in enumerate(lines):
+            # 兩種格式都認：新的「## 你的優勢與內在資源」與舊的「- **你的優勢與內在資源**」
+            bare = line.strip().lstrip("#").strip().strip("-* ").strip()
+            if bare in ("你的優勢與內在資源", "優勢與內在資源"):
+                start = i
+                break
+        if start is None:
+            continue
+        # 章節結束在下一個大章節標題，或整段文字的結尾
+        end = len(lines)
+        for j in range(start + 1, len(lines)):
+            stripped = lines[j].strip()
+            if stripped.startswith("## ") or stripped.strip("-* ").strip() == "這週的整體樣貌":
+                end = j
+                break
+        rebuilt = (
+            lines[:start]
+            + [STRENGTHS_HEADING, "", STRENGTHS_INTRO, ""]
+            + [l for l in lines[start + 1:end] if l.strip()]
+            + ["", STRENGTHS_OUTRO, ""]
+            + lines[end:]
+        )
+        block["body"] = "\n".join(rebuilt).strip()
+
+
+# 面向小標的形狀：「- **P（正向情緒）：充沛**」。冒號可能是全形或半形。
+# ── 優勢章節的固定前言與結語 ────────────────────────────────────
+# 由程式插入而不是讓 AI 每次自己寫：這兩段是固定的衛教內容（優勢是什麼、
+# 為什麼談優勢、怎麼用），每週都該一致；交給模型會每次換句話說，
+# 也可能寫成空泛的勵志語。插進 body_md 後，PDF 與網頁兩邊都會有。
+STRENGTHS_HEADING = "## 你的優勢與內在資源"
+STRENGTHS_INTRO = (
+    "性格優勢指的是你在做事、與人相處時自然會用上的特質——像是好奇心、毅力、"
+    "仁慈、社會智慧。它不是你「應該具備」的能力清單，而是你本來就在用、"
+    "只是平常不會特別命名的東西。\n"
+    "研究上會特別談優勢，是因為比起修補弱點，刻意去用自己已經擅長的部分，"
+    "更能帶來投入感與長期的幸福感（Peterson & Seligman, 2004；Niemiec, 2018）。"
+    "所以下面這幾項不是評價，而是把你這週已經做到的事情指出來，讓你看見它們。"
+)
+STRENGTHS_OUTRO = (
+    "這些優勢不只屬於這一週。下一週可以試著刻意用其中一項——"
+    "不必是大事，在一次對話、一個決定、一件家裡的小事上用得上就夠了。"
+    "被有意識地用過的優勢，才會慢慢變成你隨時取用的資源。"
+)
+
+
+_DIM_HEADING_RE = re.compile(
+    r"(?P<lead>-\s*\*\*\s*(?P<key>[PERMA])\s*（[^）]*）\s*[：:]\s*)(?P<label>[^*]+?)(?P<tail>\s*\*\*)"
+)
+
+
+def _normalise_level_labels(sessions: list, blocks: list) -> None:
+    """把面向小標上的等級用詞，強制對齊該面向 v 值算出來的等級。
+
+    prompt 已經寫明對應表，但模型仍可能自由發揮（實測看過同一個 +80 分被寫成
+    「充沛」「穩定」「正在萌芽」三種，也看過直接把「飽滿度」三個字當標籤印出來）。
+    等級是要跨學員、跨週次比較的東西，不能靠模型自律，所以這裡依分數重寫一次。
+    只動小標上的那個詞，不碰其他內文。
+    """
+    if not sessions or not blocks:
+        return
+
+    def score_for(key: str):
+        """單週報告就用那一週；教練的跨週分析取全期平均。
+
+        跨週區塊描述的是整段期間的樣態，用最後一週會失真——例如某面向前七週
+        都是 −70、最後一週衝到 +85，取末週會標成「充沛」，與內文的跨週結論打架。
+        """
+        values = []
+        for session in sessions:
+            entry = ((session or {}).get("dims") or {}).get(key)
+            if isinstance(entry, dict):
+                try:
+                    values.append(int(entry.get("v")))
+                except (TypeError, ValueError, OverflowError):
+                    continue
+        if not values:
+            return None
+        return round(sum(values) / len(values))
+
+    def fix(match: re.Match) -> str:
+        return match.group("lead") + valence_level(score_for(match.group("key"))) + match.group("tail")
+
+    for block in blocks:
+        body = block.get("body") or ""
+        if body:
+            block["body"] = _DIM_HEADING_RE.sub(fix, body)
 
 
 def _detect_lang(text: str) -> str:
@@ -1011,9 +1157,30 @@ _PERMA_CHART_COLORS = {
 _TOPIC_CHART_COLORS = ["#3D6390", "#95586A", "#487A64", "#B5843A", "#6F5E97", "#8A94A2"]
 
 
-def _weekly_radar_drawing(baseline: dict, dims: dict, week_number: int, font_name: str):
-    """T0 vs 本週的五面向雷達圖。刻意與網頁版 coachViz.valRadar 用同一套幾何與配色，
-    讓客戶收到的 PDF 跟教練在後台預覽的長得一樣。"""
+def _pct_change_label(t0_valence: int, now_valence: int) -> str:
+    """雷達圖座標標籤上的變化幅度。
+
+    valence 是 −100～+100，換算成 0～100% 的幸福感刻度（(v+100)/2）後相減，
+    得到「提高了幾個百分點」。不用相對成長率——起點可能是負數或 0，
+    相對成長率會算出 −237% 這種沒有意義的數字。
+    """
+    delta = round((now_valence - t0_valence) / 2)
+    if delta > 0:
+        return f"+{delta}%"
+    if delta < 0:
+        return f"−{abs(delta)}%"
+    return "持平"
+
+
+def _weekly_radar_drawing(
+    baseline: dict, dims: dict, week_number: int, font_name: str, prev_dims: dict | None = None,
+):
+    """五面向雷達圖：虛線是比較基準、實線是本週。
+
+    比較基準看週次：第 1 週沒有前一週可比，用 T0 起始狀態；第 2 週起改跟「上一週」比，
+    因為學員關心的是「這一週跟上一週相比如何」，跟起點的距離在趨勢圖已經看得到了。
+    刻意與網頁版 coachViz.valRadar 用同一套幾何與配色，讓客戶收到的 PDF
+    跟教練在後台預覽的長得一樣。"""
     import math
 
     from reportlab.graphics.charts.legends import Legend
@@ -1046,12 +1213,22 @@ def _weekly_radar_drawing(baseline: dict, dims: dict, week_number: int, font_nam
             strokeWidth=1.5 if factor == 0.5 else 1,
         ))
 
+    if prev_dims:
+        base_values = [int((prev_dims.get(key) or {}).get("v", 0)) for key in _PERMA_KEYS]
+        base_label = f"第 {week_number - 1} 週（虛線）"
+    else:
+        base_values = [_baseline_valence(baseline.get(key)) for key in _PERMA_KEYS]
+        base_label = "T0 基準（虛線）"
+    t0_values = base_values  # 沿用原變數名，下面的繪圖邏輯不必改
+    week_values = [int((dims.get(key) or {}).get("v", 0)) for key in _PERMA_KEYS]
+
     for index, key in enumerate(_PERMA_KEYS):
         x, y = point(index, 1.0)
         drawing.add(Line(cx, cy, x, y, strokeColor=colors.HexColor("#E2E5EA"), strokeWidth=1))
         lx, ly = point(index, 1.17)
         drawing.add(String(
-            lx, ly - 4, key, fontName=font_name, fontSize=12,
+            lx, ly - 4, f"{key} {_pct_change_label(t0_values[index], week_values[index])}",
+            fontName=font_name, fontSize=11,
             fillColor=colors.HexColor(_PERMA_CHART_COLORS[key]), textAnchor="middle",
         ))
 
@@ -1065,8 +1242,6 @@ def _weekly_radar_drawing(baseline: dict, dims: dict, week_number: int, font_nam
             shape.strokeDashArray = [5, 4]
         return shape
 
-    t0_values = [_baseline_valence(baseline.get(key)) for key in _PERMA_KEYS]
-    week_values = [int((dims.get(key) or {}).get("v", 0)) for key in _PERMA_KEYS]
     drawing.add(polygon(t0_values, "#8993A1", colors.Color(0.537, 0.576, 0.635, 0.12), 1.5, True))
     drawing.add(polygon(week_values, "#1F3A5C", colors.Color(0.122, 0.227, 0.361, 0.14), 2, False))
     for index, value in enumerate(week_values):
@@ -1082,7 +1257,7 @@ def _weekly_radar_drawing(baseline: dict, dims: dict, week_number: int, font_nam
     legend.deltax = 104
     legend.dxTextSpace = 5
     legend.colorNamePairs = [
-        (colors.HexColor("#8993A1"), "T0 基準（虛線）"),
+        (colors.HexColor("#8993A1"), base_label),
         (colors.HexColor("#1F3A5C"), f"第 {week_number} 週"),
     ]
     drawing.add(legend)
@@ -1224,10 +1399,14 @@ def _build_weekly_report_pdf(
     baseline: dict,
     session: dict,
     block: dict,
-    strengths_body: str = "",
+    prev_session: dict | None = None,
 ) -> bytes:
     """產生只根據單週書寫、並與 T0 比較的繁中 PDF。
-    strengths_body 為「優勢與內在資源」段落（取自教練深度分析），有值才附在最後。"""
+
+    優勢不在這裡另外附加——週報告內文（_weekly_client_analysis_system）本身
+    就有一段「你的優勢與內在資源」，是用第二人稱寫給學員的。教練深度分析那份
+    優勢是跨全部週的教練視角（第三人稱、會引用其他週），放進來會重複、人稱不一致，
+    也和頁尾「不使用其他週內容」互相矛盾。"""
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_CENTER
     from reportlab.lib.pagesizes import A4
@@ -1296,6 +1475,10 @@ def _build_weekly_report_pdf(
     body = ParagraphStyle(
         "WeeklyBodyZH", parent=styles["BodyText"], fontName=font_name, fontSize=10,
         leading=17, spaceAfter=7, textColor=colors.HexColor("#283444"),
+        # 中文一定要 CJK 斷行：預設模式把整串中文當成一個不可斷的「單字」，只能在空格處換行，
+        # 於是像「虛線是第 2 週」或「(Peterson & Seligman, 2004；Niemiec, 2018)」這種夾了空格的句子
+        # 會被切成半行寬的殘行，同一頁其他沒有空格的段落卻是滿版，看起來像排版壞掉。
+        wordWrap="CJK",
     )
 
     dims = session.get("dims") or {}
@@ -1314,6 +1497,18 @@ def _build_weekly_report_pdf(
         "WeeklyDimZH", parent=body, fontSize=10.5, leading=16, spaceBefore=5, spaceAfter=2,
         textColor=colors.HexColor("#1C2530"),
     )
+    # 每個區塊開頭的一句話說明：先講這張圖／這段在看什麼，再呈現數據。
+    intro_style = ParagraphStyle(
+        "WeeklyIntroZH", parent=body, fontSize=9, leading=14, spaceBefore=0, spaceAfter=6,
+        textColor=colors.HexColor("#54606E"),
+    )
+    # 參考文獻小標：與上一段（多半是金句框）之間留出明顯呼吸空間，
+    # 讓文獻清單看起來是獨立的附錄，而不是接在正文後面的一句話。
+    refs_style = ParagraphStyle(
+        "WeeklyRefsHeadZH", parent=body, fontSize=10, leading=16,
+        spaceBefore=7 * mm, spaceAfter=3,
+    )
+
 
     story = [
         Paragraph(f"第 {week_number} 週 PERMA 幸福感回顧", title_style),
@@ -1322,29 +1517,71 @@ def _build_weekly_report_pdf(
         )),
         Spacer(1, 6 * mm),
         Paragraph("五面向 valence 剖面", heading),
-        _weekly_radar_drawing(baseline, dims, week_number, font_name),
-        Paragraph("內圈為 −100、中圈為 0（中性）、外圈為 +100。",
-                  ParagraphStyle("WeeklyRadarNoteZH", parent=body, fontSize=8.5, leading=13,
-                                 alignment=TA_CENTER, textColor=colors.HexColor("#6A7685"))),
+        Paragraph(
+            (
+                f"這張圖把你這週的五個面向和上一週疊在一起看：虛線是第 {week_number - 1} 週、實線是這週。"
+                if prev_session else
+                "這張圖把你這週的五個面向和你一開始填的起點（T0）疊在一起看：虛線是起點、實線是這週。"
+            )
+            + "點離中心越遠代表越正向，顏色較深的那一圈是 0（不好不壞）；形狀越往外撐開，代表這週整體越飽滿。",
+            intro_style,
+        ),
+        Paragraph(
+            "字母旁的百分比，是這週相對"
+            + ("上一週" if prev_session else "起點")
+            + "移動了幾個百分點。",
+            intro_style,
+        ),
+        _weekly_radar_drawing(
+            baseline, dims, week_number, font_name,
+            (prev_session or {}).get("dims") if prev_session else None,
+        ),
         Spacer(1, 5 * mm),
     ]
 
     topic_pie = _weekly_topic_pie_drawing(session.get("topics") or {}, font_name)
     if topic_pie is not None:
-        story.extend([Paragraph("本週主題占比", heading), topic_pie, Spacer(1, 3 * mm)])
+        story.extend([
+            Paragraph("本週主題占比", heading),
+            Paragraph(
+                "這張圖看的是你這週寫下的內容分別落在哪些主題、各占多少。"
+                "它反映的是你的注意力放在哪裡，不代表你實際花了多少時間。",
+                intro_style,
+            ),
+            topic_pie,
+            Spacer(1, 3 * mm),
+        ])
 
     wordcloud = _weekly_wordcloud_drawing(session.get("emotions") or [], font_name)
     if wordcloud is not None:
-        story.extend([Paragraph("本週情緒詞雲", heading), wordcloud, Spacer(1, 4 * mm)])
+        story.extend([
+            Paragraph("本週情緒詞雲", heading),
+            Paragraph(
+                "這裡把你這週文字裡出現的情緒詞挑出來，字越大代表出現得越頻繁；"
+                "綠色是偏正向的詞、橘色是偏負向的詞。",
+                intro_style,
+            ),
+            wordcloud,
+            Spacer(1, 4 * mm),
+        ])
 
     story.append(Paragraph("本週 PERMA 五面向回顧", heading))
+    story.append(Paragraph(
+        "以下是根據你這週寫下的內容，逐一回顧五個面向、點出你展現的優勢，"
+        "最後收在這週的整體樣貌。引號裡的都是你自己的原話。",
+        intro_style,
+    ))
     for raw_line in _pdf_markdown_lines(str(block.get("body") or "")):
         line = raw_line.rstrip()
         if not line.strip():
             continue
         indent = len(line) - len(line.lstrip())
         text = line.strip()
-        if text.startswith(">"):  # 金句：置中、淺底色框，作為整份報告的收束
+        if text.strip("*　 ") == "參考文獻":  # 文獻小標：段前多留白，與正文分開
+            story.append(Paragraph(_pdf_inline(text), refs_style))
+        elif text.startswith("##"):  # 大章節（優勢／整體樣貌）：與圖表區各段同一級標題
+            story.append(Paragraph(_pdf_inline(text.lstrip("#").strip()), heading))
+        elif text.startswith(">"):  # 金句：置中、淺底色框，作為整份報告的收束
             story.append(Paragraph(_pdf_inline(text.lstrip("> ").strip()), quote_style))
         elif text.startswith("- ") and indent >= 2:  # 縮排子條列＝該面向的具體觀察
             story.append(Paragraph("・" + _pdf_inline(text[2:].strip()), sub_style))
@@ -1353,23 +1590,6 @@ def _build_weekly_report_pdf(
         else:
             story.append(Paragraph(_pdf_inline(text), body))
 
-    # 優勢與內在資源（取自教練深度分析，跨全部週）；有內容才附上
-    if strengths_body.strip():
-        story.append(Spacer(1, 4 * mm))
-        story.append(Paragraph("優勢與內在資源", heading))
-        for raw_line in _pdf_markdown_lines(strengths_body):
-            line = raw_line.rstrip()
-            if not line.strip():
-                continue
-            indent = len(line) - len(line.lstrip())
-            text = line.strip()
-            if text.startswith("- ") and indent >= 2:
-                story.append(Paragraph("・" + _pdf_inline(text[2:].strip()), sub_style))
-            elif text.startswith("- "):
-                story.append(Paragraph(_pdf_inline(text[2:].strip()), dim_style))
-            else:
-                story.append(Paragraph(_pdf_inline(text), body))
-
     story.extend([
         Spacer(1, 6 * mm),
         Paragraph(
@@ -1377,33 +1597,9 @@ def _build_weekly_report_pdf(
             ParagraphStyle("WeeklySignZH", parent=body, fontSize=10.5, leading=16,
                            textColor=colors.HexColor("#283444")),
         ),
-        Spacer(1, 4 * mm),
-        Paragraph(
-            "這份報告只根據本週書寫與 T0 起始狀態整理，不使用其他週內容；它不是診斷或好壞評分。",
-            ParagraphStyle("WeeklyFootZH", parent=body, fontSize=8.5, leading=13,
-                           textColor=colors.HexColor("#6A7685")),
-        ),
     ])
     doc.build(story)
     return out.getvalue()
-
-
-async def _fetch_strengths_body(member_id: str) -> str:
-    """取教練深度分析裡的「優勢與內在資源」內文，附在每週 PDF 最後。沒有就回空字串。"""
-    try:
-        resp = await db().get(
-            f"{SUPABASE_REST}/coach_analyses",
-            headers=SUPABASE_HEADERS,
-            params=[("member_id", f"eq.{member_id}"), ("select", "blocks"), ("limit", "1")],
-        )
-        rows = resp.json() if resp.status_code == 200 else []
-        blocks = (rows[0].get("blocks") if rows else None) or []
-        for blk in blocks:
-            if str(blk.get("title") or "").strip() in ("優勢與內在資源", "Strengths & Inner Resources"):
-                return str(blk.get("body") or "")
-    except Exception as exc:
-        logger.warning("fetch strengths failed [%s]: %s", type(exc).__name__, exc)
-    return ""
 
 
 def _weekly_email_subject(week_number: int) -> str:
@@ -1543,10 +1739,12 @@ def _weekly_email_html(
     member_name: str, report_url: str = "", body_md: str = "", note: str = "",
     week_number: int = 0,
 ) -> str:
+    # report_url 目前不出現在信裡（信收在附件那段就結束），保留參數是為了不動兩處
+    # 呼叫端；日後若要加回「也可以直接在網站上看」的連結，直接用它即可。
     """每週報告的信件內文。預覽與實際寄送共用這個函式。
 
     整封信是繞著中間那段短文寫的：道謝一句，短文講他這週的一件事，
-    結尾從那件事走回附件與下一週。所以開頭刻意不寫「這是很扎實的開始」那類通用鼓勵——
+    最後收在附件的 PDF。所以開頭刻意不寫「這是很扎實的開始」那類通用鼓勵——
     那句話擺在一段真的讀過他的文字前面，只會顯得前面是客套。
 
     也刻意不預告那段短文（「我們讀過了，有一段想先跟你說：」之類）：預告的主詞是我們，
@@ -1579,26 +1777,10 @@ def _weekly_email_html(
             )
             personal_block += f"<p>其中有幾句是你自己寫下的，我們讀的時候停了一下：</p>{lines}"
 
-    link = (
-        f'<p>也可以直接在網站上看：<a href="{html.escape(report_url)}">{html.escape(report_url)}</a></p>'
-        if report_url
-        else ""
-    )
-
-    # 最後一週不再說「下週見」、也不再預告下次書寫——那時候課程已經結束了。
+    # 一般週次直接收在署名，不再加收尾問候；只有最後一週保留一句道謝，
+    # 那是整段課程的結束，不是「下週見」那種週期性的招呼。
     is_last_week = bool(week_number) and week_number >= PROGRAM_TOTAL_WEEKS
-    next_week_block = (
-        "" if is_last_week
-        else "<p>下週的五個問題會在同一個地方等你。</p>"
-    )
-    # 署名前的最後一句鼓勵。刻意寫成降低門檻，而不是「加油」「繼續保持」那類要求——
-    # 學員每週都要再寫一次，聽到的如果是期待，下一週就會變成一件有壓力的事。
-    encouragement = (
-        "八週的紀錄都在你手上了。哪一週想起什麼，回來翻翻就好。"
-        if is_last_week
-        else "不用每次都寫得完整——記得住的那件事，寫下來就已經夠了。"
-    )
-    closing = "謝謝你這八週的書寫，" if is_last_week else "下週見，"
+    closing = "謝謝你這八週的書寫，<br>" if is_last_week else ""
 
     # 報告結尾那句金句不進信裡：它是報告的收束，放進信會變成第二個結尾，
     # 跟前面的短文搶同一個位置。學員打開附件就會讀到它。
@@ -1606,11 +1788,8 @@ def _weekly_email_html(
     <p>{html.escape(member_name)}，你好：</p>
     {lead}
     {personal_block}
-    <p>完整的{week_label}回顧放在附件的 PDF 裡：五個面向的觀察、你這週和起始狀態的比較，還有情緒的變化趨勢。你自己重看的時候，可以帶著兩個問題：這一週最讓你有感的收穫是什麼？如果重來一次，有沒有哪個部分想試著調整？</p>
-    {next_week_block}
-    {link}
-    <p>{encouragement}</p>
-    <p>{closing}<br>{html.escape(EMAIL_SIGNATURE)}</p>
+    <p>完整的{week_label}回顧放在附件的 PDF 裡：在觀察的時候可以帶著兩個問題：這一週最讓你有感的收穫是什麼？如果重來一次，有沒有哪個部分想試著調整？</p>
+    <p>{closing}{html.escape(EMAIL_SIGNATURE)}</p>
     """
 
 
@@ -1912,7 +2091,6 @@ async def coach_weekly_report_preview(req: CoachWeeklyPreviewRequest, authorizat
 
     week_number = int(row.get("week_number") or 0)
     name, email = await _member_identity(req.member_id)
-    strengths_body = await _fetch_strengths_body(req.member_id)
     pdf_bytes = await asyncio.to_thread(
         _build_weekly_report_pdf,
         name,
@@ -1921,7 +2099,8 @@ async def coach_weekly_report_preview(req: CoachWeeklyPreviewRequest, authorizat
         row.get("baseline") or {},
         sessions[-1],
         {"title": "PERMA 五面向回顧", "body": row.get("body_md") or ""},
-        strengths_body,
+        # 第 2 週起跟上一週比；第 1 週沒有前一筆，雷達圖自動退回跟 T0 比。
+        sessions[-2] if len(sessions) >= 2 else None,
     )
     return {
         "week_number": week_number,
@@ -2584,8 +2763,8 @@ async def _deliver_report_email(report: dict) -> bool:
         return await _fail("報告沒有 session 資料，無法產生 PDF")
 
     try:
-        strengths_body = await _fetch_strengths_body(user_id)
-        # PDF 只呈現這一週（sessions 最後一筆）與 T0 的比較。
+        # PDF 只呈現這一週（sessions 最後一筆）。雷達圖的比較基準：
+        # 第 2 週起跟上一週比，第 1 週沒有前一筆就退回跟 T0 比。
         pdf_bytes = await asyncio.to_thread(
             _build_weekly_report_pdf,
             display_name,
@@ -2594,7 +2773,7 @@ async def _deliver_report_email(report: dict) -> bool:
             report.get("baseline") or {},
             sessions[-1],
             {"title": "PERMA 五面向回顧", "body": report.get("body_md") or ""},
-            strengths_body,
+            sessions[-2] if len(sessions) >= 2 else None,
         )
     except Exception as exc:
         return await _fail(f"PDF 產生失敗 [{type(exc).__name__}]: {exc}")

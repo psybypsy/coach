@@ -29,3 +29,7 @@ backend/**/__pycache__
 *.njsproj
 *.sln
 *.sw?
+
+# 本機雜物：舊網站壓縮檔、壞掉的虛擬環境備份
+Ming Websit.zip
+backend/.venv.broken/

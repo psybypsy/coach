@@ -31,6 +31,20 @@ export const CHART_DEFS: { key: string; title: string }[] = [
   { key: 'cloud', title: '情緒詞雲' },
 ]
 
+// 每個圖表開頭的一句話說明：先講這張圖在看什麼，再呈現數據。
+// 學員報告頁與教練頁共用同一份，兩邊的解讀方式才會一致。
+export const CHART_INTROS: Record<string, string> = {
+  summary: '這裡把整段期間的情緒起伏濃縮成四個數字，讓你先抓到整體輪廓。',
+  trend: '這條線是每一次書寫的整體情緒基調，看得出高低起伏落在哪幾週。',
+  dims: '把五個面向拆開來看各自的走勢，就能分辨是全面起伏，還是某一兩個面向在帶動。',
+  topics: '這張圖看的是每一週的內容分別落在哪些主題、各占多少；它反映注意力放在哪裡，不代表實際花費的時間。',
+  radar:
+    '虛線是比較基準、實線是最新一次。點離中心越遠代表越正向，顏色較深的那一圈是 0（不好不壞）；'
+    + '形狀越往外撐開，代表整體越飽滿。字母旁的百分比是移動了幾個百分點。',
+  affect: '把每一次出現的正向與負向情緒詞數量上下對照，看正負情緒的消長。',
+  cloud: '把文字裡出現的情緒詞挑出來，字越大代表出現得越頻繁；綠色偏正向、橘色偏負向。',
+}
+
 // T0 分數尺度：0–10 → valence −100~+100（5=0 中性、10=+100、0=−100）
 export function baselineToValence(score: number): number {
   const s = Math.max(0, Math.min(10, score))
@@ -102,10 +116,16 @@ export function ReportChart({
   chartKey,
   sessions,
   baseline,
+  compareWith = 'baseline',
 }: {
   chartKey: string
   sessions: SessionScore[]
   baseline?: BaselineScores | null
+  /** 雷達圖的比較基準。
+   *  'baseline'：跟 T0 起點比——用在跨期間的縱向分析（教練深度分析、月報告），看的是整段走勢。
+   *  'previous'：跟上一次比——用在單週報告，學員關心的是「這週跟上週相比如何」；
+   *              只有第 1 週沒有前一次，此時自動退回跟 T0 比。 */
+  compareWith?: 'baseline' | 'previous'
 }) {
   const { t, language } = useLanguage()
   if (!sessions.length) return null
@@ -115,8 +135,16 @@ export function ReportChart({
   const base = makeBaselineSession(baseline)
   const s = base ? [base, ...sessions] : sessions
   const cd = chartData(s)
+  // 'previous' 模式取倒數第二筆（只有一週時那筆就是 T0，等同跟起點比）
+  const cmpIndex = compareWith === 'previous' ? Math.max(0, s.length - 2) : 0
+  const cmpDim = {} as Record<DimKey, number>
+  KEYS.forEach((k) => {
+    cmpDim[k] = s[cmpIndex]?.dims?.[k]?.v ?? 0
+  })
+  const comparingToBaseline = cmpIndex === 0
   const xLabels = base ? ['T0', ...sessions.map((_, i) => String(i + 1))] : undefined
 
+  const body = (() => {
   switch (chartKey) {
     case 'summary':
       return (
@@ -232,7 +260,6 @@ export function ReportChart({
           {!hasTopicData && import.meta.env.DEV && (
             <div className="cv-preview-note">{t('本機版面預覽資料；重新生成分析後會換成日記分析結果。')}</div>
           )}
-          <div className="cv-note">{t('每週合計為 100%，呈現日記內容的關注占比，不代表實際投入時間。')}</div>
         </>
       )
     }
@@ -241,14 +268,18 @@ export function ReportChart({
         <>
           <div
             className="cv-chart-wrap cv-radar-wrap"
-            dangerouslySetInnerHTML={{ __html: valRadar(cd.firstDim, cd.lastDim) }}
+            dangerouslySetInnerHTML={{ __html: valRadar(cmpDim, cd.lastDim) }}
           />
           <div className="cv-legend" style={{ justifyContent: 'center' }}>
-            {legendItem('#8993A1', base ? t('T0 基準（虛線）') : t('第一次（虛線）'))}
+            {legendItem(
+              '#8993A1',
+              comparingToBaseline
+                ? (base ? t('T0 基準（虛線）') : t('第一次（虛線）'))
+                : t('上一次（虛線）'),
+            )}
             {legendItem('#1F3A5C', t('最新一次'))}
           </div>
-          <div className="cv-note">{t('內圈為 −100、中圈為 0（中性）、外圈為 +100。')}</div>
-          <div dangerouslySetInnerHTML={{ __html: radarDelta(cd.firstDim, cd.lastDim) }} />
+          <div dangerouslySetInnerHTML={{ __html: radarDelta(cmpDim, cd.lastDim) }} />
         </>
       )
     case 'affect':
@@ -265,4 +296,14 @@ export function ReportChart({
       return <div dangerouslySetInnerHTML={{ __html: emotionWordCloud(sessions) }} />
   }
   return null
+  })()
+
+  if (!body) return null
+  const intro = CHART_INTROS[chartKey]
+  return (
+    <>
+      {intro && <div className="cv-intro">{t(intro)}</div>}
+      {body}
+    </>
+  )
 }

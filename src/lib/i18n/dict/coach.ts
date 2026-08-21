@@ -71,9 +71,7 @@ export const coach: Record<string, Translation> = {
   '最強面向': { en: 'Strongest dimension' },
   '第一次（虛線）': { en: 'First (dashed)' },
   '最新一次': { en: 'Latest' },
-  '內圈為 −100、中圈為 0（中性）、外圈為 +100。': {
-    en: 'Inner ring −100, middle 0 (neutral), outer +100.',
-  },
+  '上一次（虛線）': { en: 'Previous (dashed)' },
   '正向（往上）': { en: 'Positive (up)' },
   '負向（往下）': { en: 'Negative (down)' },
   '每週 PERMA 報告': { en: 'Weekly PERMA Reports' },
