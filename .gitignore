@@ -33,3 +33,6 @@ backend/**/__pycache__
 # 本機雜物：舊網站壓縮檔、壞掉的虛擬環境備份
 Ming Websit.zip
 backend/.venv.broken/
+
+# 補寫工具的原始內容備份（含學員報告全文，不進版控）
+backend/tools/backfill-backup-*.json
