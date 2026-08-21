@@ -65,8 +65,29 @@ function esc(s: unknown): string {
 export function vColor(v: number): string {
   return v > 15 ? HEX.pos : v < -15 ? HEX.neg : HEX.neu
 }
+// valence 分級：與後端 VALENCE_LEVELS（backend/app.py）同一組門檻，改這裡要同步改那裡。
+// 用語意門檻（0 = 中性）而不是照分佈切，同一個分數永遠對應同一個等級，跨學員、跨週次才能比較。
+// 格式為 [下界, 等級數字, 內部描述]；Level 1 最低、Level 5 最高，畫面上只顯示 "Level N"，
+// 描述詞不對外顯示，僅供閱讀程式碼時對照。
+export const VALENCE_LEVELS: [number, number, string][] = [
+  [60, 5, '充沛'],
+  [20, 4, '穩定'],
+  [-19, 3, '中性'],
+  [-59, 2, '低落'],
+  [-100, 1, '明顯低落'],
+]
+export const VALENCE_ABSENT = '這週較少著墨'
+
+/** valence 分數 → 1–5 的等級數字；非數字回傳 null。 */
+export function vLevel(v: number): number | null {
+  if (!Number.isFinite(v)) return null
+  return (VALENCE_LEVELS.find(([threshold]) => v >= threshold) ?? VALENCE_LEVELS[VALENCE_LEVELS.length - 1])[1]
+}
+
+/** 畫面上顯示的等級標籤："Level 1"～"Level 5"；沒資料則為 VALENCE_ABSENT。 */
 export function vLabel(v: number): string {
-  return v >= 60 ? '高度正向' : v >= 20 ? '正向' : v > -20 ? '中性起伏' : v > -60 ? '偏負' : '高度負向'
+  const level = vLevel(v)
+  return level === null ? VALENCE_ABSENT : `Level ${level}`
 }
 
 interface LineSeries {
@@ -116,7 +137,18 @@ export function valLine(series: LineSeries[], count: number, xLabels?: string[])
   return svg + '</svg>'
 }
 
-// 雷達圖：a=第一次（淺虛線）、b=最新一次（深）疊圖
+// 雷達圖軸標籤上的變化幅度。與後端 _pct_change_label 同一套規則：
+// valence 是 −100～+100，換算成 0～100% 的幸福感刻度（(v+100)/2）後相減，
+// 得到「提高了幾個百分點」。不用相對成長率——起點可能是負數或 0，
+// 相對成長率會算出 −237% 這種沒有意義的數字。
+export function pctChangeLabel(t0: number, now: number): string {
+  const delta = Math.round((now - t0) / 2)
+  if (delta > 0) return `+${delta}%`
+  if (delta < 0) return `−${Math.abs(delta)}%`
+  return '持平'
+}
+
+// 雷達圖：a=第一次／T0（淺虛線）、b=最新一次（深）疊圖
 export function valRadar(a: Record<DimKey, number> | null, b: Record<DimKey, number> | null): string {
   const size = 280
   const cx = size / 2
@@ -138,7 +170,9 @@ export function valRadar(a: Record<DimKey, number> | null, b: Record<DimKey, num
     const [x, y] = pt(i, 1)
     svg += `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${HEX.border}" stroke-width="1"/>`
     const [lx, ly] = pt(i, 1.16)
-    svg += `<text x="${lx.toFixed(1)}" y="${(ly + 4).toFixed(1)}" text-anchor="middle" font-size="12" font-weight="700" fill="${DIMCOLOR[KEYS[i]]}">${KEYS[i]}</text>`
+    // 有 T0（a）與本期（b）才標變化幅度；只有單邊資料時退回純字母。
+    const label = a && b ? `${KEYS[i]} ${pctChangeLabel(a[KEYS[i]], b[KEYS[i]])}` : KEYS[i]
+    svg += `<text x="${lx.toFixed(1)}" y="${(ly + 4).toFixed(1)}" text-anchor="middle" font-size="12" font-weight="700" fill="${DIMCOLOR[KEYS[i]]}">${esc(label)}</text>`
   }
   const poly = (map: Record<DimKey, number>, stroke: string, fill: string, w: number, dash: boolean) => {
     let d = ''

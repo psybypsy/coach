@@ -271,7 +271,7 @@ function ReportPage() {
                             <div className="cv-slbl">
                               <span>{t(c.title)}</span>
                             </div>
-                            <ReportChart chartKey={c.key} sessions={r.sessions} baseline={r.baseline} />
+                            <ReportChart chartKey={c.key} sessions={r.sessions} baseline={r.baseline} compareWith="previous" />
                           </div>
                         ))}
                       </div>

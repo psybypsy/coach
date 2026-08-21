@@ -1651,7 +1651,7 @@ function MemberDetailPage() {
                               {CHART_DEFS.filter((c) => ['dims', 'topics', 'radar', 'cloud'].includes(c.key)).map((c) => (
                                 <div key={c.key} className="mb-4">
                                   <div className="cv-slbl"><span>{t(c.title)}</span></div>
-                                  <ReportChart chartKey={c.key} sessions={sessions} baseline={rBaseline} />
+                                  <ReportChart chartKey={c.key} sessions={sessions} baseline={rBaseline} compareWith="previous" />
                                 </div>
                               ))}
                             </>

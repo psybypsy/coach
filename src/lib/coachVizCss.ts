@@ -30,6 +30,8 @@ export const COACH_VIZ_CSS = `
 .cv-wcloud{display:flex;flex-wrap:wrap;justify-content:center;align-items:baseline;gap:5px 18px;padding:28px 22px;line-height:1.35;background:#EEF0F3;border:1.5px solid #E2E5EA;border-radius:12px}
 .cv-wcloud span{white-space:nowrap}
 .cv-note{font-size:11.5px;color:#54606E;line-height:1.7;padding:12px 15px;background:#EEF0F3;border-radius:8px;margin-top:10px}
+/* 圖表開頭的一句話說明：先講這張圖在看什麼，再呈現數據。刻意比 cv-note 低調（無底色），不搶圖表焦點 */
+.cv-intro{font-size:12px;color:#54606E;line-height:1.7;margin:2px 0 12px}
 .cv-vrow{border:1.5px solid #E2E5EA;border-radius:9px;margin-bottom:9px;overflow:hidden}
 .cv-vrow-hd{display:flex;align-items:center;gap:10px;padding:11px 14px;background:#EEF0F3;cursor:pointer}
 .cv-vrow-n{font-size:12px;font-weight:800;color:#1C2530}
