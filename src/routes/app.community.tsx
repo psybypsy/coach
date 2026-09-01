@@ -6,6 +6,8 @@ import { programWeek, weekStreak } from '../lib/journalStats'
 import { DIMENSION_ORDER, DIMENSION_CONFIGS, type DimensionKey } from '../lib/perma'
 import { generateEnergyAlias } from '../lib/energyAlias'
 
+const API_BASE = import.meta.env.VITE_API_BASE as string
+
 export const Route = createFileRoute('/app/community')({
   component: CommunityPage,
 })
@@ -231,10 +233,32 @@ function CommunityPage() {
       .single()
 
     if (data) {
+      const row = data as unknown as CommentRow
       setComments((prev) => ({
         ...prev,
-        [postId]: [...(prev[postId] ?? []), data as unknown as CommentRow],
+        [postId]: [...(prev[postId] ?? []), row],
       }))
+      if (isCoach) void notifyAuthor(row.id)
+    }
+  }
+
+  // 教練留言後寄 email 通知學員回來看。刻意不擋 UI、也不顯示錯誤——留言本身已經寫進
+  // 資料庫了，通知信寄不出去不該讓教練以為留言失敗（後端會記 log）。
+  async function notifyAuthor(commentId: string) {
+    if (!API_BASE) return
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) return
+      await fetch(`${API_BASE}/api/coach/comment-notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ comment_id: commentId }),
+      })
+    } catch {
+      // 通知是附加價值，失敗就算了。
     }
   }
 

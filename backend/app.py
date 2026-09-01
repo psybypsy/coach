@@ -3030,6 +3030,127 @@ async def member_report(
 
 
 
+# ── 教練留言通知 ───────────────────────────────────────────────
+# 教練在社群回覆學員的書寫時，寄一封 email 通知學員回來看。
+# 觸發者是教練的瀏覽器（見 src/routes/app.community.tsx 的 submitComment），
+# 但這裡一律重新驗證：呼叫者要是教練，而且那則留言必須真的是他本人寫的。
+
+# 同一則留言只寄一次。重整、連點、前端重試都會被這個集合擋下來。
+# 刻意不落地成資料表（省一次要使用者自己在 Supabase 跑的遷移）——代價是服務重啟後
+# 會忘記，但前端只在留言成功寫入的當下呼叫一次，重啟後不會有人再拿舊 comment_id 來打。
+_notified_comments: set[str] = set()
+
+_COMMENT_PLAIN_TEXT_FALLBACK = "你的 PERMA 書寫收到教練的回覆，請用支援 HTML 的信件軟體開啟。"
+
+
+def _coach_comment_email_html(
+    member_name: str,
+    coach_name: str,
+    comment: str,
+    week_number: int,
+    community_url: str,
+) -> str:
+    """教練留言通知信。樣式一律 inline style——Gmail 會把 <style> 丟掉。"""
+    week_label = f"第 {week_number} 週" if week_number else "最近一次"
+    return f"""
+    <p>{html.escape(member_name)}，你好：</p>
+    <p>{html.escape(coach_name)} 教練在你{html.escape(week_label)}的 PERMA 書寫下留了一段回饋：</p>
+    <blockquote style="margin:16px 0;padding:12px 16px;border-left:3px solid #7a9e7e;background:#f4f7f4;color:#333;white-space:pre-wrap;">{html.escape(comment)}</blockquote>
+    <p><a href="{html.escape(community_url)}">點此到社群查看並回覆</a></p>
+    <p>期待與你繼續對話，<br>{html.escape(EMAIL_SIGNATURE)}</p>
+    """
+
+
+class CoachCommentNotifyRequest(BaseModel):
+    comment_id: str
+
+
+@app.post("/api/coach/comment-notify")
+@limiter.limit("30/minute")
+async def coach_comment_notify(
+    request: Request,
+    req: CoachCommentNotifyRequest,
+    authorization: str = Header(...),
+):
+    """教練留言後通知學員。刻意設計成失敗不影響主流程——留言早就寫進資料庫了，
+    寄不出去只記 log 並回報原因，不讓前端看到錯誤。"""
+    token = authorization.removeprefix("Bearer ").strip()
+    coach_id = await require_coach(token)
+
+    if not _mail_channel():
+        return {"sent": False, "reason": "沒有任何寄信管道設定齊全"}
+    if req.comment_id in _notified_comments:
+        return {"sent": False, "reason": "這則留言已通知過"}
+
+    comment_resp = await db().get(
+        f"{SUPABASE_REST}/post_comments",
+        headers=SUPABASE_HEADERS,
+        params=[
+            ("id", f"eq.{req.comment_id}"),
+            ("select", "id,post_id,user_id,content"),
+            ("limit", "1"),
+        ],
+    )
+    comments = comment_resp.json() if comment_resp.status_code == 200 else []
+    if not comments:
+        raise HTTPException(status_code=404, detail="找不到這則留言")
+    comment = comments[0]
+    if str(comment.get("user_id")) != coach_id:
+        raise HTTPException(status_code=403, detail="只能通知自己寫的留言")
+
+    post_resp = await db().get(
+        f"{SUPABASE_REST}/journal_posts",
+        headers=SUPABASE_HEADERS,
+        params=[
+            ("id", f"eq.{comment['post_id']}"),
+            ("select", "id,user_id,week_start"),
+            ("limit", "1"),
+        ],
+    )
+    posts = post_resp.json() if post_resp.status_code == 200 else []
+    if not posts:
+        raise HTTPException(status_code=404, detail="找不到這則留言所屬的貼文")
+    post = posts[0]
+
+    author_id = str(post.get("user_id") or "")
+    if author_id == coach_id:
+        return {"sent": False, "reason": "教練留言在自己的貼文上，不用通知"}
+
+    member_name, email = await _member_identity(author_id)
+    if not email:
+        return {"sent": False, "reason": "找不到學員 email"}
+    coach_name, _ = await _member_identity(coach_id)
+
+    try:
+        week_number = _program_week_number(str(post.get("week_start") or ""))
+    except ValueError:
+        week_number = 0
+
+    # 先記下再寄。寄送途中若同一則留言又被打進來，第二次會被上面的檢查擋掉；
+    # 真的寄失敗才收回，讓使用者重試時還有機會補寄。
+    _notified_comments.add(req.comment_id)
+    try:
+        await _send_report_mail(
+            email,
+            f"{coach_name} 在你的 PERMA 書寫下留言了",
+            _coach_comment_email_html(
+                member_name,
+                coach_name,
+                str(comment.get("content") or ""),
+                week_number,
+                f"{APP_BASE_URL}/app/community",
+            ),
+            plain_text=_COMMENT_PLAIN_TEXT_FALLBACK,
+        )
+    except Exception as err:
+        _notified_comments.discard(req.comment_id)
+        logger.error("教練留言通知寄送失敗 %s: %s", email, err)
+        return {"sent": False, "reason": str(err)[:200]}
+
+    logger.info("已寄送教練留言通知給 %s", email)
+    return {"sent": True}
+
+
 @app.post("/api/send-weekly-reminders")
 async def send_weekly_reminders(x_webhook_secret: str = Header(default="", alias="X-Webhook-Secret")):
     """系統 API：每週發送提醒郵件給尚未填週記的學員。
