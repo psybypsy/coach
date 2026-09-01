@@ -6,6 +6,8 @@ import { programWeek, weekStreak } from '../lib/journalStats'
 import { DIMENSION_ORDER, DIMENSION_CONFIGS, type DimensionKey } from '../lib/perma'
 import { generateEnergyAlias } from '../lib/energyAlias'
 
+const API_BASE = import.meta.env.VITE_API_BASE as string
+
 export const Route = createFileRoute('/app/community')({
   component: CommunityPage,
 })
@@ -100,6 +102,7 @@ type Tab = 'all' | 'mine'
 function CommunityPage() {
   const { t, language } = useLanguage()
   const [userId, setUserId] = useState<string | null>(null)
+  const [isCoach, setIsCoach] = useState(false)
   const [posts, setPosts] = useState<Post[]>([])
   const [hist, setHist] = useState<HistRow[]>([])
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({})
@@ -125,14 +128,28 @@ function CommunityPage() {
     const uid = userData.user?.id ?? null
     setUserId(uid)
 
-    // 公開/匿名貼文大家都看得到；僅自己可見的貼文只有作者自己在「我的貼文」看得到。
+    // 教練視角：教練要能在社群直接看到每位學員每週寫的內容並回覆，所以不套 is_public
+    // 過濾（資料庫的 read journal_posts policy 本來就允許 is_coach() 讀全部）。
+    let coach = false
+    if (uid) {
+      const { data: me } = await supabase.from('profiles').select('role').eq('id', uid).single()
+      coach = me?.role === 'coach'
+    }
+    setIsCoach(coach)
+
+    // 公開/匿名貼文大家都看得到；「僅自己與教練可見」的貼文只有作者自己與教練看得到。
     let postQuery = supabase
       .from('journal_posts')
       .select(
         'id,user_id,week_start,p_content,e_content,r_content,m_content,a_content,created_at,is_public,visibility,anon_alias,profiles(display_name,role)',
       )
-    postQuery = uid ? postQuery.or(`is_public.eq.true,user_id.eq.${uid}`) : postQuery.eq('is_public', true)
-    const { data: postRows } = await postQuery.order('created_at', { ascending: false }).limit(50)
+    if (!coach) {
+      postQuery = uid ? postQuery.or(`is_public.eq.true,user_id.eq.${uid}`) : postQuery.eq('is_public', true)
+    }
+    // 教練是把這裡當跟進清單用的，50 筆在整梯次跑幾週後會看不到較早的學員貼文。
+    const { data: postRows } = await postQuery
+      .order('created_at', { ascending: false })
+      .limit(coach ? 300 : 50)
 
     const list = (postRows ?? []) as unknown as Post[]
     setPosts(list)
@@ -178,12 +195,18 @@ function CommunityPage() {
   }
 
   const visiblePosts = useMemo(() => {
-    // 社群貼文：只顯示公開/匿名的貼文；我的貼文：不論公開與否都顯示自己的貼文。
-    const base = tab === 'mine' ? posts.filter((p) => p.user_id === userId) : posts.filter((p) => p.is_public)
+    // 社群貼文：只顯示公開/匿名的貼文（教練另外看得到「僅自己與教練可見」的）；
+    // 我的貼文：不論公開與否都顯示自己的貼文。
+    const base =
+      tab === 'mine'
+        ? posts.filter((p) => p.user_id === userId)
+        : isCoach
+          ? posts
+          : posts.filter((p) => p.is_public)
     return [...base].sort((a, b) =>
       sort === 'newest' ? b.created_at.localeCompare(a.created_at) : a.created_at.localeCompare(b.created_at),
     )
-  }, [posts, tab, userId, sort])
+  }, [posts, tab, userId, sort, isCoach])
 
   async function toggleLike(postId: string) {
     if (!userId) return
@@ -210,10 +233,32 @@ function CommunityPage() {
       .single()
 
     if (data) {
+      const row = data as unknown as CommentRow
       setComments((prev) => ({
         ...prev,
-        [postId]: [...(prev[postId] ?? []), data as unknown as CommentRow],
+        [postId]: [...(prev[postId] ?? []), row],
       }))
+      if (isCoach) void notifyAuthor(row.id)
+    }
+  }
+
+  // 教練留言後寄 email 通知學員回來看。刻意不擋 UI、也不顯示錯誤——留言本身已經寫進
+  // 資料庫了，通知信寄不出去不該讓教練以為留言失敗（後端會記 log）。
+  async function notifyAuthor(commentId: string) {
+    if (!API_BASE) return
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) return
+      await fetch(`${API_BASE}/api/coach/comment-notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ comment_id: commentId }),
+      })
+    } catch {
+      // 通知是附加價值，失敗就算了。
     }
   }
 
@@ -262,8 +307,8 @@ function CommunityPage() {
 
   const visibilityOptions: { value: Visibility; title: string; desc: string }[] = [
     { value: 'public', title: t('發布到社群'), desc: t('你的名字會顯示在社群貼文上') },
-    { value: 'anonymous', title: t('匿名發布到社群'), desc: t('以能量代號匿名出現在社群動態') },
-    { value: 'private', title: t('僅自己可見'), desc: t('不會出現在社群動態，只有你自己看得到') },
+    { value: 'anonymous', title: t('匿名發布到社群'), desc: t('以能量代號匿名出現在社群動態，教練仍看得到你的名字') },
+    { value: 'private', title: t('僅自己與教練可見'), desc: t('不會出現在社群動態，只有你和教練看得到') },
   ]
 
   return (
@@ -298,6 +343,15 @@ function CommunityPage() {
         ))}
       </div>
 
+      {isCoach && tab === 'all' && (
+        <div className="mb-5 rounded-xl border border-primary/30 bg-primary-soft px-4 py-3">
+          <p className="text-sm font-semibold text-primary">{t('教練視角')}</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-foreground-soft">
+            {t('你看得到所有學員的書寫（含匿名與「僅自己與教練可見」），並可以直接在下方留言回覆。')}
+          </p>
+        </div>
+      )}
+
       {loading ? (
         <p className="text-sm text-muted-foreground">{t('載入中…')}</p>
       ) : visiblePosts.length === 0 ? (
@@ -309,14 +363,21 @@ function CommunityPage() {
           {visiblePosts.map((post) => {
             const meta = computeMeta(post, hist)
             const isMine = post.user_id === userId
-            // 匿名貼文對其他人隱藏真實姓名/頭像，改用能量代號；作者自己仍看得到真實身分。
-            const isAnonymousToOthers = post.visibility === 'anonymous' && !isMine
+            // 匿名貼文對其他學員隱藏真實姓名/頭像，改用能量代號；作者自己與教練仍看得到
+            // 真實身分（發布說明就是這樣寫的，教練要能針對本人跟進）。
+            const isAnonymousToOthers = post.visibility === 'anonymous' && !isMine && !isCoach
             const name = isAnonymousToOthers
               ? post.anon_alias || t('神秘旅人')
               : (post.profiles?.display_name ?? '—')
             const avatarGlyph = isAnonymousToOthers ? '🌿' : name.trim().charAt(0).toUpperCase() || '—'
             const visibilityLabel =
-              post.visibility === 'private' ? t('僅自己可見') : post.visibility === 'anonymous' ? t('匿名') : null
+              post.visibility === 'private'
+                ? t('僅自己與教練可見')
+                : post.visibility === 'anonymous'
+                  ? isCoach && !isMine
+                    ? t('匿名（僅教練可見真實身分）')
+                    : t('匿名')
+                  : null
             const isEditing = editingId === post.id
             return (
               <article key={post.id} className="rounded-2xl border border-border bg-card p-5 shadow-soft">
@@ -333,7 +394,7 @@ function CommunityPage() {
                             {t('教練')}
                           </span>
                         )}
-                        {isMine && visibilityLabel && (
+                        {(isMine || isCoach) && visibilityLabel && (
                           <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-foreground-soft">
                             {visibilityLabel}
                           </span>
@@ -482,14 +543,27 @@ function CommunityPage() {
 
                     {(comments[post.id] ?? []).length > 0 && (
                       <ul className="mt-3 flex flex-col gap-2">
-                        {(comments[post.id] ?? []).map((c) => (
-                          <li key={c.id} className="rounded-lg bg-muted px-3 py-2 text-sm">
-                            <span className="mr-1.5 font-semibold text-foreground">
-                              {c.profiles?.display_name ?? '—'}
-                            </span>
-                            <span className="text-foreground-soft">{c.content}</span>
-                          </li>
-                        ))}
+                        {(comments[post.id] ?? []).map((c) => {
+                          const fromCoach = c.profiles?.role === 'coach'
+                          return (
+                            <li
+                              key={c.id}
+                              className={`rounded-lg px-3 py-2 text-sm ${
+                                fromCoach ? 'bg-primary-soft' : 'bg-muted'
+                              }`}
+                            >
+                              <span className="mr-1.5 font-semibold text-foreground">
+                                {c.profiles?.display_name ?? '—'}
+                              </span>
+                              {fromCoach && (
+                                <span className="mr-1.5 rounded-md bg-primary px-1.5 py-0.5 text-[11px] font-semibold text-primary-foreground">
+                                  {t('教練')}
+                                </span>
+                              )}
+                              <span className="text-foreground-soft">{c.content}</span>
+                            </li>
+                          )
+                        })}
                       </ul>
                     )}
 
@@ -500,7 +574,7 @@ function CommunityPage() {
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') void submitComment(post.id)
                         }}
-                        placeholder={t('寫下留言…')}
+                        placeholder={isCoach ? t('以教練身分回覆…') : t('寫下留言…')}
                         className="h-9 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
                       />
                       <button

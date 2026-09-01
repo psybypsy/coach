@@ -120,6 +120,18 @@ function AppShell() {
                 </Link>
               )}
             </nav>
+          ) : onCoach ? (
+            // 教練後台仍留一條回「社群」的路：Ming 是在社群頁直接看學員每週的書寫並回覆的，
+            // 少了這個連結就只能靠手動改網址回去。
+            <nav className="flex items-center gap-4">
+              <span className="font-heading text-sm font-semibold text-foreground">{BRAND.name}</span>
+              <Link
+                to="/app/community"
+                className="whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-foreground-soft transition hover:bg-muted"
+              >
+                {t('社群')}
+              </Link>
+            </nav>
           ) : (
             <span className="font-heading text-sm font-semibold text-foreground">{BRAND.name}</span>
           )}
