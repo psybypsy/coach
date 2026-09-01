@@ -112,6 +112,7 @@ function CommunityPage() {
   const [sort, setSort] = useState<SortOrder>('newest')
   const [tab, setTab] = useState<Tab>('all')
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -122,8 +123,29 @@ function CommunityPage() {
     void load()
   }, [])
 
+  // Supabase 免費方案閒置後第一個請求可能要 30 秒以上（實測過 35 秒），Safari 也有
+  // 多分頁搶 auth lock 卡住的情況。沒有逾時的話畫面會永遠停在「載入中…」，看起來像壞掉。
+  function withTimeout<T>(work: Promise<T>, ms = 25000): Promise<T> {
+    return Promise.race([
+      work,
+      new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+    ])
+  }
+
   async function load() {
     setLoading(true)
+    setLoadError(null)
+    try {
+      await withTimeout(fetchAll())
+    } catch (err) {
+      console.error('社群動態載入失敗', err)
+      setLoadError(err instanceof Error && err.message === 'timeout' ? 'timeout' : 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function fetchAll() {
     const { data: userData } = await supabase.auth.getUser()
     const uid = userData.user?.id ?? null
     setUserId(uid)
@@ -190,8 +212,6 @@ function CommunityPage() {
       }
       setComments(grouped)
     }
-
-    setLoading(false)
   }
 
   const visiblePosts = useMemo(() => {
@@ -354,6 +374,23 @@ function CommunityPage() {
 
       {loading ? (
         <p className="text-sm text-muted-foreground">{t('載入中…')}</p>
+      ) : loadError ? (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <p className="text-sm font-semibold text-foreground">
+            {loadError === 'timeout' ? t('載入逾時') : t('載入失敗')}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            {loadError === 'timeout'
+              ? t('伺服器閒置後第一次連線會比較久，通常再試一次就好。')
+              : t('請檢查網路連線後再試一次。')}
+          </p>
+          <button
+            onClick={() => void load()}
+            className="mt-3 h-9 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary-glow"
+          >
+            {t('重新載入')}
+          </button>
+        </div>
       ) : visiblePosts.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           {tab === 'mine' ? t('你還沒有發布任何書寫') : t('目前還沒有人發布書寫')}

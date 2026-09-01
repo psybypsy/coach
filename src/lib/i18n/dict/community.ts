@@ -4,6 +4,13 @@ export const community: Record<string, Translation> = {
   '社群動態': { en: 'Community feed' },
   '目前還沒有人發布書寫': { en: 'No one has posted yet' },
   '載入中…': { en: 'Loading…' },
+  '載入逾時': { en: 'Loading timed out' },
+  '載入失敗': { en: 'Could not load' },
+  '伺服器閒置後第一次連線會比較久，通常再試一次就好。': {
+    en: 'The first request after the server has been idle can take a while — try again.',
+  },
+  '請檢查網路連線後再試一次。': { en: 'Check your connection and try again.' },
+  '重新載入': { en: 'Reload' },
   '讚': { en: 'Like' },
   '留言': { en: 'Comment' },
   '寫下留言…': { en: 'Write a comment…' },
