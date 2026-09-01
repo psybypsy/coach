@@ -73,12 +73,11 @@ export const perma: Record<string, Translation> = {
   '選擇發布方式': { en: 'Choose how to share' },
   '你的名字會顯示在社群貼文上': { en: 'Your name will appear on this post' },
   '匿名發布到社群': { en: 'Post anonymously' },
-  '會用一個自然系代號顯示，其他成員看不到你的真實姓名': {
-    en: "Shown under a nature-inspired alias — other members won't see your real name",
+  '會用一個自然系代號顯示，其他學員看不到你的真實姓名（教練仍看得到）': {
+    en: "Shown under a nature-inspired alias — other members won't see your real name (your coach still will)",
   },
   '你的能量代號': { en: 'Your energy alias' },
   '換一個': { en: 'Shuffle' },
-  '不會出現在社群動態，只有你自己看得到': { en: "Won't appear in the community feed — only you can see it" },
   '結束今天練習': { en: 'Finish today’s practice' },
   '推薦': { en: 'Recommended' },
   '鼓勵你把這週的感受分享到社群。你寫下的一段話，可能正好是夥伴今天需要的鼓勵；也歡迎到社群為別人留下回饋。': {

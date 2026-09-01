@@ -188,7 +188,7 @@ function JournalWizard() {
               selected={visibility === 'anonymous'}
               onClick={() => selectVisibility('anonymous')}
               title={t('匿名發布到社群')}
-              description={t('會用一個自然系代號顯示，其他成員看不到你的真實姓名')}
+              description={t('會用一個自然系代號顯示，其他學員看不到你的真實姓名（教練仍看得到）')}
             >
               {visibility === 'anonymous' && (
                 <div className="mt-3 flex items-center justify-between rounded-lg bg-muted px-3 py-2">
@@ -212,8 +212,8 @@ function JournalWizard() {
               icon="🔒"
               selected={visibility === 'private'}
               onClick={() => selectVisibility('private')}
-              title={t('僅自己可見')}
-              description={t('不會出現在社群動態，只有你自己看得到')}
+              title={t('僅自己與教練可見')}
+              description={t('不會出現在社群動態，只有你和教練看得到')}
             />
           </div>
 
