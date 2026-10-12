@@ -2533,7 +2533,7 @@ async def _write_client_report(
     """
     included = _included_blocks(analysis)
     if not included:
-        raise HTTPException(status_code=409, detail="請先在教練分析勾選要納入客戶版的區塊")
+        raise HTTPException(status_code=409, detail="請先在教練分析勾選要納入交付版的區塊")
 
     material = "\n\n".join(f"## {b['title']}\n{b['body']}" for b in included)
     lang = language or _detect_lang(material)
