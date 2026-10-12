@@ -16,6 +16,7 @@ import {
   type SessionScore,
   type DimKey,
   type TopicKey,
+  type ChartTone,
 } from '../lib/coachViz'
 
 // T0 基準點：五面向幸福感分數（0–10），作為所有圖表的起點（見遷移 005 / 007）
@@ -117,6 +118,7 @@ export function ReportChart({
   sessions,
   baseline,
   compareWith = 'baseline',
+  tone = 'exact',
 }: {
   chartKey: string
   sessions: SessionScore[]
@@ -126,6 +128,8 @@ export function ReportChart({
    *  'previous'：跟上一次比——用在單週報告，學員關心的是「這週跟上週相比如何」；
    *              只有第 1 週沒有前一次，此時自動退回跟 T0 比。 */
   compareWith?: 'baseline' | 'previous'
+  /** 學員本人會看到的圖用 'supportive'（見 coachViz 的 ChartTone）；教練自己看的分析維持 'exact'。 */
+  tone?: ChartTone
 }) {
   const { t, language } = useLanguage()
   if (!sessions.length) return null
@@ -268,7 +272,7 @@ export function ReportChart({
         <>
           <div
             className="cv-chart-wrap cv-radar-wrap"
-            dangerouslySetInnerHTML={{ __html: valRadar(cmpDim, cd.lastDim) }}
+            dangerouslySetInnerHTML={{ __html: valRadar(cmpDim, cd.lastDim, tone) }}
           />
           <div className="cv-legend" style={{ justifyContent: 'center' }}>
             {legendItem(
@@ -279,7 +283,7 @@ export function ReportChart({
             )}
             {legendItem('#1F3A5C', t('最新一次'))}
           </div>
-          <div dangerouslySetInnerHTML={{ __html: radarDelta(cmpDim, cd.lastDim) }} />
+          <div dangerouslySetInnerHTML={{ __html: radarDelta(cmpDim, cd.lastDim, tone) }} />
         </>
       )
     case 'affect':

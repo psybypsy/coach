@@ -14,7 +14,7 @@ import {
 } from '../lib/coachViz'
 import { mdToHtml } from '../lib/mdToHtml'
 import { COACH_VIZ_CSS } from '../lib/coachVizCss'
-import { rasterizeExportSvgs, downloadReportPdf } from '../lib/exportPdf'
+import { rasterizeExportSvgs, downloadReportPdf, reportPdfBlob } from '../lib/exportPdf'
 import {
   CHART_DEFS,
   ReportChart,
@@ -117,7 +117,14 @@ interface MonthlyPermaReport {
     // 以及教練對它的回饋。重新生成月報告時後端會保留這兩欄（_MONTHLY_CURATED_KEYS）。
     client_report?: { body_md: string; updated_at?: string } | null
     coach_feedback?: CoachFeedback | null
+    // 客戶交付版最後一次寄給學員的紀錄，記在最後一份月報告上
+    client_delivery?: ClientDelivery | null
   }
+}
+
+interface ClientDelivery {
+  sent_at: string
+  to_email: string
 }
 
 // message 會原文放進寄給學員的報告；note 是給整理者的備註，學員看不到。
@@ -270,14 +277,36 @@ function MemberDetailPage() {
   const [monthlyFwDesc, setMonthlyFwDesc] = useState<Record<number, string>>({})
   const [monthlyFwDraft, setMonthlyFwDraft] = useState<Record<number, Framework | null>>({})
   const [monthlyFwBusy, setMonthlyFwBusy] = useState<string | null>(null)
-  // 學員版 8 週回顧的教練回饋：fbSaved 是後端最後一次存下的版本，用來判斷有沒有未儲存的修改
-  const [fbMessage, setFbMessage] = useState('')
-  const [fbNote, setFbNote] = useState('')
-  const [fbSaved, setFbSaved] = useState<CoachFeedback | null>(null)
-  const [fbSaving, setFbSaving] = useState(false)
-  const [fbError, setFbError] = useState(false)
+  // 月報告的教練回饋，key 是里程碑週數。fbDrafts 只放畫面上改過、還沒存的內容；
+  // 後端最後存下的版本在 monthlyReports 的 content.coach_feedback，兩者不同就是有未儲存的修改
+  const [fbDrafts, setFbDrafts] = useState<Record<number, { message: string; note: string }>>({})
+  const [fbSaving, setFbSaving] = useState<number | null>(null)
+  const [fbError, setFbError] = useState<number | null>(null)
   const eightWeekReview = monthlyReports.find(isEightWeekReview) ?? null
-  const fbDirty = fbMessage !== (fbSaved?.message ?? '') || fbNote !== (fbSaved?.note ?? '')
+  const fbSavedOf = (m: number) => monthlyReports.find((r) => r.milestone_week === m)?.content?.coach_feedback ?? null
+  const fbDraftOf = (m: number) =>
+    fbDrafts[m] ?? { message: fbSavedOf(m)?.message ?? '', note: fbSavedOf(m)?.note ?? '' }
+  const fbDirtyOf = (m: number) => {
+    const draft = fbDraftOf(m)
+    const saved = fbSavedOf(m)
+    return draft.message !== (saved?.message ?? '') || draft.note !== (saved?.note ?? '')
+  }
+  const fbDirty = monthlyReports.some((r) => fbDirtyOf(r.milestone_week))
+  // 客戶交付版開頭的「教練給你的話」：取最後一個里程碑裡有留言的那份
+  const clientCoachMessage =
+    [...monthlyReports]
+      .sort((a, b) => b.milestone_week - a.milestone_week)
+      .map((r) => r.content?.coach_feedback?.message?.trim() ?? '')
+      .find(Boolean) ?? ''
+  // 客戶交付版寄給學員：寄送紀錄記在最後一份月報告上；還沒有月報告時只留在這次的畫面上
+  const [clientSending, setClientSending] = useState(false)
+  const [clientSendNote, setClientSendNote] = useState<{ ok: boolean; text: string } | null>(null)
+  const [sessionDelivery, setSessionDelivery] = useState<ClientDelivery | null>(null)
+  const latestMonthly = monthlyReports.reduce<MonthlyPermaReport | null>(
+    (latest, r) => (!latest || r.milestone_week > latest.milestone_week ? r : latest),
+    null,
+  )
+  const clientDelivery = latestMonthly?.content?.client_delivery ?? sessionDelivery
   // 回饋可能寫得很長，離開頁面前提醒還沒儲存
   useEffect(() => {
     if (!fbDirty) return
@@ -451,11 +480,10 @@ function MemberDetailPage() {
     setMemberReports((reportRows as unknown as MemberReportRow[]) ?? [])
     const monthly = (monthlyRows as unknown as MonthlyPermaReport[]) ?? []
     setMonthlyReports(monthly)
-    const feedback = monthly.find(isEightWeekReview)?.content.coach_feedback ?? null
-    setFbSaved(feedback)
-    setFbMessage(feedback?.message ?? '')
-    setFbNote(feedback?.note ?? '')
-    setFbError(false)
+    setFbDrafts({})
+    setFbError(null)
+    setClientSendNote(null)
+    setSessionDelivery(null)
     const row = (analysisRow as unknown as CoachAnalysis) ?? null
     setAnalysis(row)
     const b = row?.baseline
@@ -510,32 +538,31 @@ function MemberDetailPage() {
   }
 
   // 走後端：perma_monthly_reports 對前端只開放讀取
-  async function saveFeedback() {
-    setFbSaving(true)
-    setFbError(false)
+  async function saveFeedback(m: number) {
+    const draft = fbDraftOf(m)
+    setFbSaving(m)
+    setFbError(null)
     try {
       const resp = await authFetch('/api/coach/monthly-reports/feedback', {
         member_id: id,
-        milestone_week: 8,
-        message: fbMessage,
-        note: fbNote,
+        milestone_week: m,
+        message: draft.message,
+        note: draft.note,
       })
       if (!resp.ok) {
-        setFbError(true)
+        setFbError(m)
         return
       }
       const { coach_feedback } = (await resp.json()) as { coach_feedback: CoachFeedback }
-      setFbSaved(coach_feedback)
-      // 後端會去掉頭尾空白，畫面上的內容跟著對齊，才不會一存完又顯示「未儲存」
-      setFbMessage(coach_feedback.message)
-      setFbNote(coach_feedback.note)
       setMonthlyReports((prev) =>
-        prev.map((r) => (isEightWeekReview(r) ? { ...r, content: { ...r.content, coach_feedback } } : r)),
+        prev.map((r) => (r.milestone_week === m ? { ...r, content: { ...r.content, coach_feedback } } : r)),
       )
+      // 後端會去掉頭尾空白；丟掉草稿讓畫面回到存下的版本，才不會一存完又顯示「未儲存」
+      setFbDrafts(({ [m]: _saved, ...rest }) => rest)
     } catch {
-      setFbError(true)
+      setFbError(m)
     } finally {
-      setFbSaving(false)
+      setFbSaving(null)
     }
   }
 
@@ -889,6 +916,80 @@ function MemberDetailPage() {
     await downloadReportPdf(source, 'Personal-Well-being-Review.pdf')
   }
 
+  // 把畫面上這份客戶交付版（與「下載 PDF」同一份排版）寄給學員本人。
+  // 先向後端問收件人與上次寄送紀錄，讓教練在確認框裡看清楚要寄給誰，確認後才產生 PDF 並寄出。
+  async function sendClientReport() {
+    const source = document.getElementById('cv-print-area')
+    if (!source || clientSending) return
+    if (fbDirty) {
+      setClientSendNote({ ok: false, text: t('「給學員的話」還有沒儲存的修改，請先按「儲存回饋」再寄。') })
+      return
+    }
+    const fail = async (resp: Response | null) => {
+      const body = resp ? ((await resp.json().catch(() => ({}))) as { detail?: string }) : {}
+      setClientSendNote({ ok: false, text: body.detail || t('寄送失敗，信沒有寄出，請再試一次。') })
+    }
+    setClientSending(true)
+    setClientSendNote(null)
+    try {
+      const infoResp = await authFetch('/api/coach/client-report/send', { member_id: id })
+      if (!infoResp.ok) return await fail(infoResp)
+      const info = (await infoResp.json()) as {
+        to_email: string
+        has_message: boolean
+        mail_ready: boolean
+        client_delivery: ClientDelivery | null
+      }
+      if (!info.mail_ready) {
+        setClientSendNote({ ok: false, text: t('系統目前沒有可用的寄信管道，信沒有寄出。') })
+        return
+      }
+      if (!info.to_email) {
+        setClientSendNote({ ok: false, text: t('查不到這位學員的 email，信沒有寄出。') })
+        return
+      }
+      const lines = [t('要把這份客戶交付版寄給 {name}（{email}）嗎？', { name, email: info.to_email })]
+      if (!info.has_message) lines.push(t('提醒：還沒有填寫「給學員的話」，信裡與 PDF 都不會有教練留言。'))
+      const previous = info.client_delivery ?? sessionDelivery
+      if (previous) {
+        lines.push(
+          t('這份已經在 {time} 寄給 {email} 過，確定要再寄一次嗎？', {
+            time: formatSavedTime(previous.sent_at, language),
+            email: previous.to_email,
+          }),
+        )
+      }
+      if (!window.confirm(lines.join('\n\n'))) return
+
+      const blob = await reportPdfBlob(source)
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.onerror = () => reject(reader.error)
+        reader.readAsDataURL(blob)
+      })
+      const resp = await authFetch('/api/coach/client-report/send', {
+        member_id: id,
+        pdf_base64: dataUrl.slice(dataUrl.indexOf(',') + 1),
+      })
+      if (!resp.ok) return await fail(resp)
+      const { client_delivery } = (await resp.json()) as { client_delivery: ClientDelivery }
+      setSessionDelivery(client_delivery)
+      if (latestMonthly) {
+        setMonthlyReports((prev) =>
+          prev.map((r) =>
+            r.milestone_week === latestMonthly.milestone_week ? { ...r, content: { ...r.content, client_delivery } } : r,
+          ),
+        )
+      }
+      setClientSendNote({ ok: true, text: t('已寄給 {email}', { email: client_delivery.to_email }) })
+    } catch {
+      await fail(null)
+    } finally {
+      setClientSending(false)
+    }
+  }
+
   // 客戶版行內編輯：進入編輯 → 改文字 → 存回 client_text
   function startClientEdit() {
     if (!analysis?.client_text) return
@@ -943,6 +1044,21 @@ function MemberDetailPage() {
         }
         return [new Paragraph({ children: inlineRuns(l), spacing: { after: 160 } })]
       })
+
+    // 教練在月報告留的「給學員的話」放在內文最前面，與畫面上的客戶交付版一致
+    const coachMessageParagraphs = clientCoachMessage
+      ? [
+          new Paragraph({
+            children: [new TextRun(t('教練給你的話'))],
+            heading: HeadingLevel.HEADING_2,
+            spacing: { before: 240, after: 120 },
+          }),
+          ...clientCoachMessage
+            .split('\n')
+            .filter((line) => line.trim())
+            .map((line) => new Paragraph({ children: [new TextRun(line.trim())], spacing: { after: 160 } })),
+        ]
+      : []
 
     // 每張圖各自截一張圖片、各自一頁嵌入 Word（含其標題與雷達的 A/P/M/R/E 清單）。
     // 不能直接截畫面上的 SVG：部分瀏覽器會產生「尺寸正確但內容全白」的 canvas。
@@ -1043,6 +1159,7 @@ function MemberDetailPage() {
               spacing: { after: 320 },
               children: [new TextRun({ text: `${name}　·　${analysis.client_date ?? ''}`, size: 20, color: '54606E' })],
             }),
+            ...coachMessageParagraphs,
             ...bodyParagraphs,
             ...chartParagraphs,
             new Paragraph({
@@ -1091,6 +1208,63 @@ function MemberDetailPage() {
 
   const pendingReports = memberReports.filter((r) => r.status === 'pending_coach')
 
+  // 月報告的教練回饋欄位。8 週回顧區與「每月 PERMA 報告」的卡片共用同一份草稿，改哪一邊都一樣。
+  const feedbackEditor = (m: number, where: string) => {
+    const draft = fbDraftOf(m)
+    const saved = fbSavedOf(m)
+    const dirty = fbDirtyOf(m)
+    return (
+      <>
+        <div className="cv-slbl" style={{ marginTop: 22 }}>
+          <span>{t('你的回饋')}</span>
+        </div>
+        <label className="mb-1 block text-xs font-semibold text-foreground-soft" htmlFor={`fb-message-${where}`}>
+          {t('給學員的話：寫給 {name}（會原文放在客戶交付版與 PDF 的開頭）', { name })}
+        </label>
+        <textarea
+          id={`fb-message-${where}`}
+          className="cv-textarea"
+          rows={8}
+          value={draft.message}
+          onChange={(e) => setFbDrafts((prev) => ({ ...prev, [m]: { ...draft, message: e.target.value } }))}
+          placeholder={t('例如：這 8 週我最想讓你記得的是……')}
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          {t('儲存後會出現在客戶交付版的開頭。第 4 週與第 8 週都有留言時，客戶交付版只放第 8 週的那一段。')}
+        </p>
+        <label className="mb-1 mt-3 block text-xs font-semibold text-foreground-soft" htmlFor={`fb-note-${where}`}>
+          {t('給整理者的備註（學員看不到，可留空）')}
+        </label>
+        <textarea
+          id={`fb-note-${where}`}
+          className="cv-textarea"
+          rows={3}
+          value={draft.note}
+          onChange={(e) => setFbDrafts((prev) => ({ ...prev, [m]: { ...draft, note: e.target.value } }))}
+          placeholder={t('例如：哪一段想修改、哪裡寫得不準確')}
+        />
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => void saveFeedback(m)}
+            disabled={fbSaving !== null || !dirty || monthlyBusy || monthlyFwBusy !== null}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+          >
+            {fbSaving === m ? t('儲存中…') : t('儲存回饋')}
+          </button>
+          <span className="text-xs text-muted-foreground">
+            {fbError === m
+              ? t('儲存失敗，請再試一次。')
+              : dirty
+                ? t('有尚未儲存的修改')
+                : saved?.updated_at
+                  ? t('已儲存 · {time}', { time: formatSavedTime(saved.updated_at, language) })
+                  : t('還沒有留言')}
+          </span>
+        </div>
+      </>
+    )
+  }
+
   if (checking) return null
 
   const visibleBlocks =
@@ -1134,7 +1308,7 @@ function MemberDetailPage() {
             <section className="mb-10" id="sec-eight-week">
               <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('8 週回顧（學員版）')}</h2>
               <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-                {t('這是準備寄給學員本人的 8 週回顧初稿。讀完後，請在最下方「給學員的話」留一段話，會原文放進 PDF 的「教練給你的話」一節。')}
+                {t('這是準備寄給學員本人的 8 週回顧初稿。讀完後，請在最下方「給學員的話」留一段話，會原文放進 PDF 的「教練給你的話」一節，也會出現在客戶交付版的開頭。')}
               </p>
               <article className="cv-block">
                 <div className="cv-block-body">
@@ -1176,49 +1350,7 @@ function MemberDetailPage() {
                 ))}
               </div>
 
-              <div className="cv-slbl" style={{ marginTop: 22 }}>
-                <span>{t('你的回饋')}</span>
-              </div>
-              <label className="mb-1 block text-xs font-semibold text-foreground-soft" htmlFor="fb-message">
-                {t('給學員的話：寫給 {name}（會原文放進 PDF）', { name })}
-              </label>
-              <textarea
-                id="fb-message"
-                className="cv-textarea"
-                rows={8}
-                value={fbMessage}
-                onChange={(e) => setFbMessage(e.target.value)}
-                placeholder={t('例如：這 8 週我最想讓你記得的是……')}
-              />
-              <label className="mb-1 mt-3 block text-xs font-semibold text-foreground-soft" htmlFor="fb-note">
-                {t('給整理者的備註（學員看不到，可留空）')}
-              </label>
-              <textarea
-                id="fb-note"
-                className="cv-textarea"
-                rows={3}
-                value={fbNote}
-                onChange={(e) => setFbNote(e.target.value)}
-                placeholder={t('例如：哪一段想修改、哪裡寫得不準確')}
-              />
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <button
-                  onClick={() => void saveFeedback()}
-                  disabled={fbSaving || !fbDirty}
-                  className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
-                >
-                  {fbSaving ? t('儲存中…') : t('儲存回饋')}
-                </button>
-                <span className="text-xs text-muted-foreground">
-                  {fbError
-                    ? t('儲存失敗，請再試一次。')
-                    : fbDirty
-                      ? t('有尚未儲存的修改')
-                      : fbSaved?.updated_at
-                        ? t('已儲存 · {time}', { time: formatSavedTime(fbSaved.updated_at, language) })
-                        : t('還沒有留言')}
-                </span>
-              </div>
+              {feedbackEditor(8, 'review')}
             </section>
           )}
 
@@ -1780,12 +1912,12 @@ function MemberDetailPage() {
             <section className="mb-8" id="sec-monthly-reports">
               <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('每月 PERMA 報告')}</h2>
               <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-                {t('第 4 週回顧第 1–4 週、第 8 週回顧第 1–8 週，並與 T0 基準比較；僅教練可見。')}
+                {t('第 4 週回顧第 1–4 週、第 8 週回顧第 1–8 週，並與 T0 基準比較；分析內容僅教練可見。點開每份報告，最下方可以留「給學員的話」。')}
               </p>
               <div className="mb-4 flex flex-wrap items-center gap-3">
                 <button
                   onClick={() => void generateMonthlyReports()}
-                  disabled={monthlyBusy || !baseline}
+                  disabled={monthlyBusy || !baseline || fbSaving !== null}
                   className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
                 >
                   {monthlyBusy
@@ -1844,6 +1976,8 @@ function MemberDetailPage() {
                               </div>
                             </div>
                           ))}
+
+                          {feedbackEditor(m, `monthly-${m}`)}
 
                           {/* ── 這份月報告專用的自訂分析框架：只分析這個里程碑涵蓋的週次 ── */}
                           <div className="cv-fw-intro" style={{ marginTop: 16 }}>
@@ -2001,9 +2135,28 @@ function MemberDetailPage() {
                     >
                       {t('下載 Word')}
                     </button>
+                    <button
+                      onClick={() => void sendClientReport()}
+                      disabled={clientSending || busy !== null}
+                      className="rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary disabled:opacity-50"
+                    >
+                      {clientSending ? t('寄送中…') : t('寄給學員')}
+                    </button>
                   </>
                 )}
               </div>
+              {analysis.client_text && (clientSendNote || clientDelivery) && (
+                <p className={`mb-4 text-xs ${clientSendNote && !clientSendNote.ok ? 'text-red-700' : 'text-muted-foreground'}`}>
+                  {clientSendNote && !clientSendNote.ok
+                    ? clientSendNote.text
+                    : clientDelivery
+                      ? t('已寄給學員 · {time} · {email}', {
+                          time: formatSavedTime(clientDelivery.sent_at, language),
+                          email: clientDelivery.to_email,
+                        })
+                      : clientSendNote?.text}
+                </p>
+              )}
               {analysis.client_text && editClient && (
                 <div>
                   <p className="mb-2 text-xs text-muted-foreground">
@@ -2039,6 +2192,12 @@ function MemberDetailPage() {
                       {name}　·　{analysis.client_date}
                     </div>
                   </div>
+                  {clientCoachMessage && (
+                    <div className="cv-doc-coach">
+                      <h2>{t('教練給你的話')}</h2>
+                      <p>{clientCoachMessage}</p>
+                    </div>
+                  )}
                   <div dangerouslySetInnerHTML={{ __html: mdToHtml(analysis.client_text) }} />
                   {CHART_DEFS.some((c) => analysis.client_charts?.[c.key]) && (
                     <div className="cv-doc-charts">
@@ -2048,7 +2207,7 @@ function MemberDetailPage() {
                           <div className="cv-slbl">
                             <span>{t(c.title)}</span>
                           </div>
-                          <ReportChart chartKey={c.key} sessions={analysis.sessions} baseline={baseline} />
+                          <ReportChart chartKey={c.key} sessions={analysis.sessions} baseline={baseline} tone="supportive" />
 
                         </div>
                       ))}

@@ -53,6 +53,22 @@ export async function rasterizeExportSvgs(root: HTMLElement) {
 // 用固定桌面版寬度的離屏副本輸出，不改動使用者正在看的畫面。
 // filename 請用純 ASCII，避免檔名特殊字元讓下載失效。
 export async function downloadReportPdf(source: HTMLElement, filename: string) {
+  await renderReportPdf(source, filename, 'save')
+}
+
+// 同一份排版，但不下載、回傳 PDF 內容——給「寄給學員」當附件用。
+// 圖片改用 JPEG：PNG 版動輒十幾 MB，超過信件附件能安全寄送的大小。
+export async function reportPdfBlob(source: HTMLElement): Promise<Blob> {
+  return renderReportPdf(source, 'report.pdf', 'blob')
+}
+
+async function renderReportPdf(source: HTMLElement, filename: string, output: 'save'): Promise<void>
+async function renderReportPdf(source: HTMLElement, filename: string, output: 'blob'): Promise<Blob>
+async function renderReportPdf(
+  source: HTMLElement,
+  filename: string,
+  output: 'save' | 'blob',
+): Promise<void | Blob> {
   const exportRoot = source.cloneNode(true) as HTMLElement
   exportRoot.removeAttribute('id')
   exportRoot.classList.add('cv-pdf-export')
@@ -68,11 +84,11 @@ export async function downloadReportPdf(source: HTMLElement, filename: string) {
     await document.fonts?.ready
     await rasterizeExportSvgs(exportRoot)
 
-    await html2pdf()
+    const worker = html2pdf()
       .set({
         margin: [12, 12, 14, 12],
         filename,
-        image: { type: 'png', quality: 1 },
+        image: output === 'blob' ? { type: 'jpeg', quality: 0.92 } : { type: 'png', quality: 1 },
         // width/windowWidth 同時固定 html2pdf 容器與 media query 的計算，手機與桌面輸出一致。
         width: 720,
         windowWidth: 720,
@@ -102,7 +118,8 @@ export async function downloadReportPdf(source: HTMLElement, filename: string) {
         },
       })
       .from(exportRoot)
-      .save()
+    if (output === 'blob') return await worker.outputPdf('blob')
+    await worker.save()
   } finally {
     exportHost.remove()
   }

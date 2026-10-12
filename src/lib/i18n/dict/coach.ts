@@ -232,8 +232,8 @@ export const coach: Record<string, Translation> = {
 
   // 學員版 8 週回顧與教練回饋
   '8 週回顧（學員版）': { en: '8-week review (member version)' },
-  '這是準備寄給學員本人的 8 週回顧初稿。讀完後，請在最下方「給學員的話」留一段話，會原文放進 PDF 的「教練給你的話」一節。': {
-    en: 'This is the draft 8-week review that will be sent to the member. After reading it, write your message in “Message to the member” at the bottom — it goes into the PDF’s “A note from your coach” section word for word.',
+  '這是準備寄給學員本人的 8 週回顧初稿。讀完後，請在最下方「給學員的話」留一段話，會原文放進 PDF 的「教練給你的話」一節，也會出現在客戶交付版的開頭。': {
+    en: 'This is the draft 8-week review that will be sent to the member. After reading it, write your message in “Message to the member” at the bottom — it goes into the PDF’s “A note from your coach” section word for word, and also opens the client version.',
   },
   '{name} 寫下的文字': { en: 'What {name} wrote' },
   '報告裡的「第 N 次」對應這裡的編號，點開可以看原文。': {
@@ -242,7 +242,30 @@ export const coach: Record<string, Translation> = {
   '第 {n} 次': { en: 'Entry {n}' },
   '（未填）': { en: '(left blank)' },
   '你的回饋': { en: 'Your feedback' },
-  '給學員的話：寫給 {name}（會原文放進 PDF）': { en: 'Message to the member: for {name} (goes into the PDF word for word)' },
+  '給學員的話：寫給 {name}（會原文放在客戶交付版與 PDF 的開頭）': {
+    en: 'Message to the member: for {name} (opens the client version and the PDF, word for word)',
+  },
+  '教練給你的話': { en: 'A note from your coach' },
+  '儲存後會出現在客戶交付版的開頭。第 4 週與第 8 週都有留言時，客戶交付版只放第 8 週的那一段。': {
+    en: 'Once saved it opens the client version. If both the week-4 and week-8 reports have a message, the client version shows the week-8 one only.',
+  },
+  '寄給學員': { en: 'Send to member' },
+  '寄送中…': { en: 'Sending…' },
+  '「給學員的話」還有沒儲存的修改，請先按「儲存回饋」再寄。': {
+    en: 'Your message to the member has unsaved changes. Save it before sending.',
+  },
+  '寄送失敗，信沒有寄出，請再試一次。': { en: 'Sending failed and no email went out. Please try again.' },
+  '系統目前沒有可用的寄信管道，信沒有寄出。': { en: 'No mail channel is configured, so no email went out.' },
+  '查不到這位學員的 email，信沒有寄出。': { en: 'No email address found for this member, so no email went out.' },
+  '要把這份客戶交付版寄給 {name}（{email}）嗎？': { en: 'Send this client version to {name} ({email})?' },
+  '提醒：還沒有填寫「給學員的話」，信裡與 PDF 都不會有教練留言。': {
+    en: 'Note: there is no message to the member yet, so neither the email nor the PDF will carry one.',
+  },
+  '這份已經在 {time} 寄給 {email} 過，確定要再寄一次嗎？': {
+    en: 'This was already sent to {email} at {time}. Send it again?',
+  },
+  '已寄給 {email}': { en: 'Sent to {email}' },
+  '已寄給學員 · {time} · {email}': { en: 'Sent to member · {time} · {email}' },
   '例如：這 8 週我最想讓你記得的是……': { en: 'e.g. What I most want you to remember from these 8 weeks is…' },
   '給整理者的備註（學員看不到，可留空）': { en: 'Notes for the editor (not shown to the member, optional)' },
   '例如：哪一段想修改、哪裡寫得不準確': { en: 'e.g. which part to change, or what isn’t accurate' },
@@ -253,8 +276,8 @@ export const coach: Record<string, Translation> = {
 
   // 每月（里程碑）報告
   '每月 PERMA 報告': { en: 'Monthly PERMA Reports' },
-  '第 4 週回顧第 1–4 週、第 8 週回顧第 1–8 週，並與 T0 基準比較；僅教練可見。': {
-    en: 'The week-4 report reviews weeks 1–4 and the week-8 report reviews weeks 1–8, both compared with the T0 baseline. Coach-only.',
+  '第 4 週回顧第 1–4 週、第 8 週回顧第 1–8 週，並與 T0 基準比較；分析內容僅教練可見。點開每份報告，最下方可以留「給學員的話」。': {
+    en: 'The week-4 report reviews weeks 1–4 and the week-8 report reviews weeks 1–8, both compared with the T0 baseline. The analysis is coach-only. Open a report to leave a “Message to the member” at the bottom.',
   },
   '生成月報告': { en: 'Generate monthly reports' },
   '重新生成月報告': { en: 'Regenerate monthly reports' },
