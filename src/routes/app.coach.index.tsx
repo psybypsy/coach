@@ -131,6 +131,11 @@ function CoachDashboard() {
       weekCount: weekCountByUser[p.id] ?? 0,
       lastEntryAt: lastEntryByUser[p.id] ?? null,
     }))
+    // 有在書寫的學員排最前面，教練一進來就看得到；還沒寫的其次，測試帳號墊底。
+    // 同一組內維持原本依姓名的順序（sort 是穩定排序）。
+    const isTestAccount = (name: string) => /test|測試/i.test(name)
+    const rank = (m: MemberRow) => (isTestAccount(m.display_name ?? '') ? 2 : m.totalCount > 0 ? 0 : 1)
+    rows.sort((x, y) => rank(x) - rank(y))
     setMembers(rows)
     setLoading(false)
   }
