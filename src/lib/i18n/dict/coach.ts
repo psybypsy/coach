@@ -265,6 +265,13 @@ export const coach: Record<string, Translation> = {
     en: 'This was already sent to {email} at {time}. Send it again?',
   },
   '已寄給 {email}': { en: 'Sent to {email}' },
+  '信件開頭會放你的留言：「{preview}」': { en: 'The email opens with your message: “{preview}”' },
+  '信已寄給 {email}，但寄送紀錄沒有存到，請不要重複寄。': {
+    en: 'The email was sent to {email}, but the delivery record could not be saved. Please do not send it again.',
+  },
+  '要寄給學員，請先在上方「每月 PERMA 報告」生成月報告並留言。': {
+    en: 'To send this to the member, first generate a monthly report above and leave your message.',
+  },
   '已寄給學員 · {time} · {email}': { en: 'Sent to member · {time} · {email}' },
   '例如：這 8 週我最想讓你記得的是……': { en: 'e.g. What I most want you to remember from these 8 weeks is…' },
   '給整理者的備註（學員看不到，可留空）': { en: 'Notes for the editor (not shown to the member, optional)' },

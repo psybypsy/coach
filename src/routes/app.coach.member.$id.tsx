@@ -307,6 +307,10 @@ function MemberDetailPage() {
     null,
   )
   const clientDelivery = latestMonthly?.content?.client_delivery ?? sessionDelivery
+  // coach_analyses 的行內儲存（persist）還沒落地的筆數；寄信前要等它歸零，寄出的才是存好的內容
+  const [persisting, setPersisting] = useState(0)
+  // 月報告的 content 是「讀出來 → 整包寫回」，同時有兩個動作在寫會互蓋，所以這幾件事一次只能做一件
+  const monthlyWriteBusy = fbSaving !== null || monthlyBusy || monthlyFwBusy !== null || clientSending
   // 回饋可能寫得很長，離開頁面前提醒還沒儲存
   useEffect(() => {
     if (!fbDirty) return
@@ -893,7 +897,12 @@ function MemberDetailPage() {
     if (!analysis) return
     const next = { ...analysis, ...patch }
     setAnalysis(next)
-    await supabase.from('coach_analyses').update(patch).eq('member_id', id)
+    setPersisting((n) => n + 1)
+    try {
+      await supabase.from('coach_analyses').update(patch).eq('member_id', id)
+    } finally {
+      setPersisting((n) => n - 1)
+    }
   }
 
   function toggleBlock(i: number, val: boolean) {
@@ -937,6 +946,7 @@ function MemberDetailPage() {
       const info = (await infoResp.json()) as {
         to_email: string
         has_message: boolean
+        message_preview: string
         mail_ready: boolean
         client_delivery: ClientDelivery | null
       }
@@ -949,7 +959,8 @@ function MemberDetailPage() {
         return
       }
       const lines = [t('要把這份客戶交付版寄給 {name}（{email}）嗎？', { name, email: info.to_email })]
-      if (!info.has_message) lines.push(t('提醒：還沒有填寫「給學員的話」，信裡與 PDF 都不會有教練留言。'))
+      if (info.has_message) lines.push(t('信件開頭會放你的留言：「{preview}」', { preview: info.message_preview }))
+      else lines.push(t('提醒：還沒有填寫「給學員的話」，信裡與 PDF 都不會有教練留言。'))
       const previous = info.client_delivery ?? sessionDelivery
       if (previous) {
         lines.push(
@@ -973,7 +984,10 @@ function MemberDetailPage() {
         pdf_base64: dataUrl.slice(dataUrl.indexOf(',') + 1),
       })
       if (!resp.ok) return await fail(resp)
-      const { client_delivery } = (await resp.json()) as { client_delivery: ClientDelivery }
+      const { client_delivery, recorded } = (await resp.json()) as {
+        client_delivery: ClientDelivery
+        recorded: boolean
+      }
       setSessionDelivery(client_delivery)
       if (latestMonthly) {
         setMonthlyReports((prev) =>
@@ -982,7 +996,11 @@ function MemberDetailPage() {
           ),
         )
       }
-      setClientSendNote({ ok: true, text: t('已寄給 {email}', { email: client_delivery.to_email }) })
+      setClientSendNote(
+        recorded
+          ? { ok: true, text: t('已寄給 {email}', { email: client_delivery.to_email }) }
+          : { ok: false, text: t('信已寄給 {email}，但寄送紀錄沒有存到，請不要重複寄。', { email: client_delivery.to_email }) },
+      )
     } catch {
       await fail(null)
     } finally {
@@ -1246,7 +1264,7 @@ function MemberDetailPage() {
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <button
             onClick={() => void saveFeedback(m)}
-            disabled={fbSaving !== null || !dirty || monthlyBusy || monthlyFwBusy !== null}
+            disabled={monthlyWriteBusy || !dirty}
             className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
           >
             {fbSaving === m ? t('儲存中…') : t('儲存回饋')}
@@ -1917,7 +1935,7 @@ function MemberDetailPage() {
               <div className="mb-4 flex flex-wrap items-center gap-3">
                 <button
                   onClick={() => void generateMonthlyReports()}
-                  disabled={monthlyBusy || !baseline || fbSaving !== null}
+                  disabled={monthlyWriteBusy || !baseline}
                   className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
                 >
                   {monthlyBusy
@@ -2058,7 +2076,7 @@ function MemberDetailPage() {
                               <div className="mt-3 flex gap-2">
                                 <button
                                   onClick={() => void runMonthlyFrameworkAnalysis(m)}
-                                  disabled={monthlyFwBusy !== null}
+                                  disabled={monthlyWriteBusy}
                                   className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
                                 >
                                   {monthlyFwBusy === `run-${m}` ? t('分析中…') : t('用這個框架分析')}
@@ -2137,7 +2155,7 @@ function MemberDetailPage() {
                     </button>
                     <button
                       onClick={() => void sendClientReport()}
-                      disabled={clientSending || busy !== null}
+                      disabled={monthlyWriteBusy || busy !== null || persisting > 0 || !latestMonthly}
                       className="rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary disabled:opacity-50"
                     >
                       {clientSending ? t('寄送中…') : t('寄給學員')}
@@ -2145,6 +2163,11 @@ function MemberDetailPage() {
                   </>
                 )}
               </div>
+              {analysis.client_text && !latestMonthly && (
+                <p className="mb-4 text-xs text-muted-foreground">
+                  {t('要寄給學員，請先在上方「每月 PERMA 報告」生成月報告並留言。')}
+                </p>
+              )}
               {analysis.client_text && (clientSendNote || clientDelivery) && (
                 <p className={`mb-4 text-xs ${clientSendNote && !clientSendNote.ok ? 'text-red-700' : 'text-muted-foreground'}`}>
                   {clientSendNote && !clientSendNote.ok

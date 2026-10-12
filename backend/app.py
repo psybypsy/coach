@@ -2626,8 +2626,8 @@ async def coach_client_report_send(
     """把教練畫面上的客戶交付版（前端產生的 PDF）寄給學員本人。
 
     信件開頭是教練在月報告留的「給學員的話」。寄送紀錄存在最後一份月報告的
-    content.client_delivery（重新生成月報告時會保留）；這位學員還沒有月報告時
-    信照寄，只是沒有地方記，回傳 recorded=False。
+    content.client_delivery（重新生成月報告時會保留）；這位學員還沒有月報告時不寄（409）。
+    信寄出但紀錄寫入失敗時回傳 recorded=False，由前端提醒教練不要重複寄。
     """
     token = authorization.removeprefix("Bearer ").strip()
     coach_id = await require_coach(token)
@@ -2655,10 +2655,15 @@ async def coach_client_report_send(
             "member_name": member_name,
             "to_email": email,
             "has_message": bool(coach_message),
+            "message_preview": coach_message[:60] + ("…" if len(coach_message) > 60 else ""),
+            "has_monthly_report": bool(monthly),
             "mail_ready": bool(_mail_channel()),
             "client_delivery": last_delivery,
         }
 
+    # 教練的留言與寄送紀錄都掛在月報告上；沒有月報告就沒有地方記，不留一條寄了卻沒紀錄的路。
+    if not monthly:
+        raise HTTPException(status_code=409, detail="請先生成月報告並留言，信沒有寄出")
     if not _mail_channel():
         raise HTTPException(status_code=503, detail="沒有任何寄信管道設定齊全，信沒有寄出")
     if not email:
@@ -2691,17 +2696,26 @@ async def coach_client_report_send(
         "coach_id": coach_id,
         "had_message": bool(coach_message),
     }
+    # 寄信要好幾秒，這段時間教練可能剛存了留言或重新生成了月報告。
+    # 寫紀錄前重讀一次 content 再併入，才不會用寄信前讀到的舊內容蓋掉它們。
+    milestone_params = [("member_id", f"eq.{req.member_id}"), ("milestone_week", f"eq.{monthly[0]['milestone_week']}")]
+    fresh_resp = await db().get(
+        f"{SUPABASE_REST}/perma_monthly_reports",
+        headers=SUPABASE_HEADERS,
+        params=[*milestone_params, ("select", "content"), ("limit", "1")],
+    )
+    fresh_rows = fresh_resp.json() if fresh_resp.status_code == 200 else []
     recorded = False
-    if monthly:
+    if fresh_rows and isinstance(fresh_rows[0].get("content"), dict):
         record_resp = await db().patch(
             f"{SUPABASE_REST}/perma_monthly_reports",
             headers={**SUPABASE_HEADERS, "Prefer": "return=minimal"},
-            params=[("member_id", f"eq.{req.member_id}"), ("milestone_week", f"eq.{monthly[0]['milestone_week']}")],
-            json={"content": {**contents[0], "client_delivery": delivery}},
+            params=milestone_params,
+            json={"content": {**fresh_rows[0]["content"], "client_delivery": delivery}},
         )
         recorded = record_resp.status_code in (200, 204)
-        if not recorded:
-            logger.warning("客戶交付版已寄出但紀錄寫入失敗: %s", record_resp.text[:300])
+    if not recorded:
+        logger.warning("客戶交付版已寄給 %s 但寄送紀錄寫入失敗", email)
     logger.info("已寄送客戶交付版給 %s", email)
     return {"client_delivery": delivery, "recorded": recorded}
 
