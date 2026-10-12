@@ -117,7 +117,7 @@ interface MonthlyPermaReport {
     // 以及教練對它的回饋。重新生成月報告時後端會保留這兩欄（_MONTHLY_CURATED_KEYS）。
     client_report?: { body_md: string; updated_at?: string } | null
     coach_feedback?: CoachFeedback | null
-    // 客戶交付版最後一次寄給學員的紀錄，記在最後一份月報告上
+    // 學員最終交付版最後一次寄給學員的紀錄，記在最後一份月報告上
     client_delivery?: ClientDelivery | null
   }
 }
@@ -257,7 +257,7 @@ function MemberDetailPage() {
   const [openSections, setOpenSections] = useState({ deep: true, client: true, timeline: true })
   const [editBlock, setEditBlock] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
-  // 客戶交付版可直接行內編輯（存進 coach_analyses.client_text）
+  // 學員最終交付版可直接行內編輯（存進 coach_analyses.client_text）
   const [editClient, setEditClient] = useState(false)
   const [clientEditText, setClientEditText] = useState('')
   const [message, setMessage] = useState<string | null>(null)
@@ -292,13 +292,13 @@ function MemberDetailPage() {
     return draft.message !== (saved?.message ?? '') || draft.note !== (saved?.note ?? '')
   }
   const fbDirty = monthlyReports.some((r) => fbDirtyOf(r.milestone_week))
-  // 客戶交付版開頭的「教練給你的話」：取最後一個里程碑裡有留言的那份
+  // 學員最終交付版開頭的「教練給你的話」：取最後一個里程碑裡有留言的那份
   const clientCoachMessage =
     [...monthlyReports]
       .sort((a, b) => b.milestone_week - a.milestone_week)
       .map((r) => r.content?.coach_feedback?.message?.trim() ?? '')
       .find(Boolean) ?? ''
-  // 客戶交付版寄給學員：寄送紀錄記在最後一份月報告上；還沒有月報告時只留在這次的畫面上
+  // 學員最終交付版寄給學員：寄送紀錄記在最後一份月報告上；還沒有月報告時只留在這次的畫面上
   const [clientSending, setClientSending] = useState(false)
   const [clientSendNote, setClientSendNote] = useState<{ ok: boolean; text: string } | null>(null)
   const [sessionDelivery, setSessionDelivery] = useState<ClientDelivery | null>(null)
@@ -366,13 +366,16 @@ function MemberDetailPage() {
       items.push({ id: 'sec-charts', label: t('圖表'), indent: true })
       items.push({ id: 'sec-blocks', label: t('教練情報簡報'), indent: true })
       items.push({ id: 'sec-framework', label: t('自訂分析框架'), indent: true })
-      items.push({ id: 'sec-client', label: t('客戶交付版') })
     }
     if (memberReports.length > 0) {
       items.push({ id: 'sec-member-reports', label: t('學員版報告') })
     }
     if (posts.length > 0) {
-      items.push({ id: 'sec-monthly-reports', label: t('每月 PERMA 報告') })
+      items.push({ id: 'sec-monthly-reports', label: t('第 8 週回顧 PERMA 報告') })
+    }
+    // 側欄順序跟著頁面：學員最終交付版緊接在第 8 週回顧 PERMA 報告之後
+    if (hasDeepAnalysis) {
+      items.push({ id: 'sec-client', label: t('學員最終交付版') })
     }
     items.push({ id: 'sec-timeline', label: t('書寫時間軸') })
     return items
@@ -927,7 +930,7 @@ function MemberDetailPage() {
     await downloadReportPdf(source, 'Personal-Well-being-Review.pdf')
   }
 
-  // 把畫面上這份客戶交付版（與「下載 PDF」同一份排版）寄給學員本人。
+  // 把畫面上這份學員最終交付版（與「下載 PDF」同一份排版）寄給學員本人。
   // 先向後端問收件人與上次寄送紀錄，讓教練在確認框裡看清楚要寄給誰，確認後才產生 PDF 並寄出。
   async function sendClientReport() {
     const source = document.getElementById('cv-print-area')
@@ -960,7 +963,7 @@ function MemberDetailPage() {
         setClientSendNote({ ok: false, text: t('查不到這位學員的 email，信沒有寄出。') })
         return
       }
-      const lines = [t('要把這份客戶交付版寄給 {name}（{email}）嗎？', { name, email: info.to_email })]
+      const lines = [t('要把這份學員最終交付版寄給 {name}（{email}）嗎？', { name, email: info.to_email })]
       if (info.has_message) lines.push(t('信件開頭會放你的留言：「{preview}」', { preview: info.message_preview }))
       else lines.push(t('提醒：還沒有填寫「給學員的話」，信裡與 PDF 都不會有教練留言。'))
       const previous = info.client_delivery ?? sessionDelivery
@@ -1010,7 +1013,7 @@ function MemberDetailPage() {
     }
   }
 
-  // 客戶版行內編輯：進入編輯 → 改文字 → 存回 client_text
+  // 交付版行內編輯：進入編輯 → 改文字 → 存回 client_text
   function startClientEdit() {
     if (!analysis?.client_text) return
     setClientEditText(analysis.client_text)
@@ -1021,8 +1024,8 @@ function MemberDetailPage() {
     setEditClient(false)
   }
 
-  // #B 下載 Word：把客戶版 client_text（Markdown）轉成 .docx，方便教練在 Word 再修改。
-  // 納入客戶版的圖表會用 html2canvas 截成圖片嵌入 Word。docx 動態載入，不進主 bundle。
+  // #B 下載 Word：把交付版 client_text（Markdown）轉成 .docx，方便教練在 Word 再修改。
+  // 納入交付版的圖表會用 html2canvas 截成圖片嵌入 Word。docx 動態載入，不進主 bundle。
   async function downloadClientWord() {
     if (!analysis?.client_text) return
     const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun } = await import('docx')
@@ -1065,7 +1068,7 @@ function MemberDetailPage() {
         return [new Paragraph({ children: inlineRuns(l), spacing: { after: 160 } })]
       })
 
-    // 教練在月報告留的「給學員的話」放在內文最前面，與畫面上的客戶交付版一致
+    // 教練在月報告留的「給學員的話」放在內文最前面，與畫面上的學員最終交付版一致
     const coachMessageParagraphs = clientCoachMessage
       ? [
           new Paragraph({
@@ -1228,7 +1231,7 @@ function MemberDetailPage() {
 
   const pendingReports = memberReports.filter((r) => r.status === 'pending_coach')
 
-  // 月報告的教練回饋欄位。8 週回顧區與「每月 PERMA 報告」的卡片共用同一份草稿，改哪一邊都一樣。
+  // 月報告的教練回饋欄位。8 週回顧區與「第 8 週回顧 PERMA 報告」的卡片共用同一份草稿，改哪一邊都一樣。
   const feedbackEditor = (m: number, where: string) => {
     const draft = fbDraftOf(m)
     const saved = fbSavedOf(m)
@@ -1239,7 +1242,7 @@ function MemberDetailPage() {
           <span>{t('你的回饋')}</span>
         </div>
         <label className="mb-1 block text-xs font-semibold text-foreground-soft" htmlFor={`fb-message-${where}`}>
-          {t('給學員的話：寫給 {name}（會原文放在客戶交付版與 PDF 的開頭）', { name })}
+          {t('給學員的話：寫給 {name}（會原文放在學員最終交付版與 PDF 的開頭）', { name })}
         </label>
         <textarea
           id={`fb-message-${where}`}
@@ -1250,7 +1253,7 @@ function MemberDetailPage() {
           placeholder={t('例如：這 8 週我最想讓你記得的是……')}
         />
         <p className="mt-1 text-xs text-muted-foreground">
-          {t('儲存後會出現在客戶交付版的開頭。第 4 週與第 8 週都有留言時，客戶交付版只放第 8 週的那一段。')}
+          {t('儲存後會出現在學員最終交付版的開頭。第 4 週與第 8 週都有留言時，學員最終交付版只放第 8 週的那一段。')}
         </p>
         <label className="mb-1 mt-3 block text-xs font-semibold text-foreground-soft" htmlFor={`fb-note-${where}`}>
           {t('給整理者的備註（學員看不到，可留空）')}
@@ -1328,7 +1331,7 @@ function MemberDetailPage() {
             <section className="mb-10" id="sec-eight-week">
               <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('8 週回顧（學員版）')}</h2>
               <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-                {t('這是準備寄給學員本人的 8 週回顧初稿。讀完後，請在最下方「給學員的話」留一段話，會原文放進 PDF 的「教練給你的話」一節，也會出現在客戶交付版的開頭。')}
+                {t('這是準備寄給學員本人的 8 週回顧初稿。讀完後，請在最下方「給學員的話」留一段話，會原文放進 PDF 的「教練給你的話」一節，也會出現在學員最終交付版的開頭。')}
               </p>
               <article className="cv-block">
                 <div className="cv-block-body">
@@ -1502,7 +1505,7 @@ function MemberDetailPage() {
                           checked={!!analysis.client_charts?.[c.key]}
                           onChange={(e) => toggleChart(c.key, e.target.checked)}
                         />
-                        {t('納入客戶版')}
+                        {t('納入交付版')}
                       </label>
                     </div>
                     {open && (
@@ -1610,7 +1613,7 @@ function MemberDetailPage() {
                       <span className="cv-block-title">{t(view.title)}</span>
                       {b.custom && <span className="cv-block-tag ai">{t('AI 框架')}</span>}
                       {(b.include || isLinguisticFingerprint(b)) && (
-                        <span className="cv-block-tag inc">{t('納入客戶版')}</span>
+                        <span className="cv-block-tag inc">{t('納入交付版')}</span>
                       )}
                     </div>
                     {open && (
@@ -1648,7 +1651,7 @@ function MemberDetailPage() {
                                 onChange={(e) => toggleBlock(i, e.target.checked)}
                                 disabled={isLinguisticFingerprint(b)}
                               />
-                              {t('納入客戶交付版')}
+                              {t('納入學員最終交付版')}
                             </label>
                             <span style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
                               {b.custom && (
@@ -1690,7 +1693,7 @@ function MemberDetailPage() {
                       <span className="cv-block-title">{t('未來四週行動')}</span>
                       <span className="cv-block-tags">
                         <span className="cv-block-tag preview">{t('本機預覽')}</span>
-                        <span className="cv-block-tag inc">{t('納入客戶版')}</span>
+                        <span className="cv-block-tag inc">{t('納入交付版')}</span>
                       </span>
                     </div>
                     {openActionPreview && <div className="cv-block-body">
@@ -1930,7 +1933,7 @@ function MemberDetailPage() {
           {/* ── 每月（里程碑）PERMA 報告：第 4／8 週跨週回顧，僅教練閱讀，不寄信 ── */}
           {posts.length > 0 && (
             <section className="mb-8" id="sec-monthly-reports">
-              <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('每月 PERMA 報告')}</h2>
+              <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('第 8 週回顧 PERMA 報告')}</h2>
               <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
                 {t('第 4 週回顧第 1–4 週、第 8 週回顧第 1–8 週，並與 T0 基準比較；分析內容僅教練可見。點開每份報告，最下方可以留「給學員的話」。')}
               </p>
@@ -2101,14 +2104,14 @@ function MemberDetailPage() {
             </section>
           )}
 
-          {/* ── 客戶交付版 ── */}
+          {/* ── 學員最終交付版 ── */}
           {analysis && analysis.sessions.length > 0 && (
             <section className="mb-8" id="sec-client">
               <SectionHeading
                 open={openSections.client}
                 onToggle={() => setOpenSections((p) => ({ ...p, client: !p.client }))}
               >
-                {t('客戶交付版')}
+                {t('學員最終交付版')}
               </SectionHeading>
               {openSections.client && (
               <>
@@ -2116,7 +2119,7 @@ function MemberDetailPage() {
                 {t('依勾選納入的區塊，生成給客戶本人的正式回顧文件。')}
               </p>
               <div className="cv-note" style={{ marginBottom: 12 }}>
-                {t('目前納入客戶版的區塊：')}
+                {t('目前納入交付版的區塊：')}
                 <strong>
                   {' '}
                   {includedBlocks.length}
@@ -2132,8 +2135,8 @@ function MemberDetailPage() {
                   {busy === 'client'
                     ? t('生成中…')
                     : analysis.client_text
-                      ? t('重新生成客戶版')
-                      : t('生成客戶交付版')}
+                      ? t('重新生成交付版')
+                      : t('生成學員最終交付版')}
                 </button>
                 {analysis.client_text && !editClient && (
                   <>
@@ -2167,7 +2170,7 @@ function MemberDetailPage() {
               </div>
               {analysis.client_text && !latestMonthly && (
                 <p className="mb-4 text-xs text-muted-foreground">
-                  {t('要寄給學員，請先在上方「每月 PERMA 報告」生成月報告並留言。')}
+                  {t('要寄給學員，請先在上方「第 8 週回顧 PERMA 報告」生成月報告並留言。')}
                 </p>
               )}
               {analysis.client_text && (clientSendNote || clientDelivery) && (
@@ -2185,7 +2188,7 @@ function MemberDetailPage() {
               {analysis.client_text && editClient && (
                 <div>
                   <p className="mb-2 text-xs text-muted-foreground">
-                    {t('直接編輯客戶版文字（Markdown：## 標題、** 粗體、- 條列），儲存後即更新交付文件。')}
+                    {t('直接編輯交付版文字（Markdown：## 標題、** 粗體、- 條列），儲存後即更新交付文件。')}
                   </p>
                   <textarea
                     className="cv-textarea"

@@ -50,7 +50,7 @@ export const coach: Record<string, Translation> = {
   '學員完成一週書寫後會自動生成，也可以按上方按鈕立即重跑。': {
     en: 'Generated automatically once the member completes a week; you can also rerun it now with the button above.',
   },
-  '納入客戶版': { en: 'Include in client version' },
+  '納入交付版': { en: 'Include in client version' },
   '每次 valence 與評分理由': { en: 'Per-week valence & rationale' },
   // 章節導覽側欄的精簡標籤（跟上面的完整標題分開，寬度較窄）
   '圖表': { en: 'Charts' },
@@ -61,7 +61,7 @@ export const coach: Record<string, Translation> = {
   '整體評分理由。': { en: 'Overall rationale. ' },
   '教練情報簡報': { en: 'Coach intelligence brief' },
   '確定要刪除這個區塊嗎？此動作無法復原。': { en: 'Delete this block? This cannot be undone.' },
-  '納入客戶交付版': { en: 'Include in client deliverable' },
+  '納入學員最終交付版': { en: 'Include in client deliverable' },
   '編輯': { en: 'Edit' },
   '儲存': { en: 'Save' },
   '取消': { en: 'Cancel' },
@@ -101,16 +101,16 @@ export const coach: Record<string, Translation> = {
   '本週': { en: 'This week' },
   '變化': { en: 'Change' },
 
-  // 客戶交付版
-  '客戶交付版': { en: 'Client Deliverable' },
+  // 學員最終交付版
+  '學員最終交付版': { en: 'Final Member Deliverable' },
   '依勾選納入的區塊，生成給客戶本人的正式回顧文件。': {
     en: 'Generate a formal review document for the client from the blocks you included.',
   },
-  '目前納入客戶版的區塊：': { en: 'Blocks included in client version: ' },
-  '生成客戶交付版': { en: 'Generate client deliverable' },
-  '重新生成客戶版': { en: 'Regenerate client version' },
-  '客戶版已生成，PDF 已寄送給成員。': { en: 'Client version generated and PDF emailed to the member.' },
-  '客戶版已生成，但 PDF 尚未寄出：': { en: 'Client version generated, but the PDF was not emailed: ' },
+  '目前納入交付版的區塊：': { en: 'Blocks included in client version: ' },
+  '生成學員最終交付版': { en: 'Generate client deliverable' },
+  '重新生成交付版': { en: 'Regenerate client version' },
+  '交付版已生成，PDF 已寄送給成員。': { en: 'Client version generated and PDF emailed to the member.' },
+  '交付版已生成，但 PDF 尚未寄出：': { en: 'Client version generated, but the PDF was not emailed: ' },
   '生成中…': { en: 'Generating…' },
   '列印 / 匯出 PDF': { en: 'Print / Export PDF' },
   '個人福祉回顧': { en: 'Personal Well-being Review' },
@@ -130,7 +130,7 @@ export const coach: Record<string, Translation> = {
   '語言指紋': { en: 'Linguistic Fingerprint' },
   '未來四週行動': { en: 'Actions for the Next Four Weeks' },
 
-  // 圖表標題（deep analysis / 客戶版共用）
+  // 圖表標題（deep analysis / 交付版共用）
   '情緒 valence 摘要': { en: 'Valence summary' },
   '整體情緒 valence 趨勢': { en: 'Overall valence trend' },
   '五面向 valence 趨勢': { en: 'Five-dimension valence trends' },
@@ -234,7 +234,7 @@ export const coach: Record<string, Translation> = {
 
   // 學員版 8 週回顧與教練回饋
   '8 週回顧（學員版）': { en: '8-week review (member version)' },
-  '這是準備寄給學員本人的 8 週回顧初稿。讀完後，請在最下方「給學員的話」留一段話，會原文放進 PDF 的「教練給你的話」一節，也會出現在客戶交付版的開頭。': {
+  '這是準備寄給學員本人的 8 週回顧初稿。讀完後，請在最下方「給學員的話」留一段話，會原文放進 PDF 的「教練給你的話」一節，也會出現在學員最終交付版的開頭。': {
     en: 'This is the draft 8-week review that will be sent to the member. After reading it, write your message in “Message to the member” at the bottom — it goes into the PDF’s “A note from your coach” section word for word, and also opens the client version.',
   },
   '{name} 寫下的文字': { en: 'What {name} wrote' },
@@ -244,11 +244,11 @@ export const coach: Record<string, Translation> = {
   '第 {n} 次': { en: 'Entry {n}' },
   '（未填）': { en: '(left blank)' },
   '你的回饋': { en: 'Your feedback' },
-  '給學員的話：寫給 {name}（會原文放在客戶交付版與 PDF 的開頭）': {
+  '給學員的話：寫給 {name}（會原文放在學員最終交付版與 PDF 的開頭）': {
     en: 'Message to the member: for {name} (opens the client version and the PDF, word for word)',
   },
   '教練給你的話': { en: 'A note from your coach' },
-  '儲存後會出現在客戶交付版的開頭。第 4 週與第 8 週都有留言時，客戶交付版只放第 8 週的那一段。': {
+  '儲存後會出現在學員最終交付版的開頭。第 4 週與第 8 週都有留言時，學員最終交付版只放第 8 週的那一段。': {
     en: 'Once saved it opens the client version. If both the week-4 and week-8 reports have a message, the client version shows the week-8 one only.',
   },
   '寄給學員': { en: 'Send to member' },
@@ -259,7 +259,7 @@ export const coach: Record<string, Translation> = {
   '寄送失敗，信沒有寄出，請再試一次。': { en: 'Sending failed and no email went out. Please try again.' },
   '系統目前沒有可用的寄信管道，信沒有寄出。': { en: 'No mail channel is configured, so no email went out.' },
   '查不到這位學員的 email，信沒有寄出。': { en: 'No email address found for this member, so no email went out.' },
-  '要把這份客戶交付版寄給 {name}（{email}）嗎？': { en: 'Send this client version to {name} ({email})?' },
+  '要把這份學員最終交付版寄給 {name}（{email}）嗎？': { en: 'Send this client version to {name} ({email})?' },
   '提醒：還沒有填寫「給學員的話」，信裡與 PDF 都不會有教練留言。': {
     en: 'Note: there is no message to the member yet, so neither the email nor the PDF will carry one.',
   },
@@ -271,7 +271,7 @@ export const coach: Record<string, Translation> = {
   '信已寄給 {email}，但寄送紀錄沒有存到，請不要重複寄。': {
     en: 'The email was sent to {email}, but the delivery record could not be saved. Please do not send it again.',
   },
-  '要寄給學員，請先在上方「每月 PERMA 報告」生成月報告並留言。': {
+  '要寄給學員，請先在上方「第 8 週回顧 PERMA 報告」生成月報告並留言。': {
     en: 'To send this to the member, first generate a monthly report above and leave your message.',
   },
   '已寄給學員 · {time} · {email}': { en: 'Sent to member · {time} · {email}' },
@@ -284,7 +284,7 @@ export const coach: Record<string, Translation> = {
   '還沒有留言': { en: 'No feedback yet' },
 
   // 每月（里程碑）報告
-  '每月 PERMA 報告': { en: 'Monthly PERMA Reports' },
+  '第 8 週回顧 PERMA 報告': { en: 'Week 8 Review PERMA Report' },
   '第 4 週回顧第 1–4 週、第 8 週回顧第 1–8 週，並與 T0 基準比較；分析內容僅教練可見。點開每份報告，最下方可以留「給學員的話」。': {
     en: 'The week-4 report reviews weeks 1–4 and the week-8 report reviews weeks 1–8, both compared with the T0 baseline. The analysis is coach-only. Open a report to leave a “Message to the member” at the bottom.',
   },
@@ -303,7 +303,7 @@ export const coach: Record<string, Translation> = {
     en: 'e.g. agency through change / how they regulate emotion / self-criticism vs self-compassion',
   },
   '已加入新的分析內容': { en: 'New analysis added' },
-  '直接編輯客戶版文字（Markdown：## 標題、** 粗體、- 條列），儲存後即更新交付文件。': {
+  '直接編輯交付版文字（Markdown：## 標題、** 粗體、- 條列），儲存後即更新交付文件。': {
     en: 'Edit the client version text directly (Markdown: ## headings, ** bold **, - bullets). Saving updates the deliverable.',
   },
 
