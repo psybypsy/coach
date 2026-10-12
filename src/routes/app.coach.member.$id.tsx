@@ -563,6 +563,8 @@ function MemberDetailPage() {
       )
       // 後端會去掉頭尾空白；丟掉草稿讓畫面回到存下的版本，才不會一存完又顯示「未儲存」
       setFbDrafts(({ [m]: _saved, ...rest }) => rest)
+      // 「請先儲存再寄」的提示已經不成立了
+      setClientSendNote(null)
     } catch {
       setFbError(m)
     } finally {
