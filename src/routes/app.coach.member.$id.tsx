@@ -37,7 +37,14 @@ interface EntryRow {
 }
 
 interface JournalPost {
+  id: string
   week_start: string
+  created_at: string
+  p_content: string | null
+  e_content: string | null
+  r_content: string | null
+  m_content: string | null
+  a_content: string | null
 }
 
 interface BriefBlock {
@@ -106,20 +113,40 @@ interface MonthlyPermaReport {
     sessions: SessionScore[]
     blocks: BriefBlock[]
     scope: string
+    // 第 8 週才有：要寄給學員本人的 8 週回顧（人工整理後放進來），
+    // 以及教練對它的回饋。重新生成月報告時後端會保留這兩欄（_MONTHLY_CURATED_KEYS）。
+    client_report?: { body_md: string; updated_at?: string } | null
+    coach_feedback?: CoachFeedback | null
   }
 }
 
-// #2 情報簡報區塊標題一律用「固定的 canonical 標題」（依區塊順序）並走 t()，
-// 預設英文、跟隨介面語言 —— 這樣即使某成員的分析是舊版用中文生成、標題存成中文，
-// 教練介面也不會出現「中文標題混英文框架」。後端固定依此順序產出 10 個區塊。
-const BLOCK_TITLES = [
-  '整體情緒與福祉軌跡',
-  'PERMA 五面向剖析',
-  '優勢與內在資源',
-  '自我決定論動機',
-  '語言指紋',
-  '未來四週行動',
-]
+// message 會原文放進寄給學員的報告；note 是給整理者的備註，學員看不到。
+interface CoachFeedback {
+  message: string
+  note: string
+  updated_at: string
+}
+
+function isEightWeekReview(report: MonthlyPermaReport): boolean {
+  return report.milestone_week === 8 && !!report.content?.client_report?.body_md
+}
+
+function formatWritingDate(iso: string, language: string): string {
+  return new Date(iso).toLocaleDateString(language === 'en' ? 'en-US' : 'zh-TW', {
+    month: 'numeric',
+    day: 'numeric',
+    weekday: 'short',
+  })
+}
+
+function formatSavedTime(iso: string, language: string): string {
+  return new Date(iso).toLocaleString(language === 'en' ? 'en-US' : 'zh-TW', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
 
 // 已從產品移除的舊情報模組。舊資料庫列可能仍保留這些 block，
 // 因此前端需同步過濾，避免它們再次出現在畫面或 Client Version。
@@ -243,6 +270,26 @@ function MemberDetailPage() {
   const [monthlyFwDesc, setMonthlyFwDesc] = useState<Record<number, string>>({})
   const [monthlyFwDraft, setMonthlyFwDraft] = useState<Record<number, Framework | null>>({})
   const [monthlyFwBusy, setMonthlyFwBusy] = useState<string | null>(null)
+  // 學員版 8 週回顧的教練回饋：fbSaved 是後端最後一次存下的版本，用來判斷有沒有未儲存的修改
+  const [fbMessage, setFbMessage] = useState('')
+  const [fbNote, setFbNote] = useState('')
+  const [fbSaved, setFbSaved] = useState<CoachFeedback | null>(null)
+  const [fbSaving, setFbSaving] = useState(false)
+  const [fbError, setFbError] = useState(false)
+  const eightWeekReview = monthlyReports.find(isEightWeekReview) ?? null
+  const fbDirty = fbMessage !== (fbSaved?.message ?? '') || fbNote !== (fbSaved?.note ?? '')
+  // 回饋可能寫得很長，離開頁面前提醒還沒儲存
+  useEffect(() => {
+    if (!fbDirty) return
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [fbDirty])
+  // 報告裡的「第 N 次」依實際書寫時間編號，這裡的順序要一致
+  const writings = useMemo(
+    () => [...posts].sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    [posts],
+  )
   // T0 基準點：五面向 0–10 輸入（字串以容許暫時空白），存進 coach_analyses.baseline
   const emptyBaselineDraft: Record<DimKey, string> = { P: '', E: '', R: '', M: '', A: '' }
   const [baselineDraft, setBaselineDraft] = useState<Record<DimKey, string>>(emptyBaselineDraft)
@@ -278,6 +325,7 @@ function MemberDetailPage() {
   const hasDeepAnalysis = !!analysis && analysis.sessions.length > 0
   const navItems = useMemo(() => {
     const items: NavItem[] = [
+      ...(eightWeekReview ? [{ id: 'sec-eight-week', label: t('8 週回顧（學員版）') }] : []),
       { id: 'sec-baseline', label: t('T0 基準點') },
       { id: 'sec-deep', label: t('教練深度分析') },
     ]
@@ -295,7 +343,7 @@ function MemberDetailPage() {
     }
     items.push({ id: 'sec-timeline', label: t('書寫時間軸') })
     return items
-  }, [hasDeepAnalysis, memberReports.length, posts.length, t])
+  }, [eightWeekReview, hasDeepAnalysis, memberReports.length, posts.length, t])
 
   // 依捲動位置自動高亮側欄目前章節（進入視窗上方 35% 區帶即視為目前章節）
   useEffect(() => {
@@ -382,7 +430,7 @@ function MemberDetailPage() {
         .order('created_at', { ascending: false }),
       supabase
         .from('journal_posts')
-        .select('week_start')
+        .select('id,week_start,created_at,p_content,e_content,r_content,m_content,a_content')
         .eq('user_id', id)
         .order('week_start', { ascending: true }),
       supabase.from('coach_analyses').select('*').eq('member_id', id).maybeSingle(),
@@ -401,7 +449,13 @@ function MemberDetailPage() {
     setEntries((entryRows as unknown as EntryRow[]) ?? [])
     setPosts((postRows as unknown as JournalPost[]) ?? [])
     setMemberReports((reportRows as unknown as MemberReportRow[]) ?? [])
-    setMonthlyReports((monthlyRows as unknown as MonthlyPermaReport[]) ?? [])
+    const monthly = (monthlyRows as unknown as MonthlyPermaReport[]) ?? []
+    setMonthlyReports(monthly)
+    const feedback = monthly.find(isEightWeekReview)?.content.coach_feedback ?? null
+    setFbSaved(feedback)
+    setFbMessage(feedback?.message ?? '')
+    setFbNote(feedback?.note ?? '')
+    setFbError(false)
     const row = (analysisRow as unknown as CoachAnalysis) ?? null
     setAnalysis(row)
     const b = row?.baseline
@@ -452,6 +506,36 @@ function MemberDetailPage() {
       setMessage(t('發布失敗，請再試一次。'))
     } finally {
       setPublishingReport(null)
+    }
+  }
+
+  // 走後端：perma_monthly_reports 對前端只開放讀取
+  async function saveFeedback() {
+    setFbSaving(true)
+    setFbError(false)
+    try {
+      const resp = await authFetch('/api/coach/monthly-reports/feedback', {
+        member_id: id,
+        milestone_week: 8,
+        message: fbMessage,
+        note: fbNote,
+      })
+      if (!resp.ok) {
+        setFbError(true)
+        return
+      }
+      const { coach_feedback } = (await resp.json()) as { coach_feedback: CoachFeedback }
+      setFbSaved(coach_feedback)
+      // 後端會去掉頭尾空白，畫面上的內容跟著對齊，才不會一存完又顯示「未儲存」
+      setFbMessage(coach_feedback.message)
+      setFbNote(coach_feedback.note)
+      setMonthlyReports((prev) =>
+        prev.map((r) => (isEightWeekReview(r) ? { ...r, content: { ...r.content, coach_feedback } } : r)),
+      )
+    } catch {
+      setFbError(true)
+    } finally {
+      setFbSaving(false)
     }
   }
 
@@ -1045,6 +1129,99 @@ function MemberDetailPage() {
             </p>
           )}
 
+          {/* ── 學員版 8 週回顧：要寄給學員的初稿 + 歷次書寫原文 + 教練回饋，放最前面 ── */}
+          {eightWeekReview && (
+            <section className="mb-10" id="sec-eight-week">
+              <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('8 週回顧（學員版）')}</h2>
+              <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                {t('這是準備寄給學員本人的 8 週回顧初稿。讀完後，請在最下方「給學員的話」留一段話，會原文放進 PDF 的「教練給你的話」一節。')}
+              </p>
+              <article className="cv-block">
+                <div className="cv-block-body">
+                  <div
+                    className="cv-md"
+                    dangerouslySetInnerHTML={{ __html: mdToHtml(eightWeekReview.content.client_report?.body_md ?? '') }}
+                  />
+                </div>
+              </article>
+
+              <div className="cv-slbl" style={{ marginTop: 22 }}>
+                <span>{t('{name} 寫下的文字', { name })}</span>
+              </div>
+              <p className="mb-2 text-xs text-muted-foreground">
+                {t('報告裡的「第 N 次」對應這裡的編號，點開可以看原文。')}
+              </p>
+              <div className="flex flex-col gap-2">
+                {writings.map((post, i) => (
+                  <details key={post.id} className="cv-block cv-writing">
+                    <summary className="cv-block-hd">
+                      <span className="cv-caret">▶</span>
+                      <span className="cv-block-title">
+                        {t('第 {n} 次', { n: i + 1 })} · {formatWritingDate(post.created_at, language)}
+                      </span>
+                    </summary>
+                    <div className="cv-block-body">
+                      {KEYS.map((k) => (
+                        <div key={k} className="mb-3 last:mb-0">
+                          <div className="text-[11px] font-semibold" style={{ color: DIMCOLOR[k] }}>
+                            {k} · {t(DIMENSION_CONFIGS[k].question)}
+                          </div>
+                          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                            {post[`${k.toLowerCase()}_content` as keyof JournalPost] || t('（未填）')}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ))}
+              </div>
+
+              <div className="cv-slbl" style={{ marginTop: 22 }}>
+                <span>{t('你的回饋')}</span>
+              </div>
+              <label className="mb-1 block text-xs font-semibold text-foreground-soft" htmlFor="fb-message">
+                {t('給學員的話：寫給 {name}（會原文放進 PDF）', { name })}
+              </label>
+              <textarea
+                id="fb-message"
+                className="cv-textarea"
+                rows={8}
+                value={fbMessage}
+                onChange={(e) => setFbMessage(e.target.value)}
+                placeholder={t('例如：這 8 週我最想讓你記得的是……')}
+              />
+              <label className="mb-1 mt-3 block text-xs font-semibold text-foreground-soft" htmlFor="fb-note">
+                {t('給整理者的備註（學員看不到，可留空）')}
+              </label>
+              <textarea
+                id="fb-note"
+                className="cv-textarea"
+                rows={3}
+                value={fbNote}
+                onChange={(e) => setFbNote(e.target.value)}
+                placeholder={t('例如：哪一段想修改、哪裡寫得不準確')}
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => void saveFeedback()}
+                  disabled={fbSaving || !fbDirty}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                >
+                  {fbSaving ? t('儲存中…') : t('儲存回饋')}
+                </button>
+                <span className="text-xs text-muted-foreground">
+                  {fbError
+                    ? t('儲存失敗，請再試一次。')
+                    : fbDirty
+                      ? t('有尚未儲存的修改')
+                      : fbSaved?.updated_at
+                        ? t('已儲存 · {time}', { time: formatSavedTime(fbSaved.updated_at, language) })
+                        : t('還沒有留言')}
+                </span>
+              </div>
+            </section>
+          )}
+
           {/* ── T0 基準點（起始幸福感）：填在最前面，作為所有圖表的起點 ── */}
           <section className="mb-8" id="sec-baseline">
             <h2 className="mb-2 text-sm font-semibold text-foreground-soft">{t('T0 基準點（起始幸福感）')}</h2>
@@ -1278,7 +1455,7 @@ function MemberDetailPage() {
                       <span className="cv-caret" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>
                         ▶
                       </span>
-                      <span className="cv-block-title">{t(BLOCK_TITLES[i] ?? view.title)}</span>
+                      <span className="cv-block-title">{t(view.title)}</span>
                       {b.custom && <span className="cv-block-tag ai">{t('AI 框架')}</span>}
                       {(b.include || isLinguisticFingerprint(b)) && (
                         <span className="cv-block-tag inc">{t('納入客戶版')}</span>
@@ -1659,7 +1836,7 @@ function MemberDetailPage() {
                           {blocks.map((b, i) => (
                             <div key={i} className="cv-block" style={{ marginTop: 12 }}>
                               <div className="cv-block-hd">
-                                <span className="cv-block-title">{t(BLOCK_TITLES[i] ?? b.title)}</span>
+                                <span className="cv-block-title">{t(b.title)}</span>
                                 {b.custom && <span className="cv-block-tag ai">{t('AI 框架')}</span>}
                               </div>
                               <div className="cv-block-body">

@@ -230,6 +230,27 @@ export const coach: Record<string, Translation> = {
   '這週沒有可用的主題資料。': { en: 'No topic data available for this week.' },
   '與 T0 的逐面向變化': { en: 'Change from T0 by dimension' },
 
+  // 學員版 8 週回顧與教練回饋
+  '8 週回顧（學員版）': { en: '8-week review (member version)' },
+  '這是準備寄給學員本人的 8 週回顧初稿。讀完後，請在最下方「給學員的話」留一段話，會原文放進 PDF 的「教練給你的話」一節。': {
+    en: 'This is the draft 8-week review that will be sent to the member. After reading it, write your message in “Message to the member” at the bottom — it goes into the PDF’s “A note from your coach” section word for word.',
+  },
+  '{name} 寫下的文字': { en: 'What {name} wrote' },
+  '報告裡的「第 N 次」對應這裡的編號，點開可以看原文。': {
+    en: '“Entry N” in the report matches the numbering here. Open an entry to read it.',
+  },
+  '第 {n} 次': { en: 'Entry {n}' },
+  '（未填）': { en: '(left blank)' },
+  '你的回饋': { en: 'Your feedback' },
+  '給學員的話：寫給 {name}（會原文放進 PDF）': { en: 'Message to the member: for {name} (goes into the PDF word for word)' },
+  '例如：這 8 週我最想讓你記得的是……': { en: 'e.g. What I most want you to remember from these 8 weeks is…' },
+  '給整理者的備註（學員看不到，可留空）': { en: 'Notes for the editor (not shown to the member, optional)' },
+  '例如：哪一段想修改、哪裡寫得不準確': { en: 'e.g. which part to change, or what isn’t accurate' },
+  '儲存回饋': { en: 'Save feedback' },
+  '有尚未儲存的修改': { en: 'Unsaved changes' },
+  '已儲存 · {time}': { en: 'Saved · {time}' },
+  '還沒有留言': { en: 'No feedback yet' },
+
   // 每月（里程碑）報告
   '每月 PERMA 報告': { en: 'Monthly PERMA Reports' },
   '第 4 週回顧第 1–4 週、第 8 週回顧第 1–8 週，並與 T0 基準比較；僅教練可見。': {
