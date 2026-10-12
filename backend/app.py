@@ -1897,6 +1897,10 @@ async def coach_weekly_reports_generate(req: CoachMemberRequest, authorization: 
 
 
 _MONTHLY_MILESTONES = (4, 8)
+# 月報告 content 裡由人放進去的欄位：client_report 是要寄給學員的 8 週回顧，
+# coach_feedback 是教練對它的回饋。兩者都不是 AI 產出，重新生成月報告時要保留。
+_MONTHLY_CURATED_KEYS = ("client_report", "coach_feedback")
+_COACH_FEEDBACK_MAX_CHARS = 5000
 
 
 async def _completed_weeks_and_baseline(member_id: str) -> tuple[list[dict], dict]:
@@ -1935,6 +1939,19 @@ async def coach_monthly_reports_generate(req: CoachMemberRequest, authorization:
 
     completed, baseline = await _completed_weeks_and_baseline(member_id)
 
+    # 學員版 8 週回顧與教練回饋不是 AI 產出，重新生成時要原樣接回去，否則會被整份覆蓋掉。
+    existing_resp = await db().get(
+        f"{SUPABASE_REST}/perma_monthly_reports",
+        headers=SUPABASE_HEADERS,
+        params=[("member_id", f"eq.{member_id}"), ("select", "milestone_week,content")],
+    )
+    curated_by_milestone: dict[int, dict] = {}
+    for row in (existing_resp.json() if existing_resp.status_code == 200 else []):
+        content = row.get("content") if isinstance(row.get("content"), dict) else {}
+        kept = {key: content[key] for key in _MONTHLY_CURATED_KEYS if content.get(key) is not None}
+        if kept:
+            curated_by_milestone[int(row.get("milestone_week") or 0)] = kept
+
     results = []
     for milestone in _MONTHLY_MILESTONES:
         if len(completed) < milestone:
@@ -1960,6 +1977,7 @@ async def coach_monthly_reports_generate(req: CoachMemberRequest, authorization:
                 "sessions": sessions,
                 "blocks": blocks,
                 "scope": f"weeks_1_to_{milestone}",
+                **curated_by_milestone.get(milestone, {}),
             },
             "updated_at": datetime.now(TW_TZ).isoformat(),
         }
@@ -2053,6 +2071,59 @@ async def coach_monthly_analyze_framework(
     if update_resp.status_code in (200, 201) and update_resp.json():
         return update_resp.json()[0]
     return {**row, "content": new_content}
+
+
+class CoachMonthlyFeedbackRequest(BaseModel):
+    member_id: str
+    milestone_week: int
+    message: str = ""
+    note: str = ""
+
+
+@app.post("/api/coach/monthly-reports/feedback")
+async def coach_monthly_feedback(req: CoachMonthlyFeedbackRequest, authorization: str = Header(...)):
+    """教練對「學員版 8 週回顧」留下回饋，存進該份月報告的 content.coach_feedback。
+
+    message 會原文放進寄給學員的報告（「教練的話」一節）；note 是給整理者看的備註，
+    學員看不到。走後端是因為 perma_monthly_reports 對前端只開放讀取。
+    """
+    token = authorization.removeprefix("Bearer ").strip()
+    coach_id = await require_coach(token)
+
+    message = req.message.strip()
+    note = req.note.strip()
+    if len(message) > _COACH_FEEDBACK_MAX_CHARS or len(note) > _COACH_FEEDBACK_MAX_CHARS:
+        raise HTTPException(status_code=400, detail=f"回饋請在 {_COACH_FEEDBACK_MAX_CHARS} 字以內")
+
+    params = [("member_id", f"eq.{req.member_id}"), ("milestone_week", f"eq.{req.milestone_week}")]
+    resp = await db().get(
+        f"{SUPABASE_REST}/perma_monthly_reports",
+        headers=SUPABASE_HEADERS,
+        params=[*params, ("select", "content"), ("limit", "1")],
+    )
+    rows = resp.json() if resp.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="找不到這份月報告")
+    content = rows[0].get("content") if isinstance(rows[0].get("content"), dict) else {}
+    if not content.get("client_report"):
+        raise HTTPException(status_code=409, detail="這份月報告還沒有學員版回顧")
+
+    feedback = {
+        "message": message,
+        "note": note,
+        "coach_id": coach_id,
+        "updated_at": datetime.now(TW_TZ).isoformat(),
+    }
+    update_resp = await db().patch(
+        f"{SUPABASE_REST}/perma_monthly_reports",
+        headers={**SUPABASE_HEADERS, "Prefer": "return=minimal"},
+        params=params,
+        json={"content": {**content, "coach_feedback": feedback}},
+    )
+    if update_resp.status_code not in (200, 204):
+        logger.warning("monthly feedback save failed: %s", update_resp.text[:300])
+        raise HTTPException(status_code=502, detail="儲存失敗，請再試一次")
+    return {"coach_feedback": feedback}
 
 
 class CoachWeeklyPreviewRequest(BaseModel):

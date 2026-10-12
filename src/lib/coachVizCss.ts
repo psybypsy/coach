@@ -40,6 +40,10 @@ export const COACH_VIZ_CSS = `
 .cv-vrow-body{padding:14px;border-top:1.5px solid #E2E5EA}
 .cv-caret{font-size:11px;color:#8993A1;transition:transform .2s}
 .cv-vrow.open .cv-caret{transform:rotate(90deg)}
+details.cv-writing>summary{list-style:none;cursor:pointer}
+details.cv-writing>summary::-webkit-details-marker{display:none}
+details.cv-writing[open]>summary .cv-caret{transform:rotate(90deg)}
+details.cv-writing:not([open])>summary{border-bottom:none}
 .cv-vreason{font-size:12.5px;line-height:1.75;color:#2B3440;margin-bottom:12px;padding:10px 13px;background:#EEF0F3;border-radius:7px;border-left:3px solid #1F3A5C}
 .cv-vdim{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #E2E5EA}
 .cv-vdim:last-child{border-bottom:none}
