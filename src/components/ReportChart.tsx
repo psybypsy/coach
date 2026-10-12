@@ -147,6 +147,8 @@ export function ReportChart({
   })
   const comparingToBaseline = cmpIndex === 0
   const xLabels = base ? ['T0', ...sessions.map((_, i) => String(i + 1))] : undefined
+  const peakIndex = cd.ov.indexOf(cd.hi)
+  const peakLabel = xLabels ? xLabels[peakIndex] : String(peakIndex + 1)
 
   const body = (() => {
   switch (chartKey) {
@@ -160,13 +162,26 @@ export function ReportChart({
             </div>
             <div className="cv-stat-l">{t('平均整體 valence')}</div>
           </div>
-          <div className="cv-stat">
-            <div className="cv-stat-n">
-              {cd.delta > 0 ? '+' : ''}
-              {cd.delta}
+          {tone === 'supportive' && cd.delta < 0 ? (
+            // 學員看的版本：末次比首次低時，這一格改報整段期間的最高點，不把一次的回落寫成負的變化
+            <div className="cv-stat">
+              <div className="cv-stat-n">
+                {cd.hi > 0 ? '+' : ''}
+                {cd.hi}
+              </div>
+              <div className="cv-stat-l">
+                {peakLabel === 'T0' ? t('最高點（T0）') : t('最高點（第 {n} 次）', { n: peakLabel })}
+              </div>
             </div>
-            <div className="cv-stat-l">{t('變化（末−首）')}</div>
-          </div>
+          ) : (
+            <div className="cv-stat">
+              <div className="cv-stat-n">
+                {cd.delta > 0 ? '+' : ''}
+                {cd.delta}
+              </div>
+              <div className="cv-stat-l">{t('變化（末−首）')}</div>
+            </div>
+          )}
           <div className="cv-stat">
             <div className="cv-stat-n">
               {cd.hi > 0 ? '+' : ''}

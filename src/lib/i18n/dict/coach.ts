@@ -71,6 +71,8 @@ export const coach: Record<string, Translation> = {
   '最強面向': { en: 'Strongest dimension' },
   '第一次（虛線）': { en: 'First (dashed)' },
   '最新一次': { en: 'Latest' },
+  '最高點（T0）': { en: 'Peak (T0)' },
+  '最高點（第 {n} 次）': { en: 'Peak (entry {n})' },
   '上一次（虛線）': { en: 'Previous (dashed)' },
   '正向（往上）': { en: 'Positive (up)' },
   '負向（往下）': { en: 'Negative (down)' },
