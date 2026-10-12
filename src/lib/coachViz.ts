@@ -137,19 +137,29 @@ export function valLine(series: LineSeries[], count: number, xLabels?: string[])
   return svg + '</svg>'
 }
 
+// 圖表的語氣。'exact'：教練看的版本，升降都照實標。
+// 'supportive'：學員本人會看到的版本——單次書寫的分數本來就會上下起伏，把一次的回落標成
+// 「−20 退步」容易被讀成評價；所以進步照樣標出來，回落只標「自然起伏」、不寫負的數字。
+// 兩種語氣畫的是同一份分數，雷達圖的形狀完全相同。
+export type ChartTone = 'exact' | 'supportive'
+
 // 雷達圖軸標籤上的變化幅度。與後端 _pct_change_label 同一套規則：
 // valence 是 −100～+100，換算成 0～100% 的幸福感刻度（(v+100)/2）後相減，
 // 得到「提高了幾個百分點」。不用相對成長率——起點可能是負數或 0，
 // 相對成長率會算出 −237% 這種沒有意義的數字。
-export function pctChangeLabel(t0: number, now: number): string {
+export function pctChangeLabel(t0: number, now: number, tone: ChartTone = 'exact'): string {
   const delta = Math.round((now - t0) / 2)
   if (delta > 0) return `+${delta}%`
-  if (delta < 0) return `−${Math.abs(delta)}%`
+  if (delta < 0) return tone === 'supportive' ? '' : `−${Math.abs(delta)}%`
   return '持平'
 }
 
 // 雷達圖：a=第一次／T0（淺虛線）、b=最新一次（深）疊圖
-export function valRadar(a: Record<DimKey, number> | null, b: Record<DimKey, number> | null): string {
+export function valRadar(
+  a: Record<DimKey, number> | null,
+  b: Record<DimKey, number> | null,
+  tone: ChartTone = 'exact',
+): string {
   const size = 280
   const cx = size / 2
   const cy = size / 2 + 4
@@ -171,7 +181,7 @@ export function valRadar(a: Record<DimKey, number> | null, b: Record<DimKey, num
     svg += `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${HEX.border}" stroke-width="1"/>`
     const [lx, ly] = pt(i, 1.16)
     // 有 T0（a）與本期（b）才標變化幅度；只有單邊資料時退回純字母。
-    const label = a && b ? `${KEYS[i]} ${pctChangeLabel(a[KEYS[i]], b[KEYS[i]])}` : KEYS[i]
+    const label = a && b ? `${KEYS[i]} ${pctChangeLabel(a[KEYS[i]], b[KEYS[i]], tone)}`.trim() : KEYS[i]
     svg += `<text x="${lx.toFixed(1)}" y="${(ly + 4).toFixed(1)}" text-anchor="middle" font-size="12" font-weight="700" fill="${DIMCOLOR[KEYS[i]]}">${esc(label)}</text>`
   }
   const poly = (map: Record<DimKey, number>, stroke: string, fill: string, w: number, dash: boolean) => {
@@ -194,7 +204,7 @@ export function valRadar(a: Record<DimKey, number> | null, b: Record<DimKey, num
 }
 
 // 第一次 → 最新一次的逐面向進步／退步
-export function radarDelta(a: Record<DimKey, number>, b: Record<DimKey, number>): string {
+export function radarDelta(a: Record<DimKey, number>, b: Record<DimKey, number>, tone: ChartTone = 'exact'): string {
   const rows = KEYS.map((k) => ({ k, a: a[k], b: b[k], d: b[k] - a[k] })).sort((x, y) => y.d - x.d)
   const fmt = (v: number) => (v > 0 ? '+' : '') + v
   // 字母直接畫進 SVG，不依賴 html2canvas 的 CSS line-height／字型基線計算。
@@ -205,7 +215,7 @@ export function radarDelta(a: Record<DimKey, number>, b: Record<DimKey, number>)
     `<text x="10" y="14" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" font-weight="700" fill="#fff">${k}</text>` +
     `</svg>`
   const statusBadge = (delta: number, word: string, bg: string, color: string) => {
-    const label = `${fmt(delta)}  ${word}`
+    const label = delta < 0 && tone === 'supportive' ? word : `${fmt(delta)}  ${word}`
     return (
       `<svg xmlns="http://www.w3.org/2000/svg" class="cv-rdelta-tag-svg" viewBox="0 0 82 26" width="82" height="26" aria-label="${label}">` +
       `<rect x="0" y="0" width="82" height="26" rx="13" fill="${bg}"/>` +
@@ -215,13 +225,15 @@ export function radarDelta(a: Record<DimKey, number>, b: Record<DimKey, number>)
   }
   return `<div class="cv-rdelta">${rows
     .map((r) => {
-      const col = r.d > 0 ? HEX.pos : r.d < 0 ? HEX.neg : HEX.text3
-      const bg = r.d > 0 ? HEX.posSoft : r.d < 0 ? HEX.negSoft : HEX.neuSoft
-      const word = r.d > 0 ? '進步' : r.d < 0 ? '退步' : '持平'
+      const dipped = r.d < 0
+      const gentle = dipped && tone === 'supportive'
+      const col = r.d > 0 ? HEX.pos : dipped && !gentle ? HEX.neg : HEX.text3
+      const bg = r.d > 0 ? HEX.posSoft : dipped && !gentle ? HEX.negSoft : HEX.neuSoft
+      const word = r.d > 0 ? '進步' : dipped ? (gentle ? '自然起伏' : '退步') : '持平'
       return `<div class="cv-rdelta-row">
         ${keyIcon(r.k)}
         <span class="cv-rdelta-name">${DIM[r.k]}</span>
-        <span class="cv-rdelta-val">${fmt(r.a)} → ${fmt(r.b)}</span>
+        <span class="cv-rdelta-val">${gentle ? fmt(r.b) : `${fmt(r.a)} → ${fmt(r.b)}`}</span>
         ${statusBadge(r.d, word, bg, col)}
       </div>`
     })

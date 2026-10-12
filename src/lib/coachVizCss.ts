@@ -92,6 +92,9 @@ details.cv-writing:not([open])>summary{border-bottom:none}
 .cv-doc h3{font-size:14px;font-weight:800;margin:16px 0 6px}
 .cv-doc p{margin:0 0 12px;font-size:14px}
 .cv-doc strong{font-weight:800;color:#1F3A5C}
+.cv-doc-coach{margin-bottom:22px;padding:14px 18px 4px;background:#F4F6F9;border-left:3px solid #1F3A5C;border-radius:0 8px 8px 0}
+.cv-doc-coach h2{margin-top:0;border-bottom:none;padding-bottom:0}
+.cv-doc-coach p{white-space:pre-wrap}
 .cv-doc-sign{margin-top:26px;padding-top:16px;border-top:1px solid #E2E5EA;font-size:13px;color:#54606E}
 .cv-doc-charts{margin-top:8px;font-family:-apple-system,'PingFang TC','Noto Sans TC',sans-serif}
 /* 客戶文件內的圖表要縮進頁寬，避免 PDF／Word 右側被裁切、比例跑掉。

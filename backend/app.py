@@ -680,6 +680,7 @@ def _weekly_client_analysis_system() -> str:
 - 語氣溫暖、具體、賦能，像教練當面回顧，而不是臨床筆記或評鑑報告。
 - 引用他自己的原話當證據（例如：你提到「完全忘記時間」）。
 - 描述現象與可能性，不下診斷、不評好壞、不使用風險或病理語言。
+- 先肯定、再觀察：每個面向都先寫他這週做到的事或正在長出來的東西，給予具體的肯定。分數較低的面向寫成這週的自然起伏與值得多照顧自己的地方，不要用「退步」「下滑」「不足」這類字眼，也不要和上一週比較誰高誰低。肯定必須有他的原話當依據，不捏造沒有的進步。整篇讀完要讓人感到被看見、有希望。
 
 區塊內文格式：
 - 逐一走過 P/E/R/M/A 五面向。每個面向先一行「- **P（正向情緒）：等級**」，「等級」要直接換成下表對應的字樣（依你在 SCORES 給該面向的 v 值決定，不要自己造詞、也不要照抄「等級」兩個字）：v ≥ 60 → Level 5；20 ≤ v ≤ 59 → Level 4；−19 ≤ v ≤ 19 → Level 3；−59 ≤ v ≤ −20 → Level 2；v ≤ −60 → Level 1；該面向完全沒寫 → 這週較少著墨。接著用縮排兩格的子條列「  - …」寫 1 至 2 點具體觀察，每點都扣合你引用的原話。
@@ -776,6 +777,7 @@ _CLIENT_REPORT_SYSTEM_EN = """You are the writing assistant to coach Tan Yee Min
 
 Requirements:
 - Remove all hypotheses, clinical speculation, risk or diagnostic language; focus on strengths, trajectory, meaning and the way forward.
+- Lead with progress and positive change: open every section with what this person did, the capacity they grew, or where they became steadier, and affirm it specifically. Describe lower or dipping dimensions as natural ups and downs in the writing and as places worth a little more self-care; never use words such as "decline", "regress", "worse" or "lacking", and do not list falling scores item by item. Every affirmation must rest on their own words or on something that actually happened; do not invent progress. The reader should finish feeling seen and hopeful.
 - Preserve and lightly quote the client's own words.
 - Use Markdown, with ## sections; keep paragraphs short and clear, and use - bullets (not numbered lists) where they aid readability — prefer bullets over long paragraphs.
 - Bold (**...**) the key insight or takeaway phrase in each paragraph — 1 short bolded phrase per paragraph, not whole sentences — so a reader skimming just the bold text gets the gist.
@@ -788,6 +790,7 @@ _CLIENT_REPORT_SYSTEM_ZH = """你是教練 Yee Ming Tan 的寫作助理。以下
 
 要求：
 - 移除所有假設、臨床推測、風險或診斷性語言；聚焦優勢、軌跡、意義與前瞻。
+- 先寫進展與正向的改變：每一節都從這個人做到的事、長出來的能力或越來越穩的地方開始，並給予具體的肯定。分數較低或回落的面向，寫成書寫過程中的自然起伏與接下來值得多照顧自己的地方，不要用「退步」「下滑」「惡化」「不足」這類字眼，也不要逐項列出下降的分數。肯定必須有他自己的原話或實際發生的事當依據，不捏造沒有的進步。整篇讀完要讓人感到被看見、有希望。
 - 保留並適度引用客戶自己的語言。
 - 用 Markdown，以 ## 分節，段落清晰、專業；多用 - 條列（不要用數字條列），少用長段落。
 - 每段用 **粗體** 標出這段的重點短語（一段一個重點、標短語即可，不要整句加粗），讓人快速掃過粗體就能抓到重點。
@@ -1168,7 +1171,9 @@ def _pct_change_label(t0_valence: int, now_valence: int) -> str:
     if delta > 0:
         return f"+{delta}%"
     if delta < 0:
-        return f"−{abs(delta)}%"
+        # 這張圖是給學員本人看的：單週分數本來就會起伏，回落不標負的數字，
+        # 與前端 coachViz 的 'supportive' 語氣一致（形狀照實畫，只是不把它寫成退步）。
+        return ""
     return "持平"
 
 
@@ -1227,7 +1232,7 @@ def _weekly_radar_drawing(
         drawing.add(Line(cx, cy, x, y, strokeColor=colors.HexColor("#E2E5EA"), strokeWidth=1))
         lx, ly = point(index, 1.17)
         drawing.add(String(
-            lx, ly - 4, f"{key} {_pct_change_label(t0_values[index], week_values[index])}",
+            lx, ly - 4, f"{key} {_pct_change_label(t0_values[index], week_values[index])}".strip(),
             fontName=font_name, fontSize=11,
             fillColor=colors.HexColor(_PERMA_CHART_COLORS[key]), textAnchor="middle",
         ))
@@ -1529,7 +1534,7 @@ def _build_weekly_report_pdf(
         Paragraph(
             "字母旁的百分比，是這週相對"
             + ("上一週" if prev_session else "起點")
-            + "移動了幾個百分點。",
+            + "往外推進了幾個百分點；沒有標數字的面向是這週的自然起伏。",
             intro_style,
         ),
         _weekly_radar_drawing(
@@ -1898,8 +1903,9 @@ async def coach_weekly_reports_generate(req: CoachMemberRequest, authorization: 
 
 _MONTHLY_MILESTONES = (4, 8)
 # 月報告 content 裡由人放進去的欄位：client_report 是要寄給學員的 8 週回顧，
-# coach_feedback 是教練對它的回饋。兩者都不是 AI 產出，重新生成月報告時要保留。
-_MONTHLY_CURATED_KEYS = ("client_report", "coach_feedback")
+# coach_feedback 是教練對它的回饋，client_delivery 是客戶交付版最後一次寄給學員的紀錄。
+# 三者都不是 AI 產出，重新生成月報告時要保留。
+_MONTHLY_CURATED_KEYS = ("client_report", "coach_feedback", "client_delivery")
 _COACH_FEEDBACK_MAX_CHARS = 5000
 
 
@@ -2082,9 +2088,9 @@ class CoachMonthlyFeedbackRequest(BaseModel):
 
 @app.post("/api/coach/monthly-reports/feedback")
 async def coach_monthly_feedback(req: CoachMonthlyFeedbackRequest, authorization: str = Header(...)):
-    """教練對「學員版 8 週回顧」留下回饋，存進該份月報告的 content.coach_feedback。
+    """教練讀完月報告後留下回饋，存進該份月報告的 content.coach_feedback。
 
-    message 會原文放進寄給學員的報告（「教練的話」一節）；note 是給整理者看的備註，
+    message 會原文放進客戶交付版開頭與寄給學員的 8 週回顧（「教練的話」一節）；note 是給整理者看的備註，
     學員看不到。走後端是因為 perma_monthly_reports 對前端只開放讀取。
     """
     token = authorization.removeprefix("Bearer ").strip()
@@ -2105,9 +2111,6 @@ async def coach_monthly_feedback(req: CoachMonthlyFeedbackRequest, authorization
     if not rows:
         raise HTTPException(status_code=404, detail="找不到這份月報告")
     content = rows[0].get("content") if isinstance(rows[0].get("content"), dict) else {}
-    if not content.get("client_report"):
-        raise HTTPException(status_code=409, detail="這份月報告還沒有學員版回顧")
-
     feedback = {
         "message": message,
         "note": note,
@@ -2574,9 +2577,147 @@ async def coach_client_report(req: CoachMemberRequest, authorization: str = Head
         else {**analysis, "client_text": client_text, "client_date": client_date}
     )
 
-    # 客戶交付版只產生文件，不寄信——寄給學員的一律是 member_reports 那條路
-    # （每週自動寄、第 4／8 週教練審核後寄），避免同一份內容從兩個地方寄出。
+    # 產生客戶交付版本身不寄信。每週的回顧走 member_reports 那條路（每週自動寄、
+    # 第 4／8 週教練審核後寄）；客戶交付版是跨週的整體回顧，只有教練自己按
+    # 「寄給學員」才會寄（見 coach_client_report_send），兩邊不會自動重複寄同一份內容。
     return result
+
+
+# 客戶交付版的 PDF 由前端產生後整份傳上來（與教練按「下載 PDF」是同一份排版）。
+# 上限抓 10MB：Gmail API 的 raw 信件還要再 base64 一次，太大會被退。
+_CLIENT_PDF_MAX_BYTES = 10 * 1024 * 1024
+_CLIENT_PDF_FILENAME = "Personal-Well-being-Review.pdf"
+_CLIENT_DELIVERY_SUBJECT = "你的 PERMA 個人福祉回顧"
+_CLIENT_DELIVERY_PLAIN_TEXT_FALLBACK = "這封信附上你的 PERMA 個人福祉回顧（PDF），請用支援 HTML 的信件軟體開啟。"
+
+
+def _client_delivery_email_html(member_name: str, coach_message: str) -> str:
+    """客戶交付版的信件內文。樣式一律 inline style——Gmail 會把 <style> 丟掉。
+
+    教練在月報告留的「給學員的話」原文放在最前面；沒留言就只有固定的說明。
+    """
+    message_html = (
+        f'<blockquote style="margin:16px 0;padding:12px 16px;border-left:3px solid #1F3A5C;'
+        f'background:#F4F6F9;color:#333;white-space:pre-wrap;">{html.escape(coach_message)}</blockquote>'
+        if coach_message
+        else ""
+    )
+    return f"""
+    <p>{html.escape(member_name)}，你好：</p>
+    {message_html}
+    <p>附件是你這段時間 PERMA 書寫的個人福祉回顧（PDF），整理了你一路走來的進展與內在資源。</p>
+    <p>謝謝你這段時間認真地寫下自己，<br>{html.escape(EMAIL_SIGNATURE)}</p>
+    """
+
+
+class CoachClientSendRequest(BaseModel):
+    member_id: str
+    # 不帶 PDF 就只回收件人與上次寄送紀錄，給前端的確認框用，不會寄信。
+    pdf_base64: str = ""
+
+
+@app.post("/api/coach/client-report/send")
+@limiter.limit("10/minute")
+async def coach_client_report_send(
+    request: Request,
+    req: CoachClientSendRequest,
+    authorization: str = Header(...),
+):
+    """把教練畫面上的客戶交付版（前端產生的 PDF）寄給學員本人。
+
+    信件開頭是教練在月報告留的「給學員的話」。寄送紀錄存在最後一份月報告的
+    content.client_delivery（重新生成月報告時會保留）；這位學員還沒有月報告時不寄（409）。
+    信寄出但紀錄寫入失敗時回傳 recorded=False，由前端提醒教練不要重複寄。
+    """
+    token = authorization.removeprefix("Bearer ").strip()
+    coach_id = await require_coach(token)
+
+    member_name, email = await _member_identity(req.member_id)
+    monthly_resp = await db().get(
+        f"{SUPABASE_REST}/perma_monthly_reports",
+        headers=SUPABASE_HEADERS,
+        params=[
+            ("member_id", f"eq.{req.member_id}"),
+            ("select", "milestone_week,content"),
+            ("order", "milestone_week.desc"),
+        ],
+    )
+    monthly = monthly_resp.json() if monthly_resp.status_code == 200 else []
+    contents = [row.get("content") if isinstance(row.get("content"), dict) else {} for row in monthly]
+    coach_message = next(
+        (msg for c in contents if (msg := str((c.get("coach_feedback") or {}).get("message") or "").strip())),
+        "",
+    )
+    last_delivery = contents[0].get("client_delivery") if contents else None
+
+    if not req.pdf_base64:
+        return {
+            "member_name": member_name,
+            "to_email": email,
+            "has_message": bool(coach_message),
+            "message_preview": coach_message[:60] + ("…" if len(coach_message) > 60 else ""),
+            "has_monthly_report": bool(monthly),
+            "mail_ready": bool(_mail_channel()),
+            "client_delivery": last_delivery,
+        }
+
+    # 教練的留言與寄送紀錄都掛在月報告上；沒有月報告就沒有地方記，不留一條寄了卻沒紀錄的路。
+    if not monthly:
+        raise HTTPException(status_code=409, detail="請先生成月報告並留言，信沒有寄出")
+    if not _mail_channel():
+        raise HTTPException(status_code=503, detail="沒有任何寄信管道設定齊全，信沒有寄出")
+    if not email:
+        raise HTTPException(status_code=409, detail="查不到這位學員的 email，信沒有寄出")
+    # base64 每 4 個字元對應 3 個位元組，先用長度擋掉過大的請求，不必真的解碼
+    if len(req.pdf_base64) > _CLIENT_PDF_MAX_BYTES * 4 // 3 + 4:
+        raise HTTPException(status_code=413, detail="PDF 超過 10MB，信沒有寄出")
+    try:
+        pdf_bytes = base64.b64decode(req.pdf_base64, validate=True)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="PDF 內容無法解讀，信沒有寄出")
+    if not pdf_bytes.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="上傳的不是 PDF，信沒有寄出")
+
+    try:
+        await _send_report_mail(
+            email,
+            _CLIENT_DELIVERY_SUBJECT,
+            _client_delivery_email_html(member_name, coach_message),
+            (_CLIENT_PDF_FILENAME, pdf_bytes),
+            _CLIENT_DELIVERY_PLAIN_TEXT_FALLBACK,
+        )
+    except Exception as err:
+        logger.error("客戶交付版寄送失敗 %s: %s", email, err)
+        raise HTTPException(status_code=502, detail=f"寄送失敗：{str(err)[:200]}")
+
+    delivery = {
+        "sent_at": datetime.now(TW_TZ).isoformat(),
+        "to_email": email,
+        "coach_id": coach_id,
+        "had_message": bool(coach_message),
+    }
+    # 寄信要好幾秒，這段時間教練可能剛存了留言或重新生成了月報告。
+    # 寫紀錄前重讀一次 content 再併入，才不會用寄信前讀到的舊內容蓋掉它們。
+    milestone_params = [("member_id", f"eq.{req.member_id}"), ("milestone_week", f"eq.{monthly[0]['milestone_week']}")]
+    fresh_resp = await db().get(
+        f"{SUPABASE_REST}/perma_monthly_reports",
+        headers=SUPABASE_HEADERS,
+        params=[*milestone_params, ("select", "content"), ("limit", "1")],
+    )
+    fresh_rows = fresh_resp.json() if fresh_resp.status_code == 200 else []
+    recorded = False
+    if fresh_rows and isinstance(fresh_rows[0].get("content"), dict):
+        record_resp = await db().patch(
+            f"{SUPABASE_REST}/perma_monthly_reports",
+            headers={**SUPABASE_HEADERS, "Prefer": "return=minimal"},
+            params=milestone_params,
+            json={"content": {**fresh_rows[0]["content"], "client_delivery": delivery}},
+        )
+        recorded = record_resp.status_code in (200, 204)
+    if not recorded:
+        logger.warning("客戶交付版已寄給 %s 但寄送紀錄寫入失敗", email)
+    logger.info("已寄送客戶交付版給 %s", email)
+    return {"client_delivery": delivery, "recorded": recorded}
 
 
 class CoachTranslateRequest(BaseModel):

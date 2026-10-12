@@ -16,6 +16,7 @@ import {
   type SessionScore,
   type DimKey,
   type TopicKey,
+  type ChartTone,
 } from '../lib/coachViz'
 
 // T0 基準點：五面向幸福感分數（0–10），作為所有圖表的起點（見遷移 005 / 007）
@@ -117,6 +118,7 @@ export function ReportChart({
   sessions,
   baseline,
   compareWith = 'baseline',
+  tone = 'exact',
 }: {
   chartKey: string
   sessions: SessionScore[]
@@ -126,6 +128,8 @@ export function ReportChart({
    *  'previous'：跟上一次比——用在單週報告，學員關心的是「這週跟上週相比如何」；
    *              只有第 1 週沒有前一次，此時自動退回跟 T0 比。 */
   compareWith?: 'baseline' | 'previous'
+  /** 學員本人會看到的圖用 'supportive'（見 coachViz 的 ChartTone）；教練自己看的分析維持 'exact'。 */
+  tone?: ChartTone
 }) {
   const { t, language } = useLanguage()
   if (!sessions.length) return null
@@ -143,6 +147,8 @@ export function ReportChart({
   })
   const comparingToBaseline = cmpIndex === 0
   const xLabels = base ? ['T0', ...sessions.map((_, i) => String(i + 1))] : undefined
+  const peakIndex = cd.ov.indexOf(cd.hi)
+  const peakLabel = xLabels ? xLabels[peakIndex] : String(peakIndex + 1)
 
   const body = (() => {
   switch (chartKey) {
@@ -156,13 +162,26 @@ export function ReportChart({
             </div>
             <div className="cv-stat-l">{t('平均整體 valence')}</div>
           </div>
-          <div className="cv-stat">
-            <div className="cv-stat-n">
-              {cd.delta > 0 ? '+' : ''}
-              {cd.delta}
+          {tone === 'supportive' && cd.delta < 0 ? (
+            // 學員看的版本：末次比首次低時，這一格改報整段期間的最高點，不把一次的回落寫成負的變化
+            <div className="cv-stat">
+              <div className="cv-stat-n">
+                {cd.hi > 0 ? '+' : ''}
+                {cd.hi}
+              </div>
+              <div className="cv-stat-l">
+                {peakLabel === 'T0' ? t('最高點（T0）') : t('最高點（第 {n} 次）', { n: peakLabel })}
+              </div>
             </div>
-            <div className="cv-stat-l">{t('變化（末−首）')}</div>
-          </div>
+          ) : (
+            <div className="cv-stat">
+              <div className="cv-stat-n">
+                {cd.delta > 0 ? '+' : ''}
+                {cd.delta}
+              </div>
+              <div className="cv-stat-l">{t('變化（末−首）')}</div>
+            </div>
+          )}
           <div className="cv-stat">
             <div className="cv-stat-n">
               {cd.hi > 0 ? '+' : ''}
@@ -268,7 +287,7 @@ export function ReportChart({
         <>
           <div
             className="cv-chart-wrap cv-radar-wrap"
-            dangerouslySetInnerHTML={{ __html: valRadar(cmpDim, cd.lastDim) }}
+            dangerouslySetInnerHTML={{ __html: valRadar(cmpDim, cd.lastDim, tone) }}
           />
           <div className="cv-legend" style={{ justifyContent: 'center' }}>
             {legendItem(
@@ -279,7 +298,7 @@ export function ReportChart({
             )}
             {legendItem('#1F3A5C', t('最新一次'))}
           </div>
-          <div dangerouslySetInnerHTML={{ __html: radarDelta(cmpDim, cd.lastDim) }} />
+          <div dangerouslySetInnerHTML={{ __html: radarDelta(cmpDim, cd.lastDim, tone) }} />
         </>
       )
     case 'affect':
